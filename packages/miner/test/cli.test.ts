@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getTemplate, type Candidate } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { resolveFaceSpec, selectReported } from '../src/cli.js'
+import { asciiFor } from '../src/report.js'
+import { buildProgressBlock, resolveFaceSpec, selectReported } from '../src/cli.js'
 
 function makeCandidate(overrides: Partial<Candidate>): Candidate {
   return {
@@ -94,5 +95,51 @@ describe('selectReported', () => {
 
     expect(result.usedFallback).toBe(true)
     expect(result.reported.length).toBe(2)
+  })
+})
+
+describe('buildProgressBlock', () => {
+  const progress = (best: Candidate[]) => ({
+    scanned: 1_000_000,
+    elapsedMs: 65_000,
+    rate: 1_500_000,
+    best,
+  })
+
+  const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({
+    saltNonce: '1885506',
+    address: '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5',
+    score: 120,
+    maxScore: 133,
+    twoColor: true,
+    contrast: 157,
+    regions: { mouth: 'small' },
+    ...overrides,
+  })
+
+  it('is a single status line before any candidate exists', () => {
+    const block = buildProgressBlock(progress([]))
+    expect(block).toHaveLength(1)
+    expect(block[0]).toContain('no candidates yet')
+  })
+
+  it('draws the 8-row face above the status line once a best exists', () => {
+    const block = buildProgressBlock(progress([candidate()]))
+    expect(block).toHaveLength(9)
+    // Same layout as the final report: two spaces of indent, 8 cells of two characters.
+    for (const line of block.slice(0, 8)) expect(line).toHaveLength(18)
+    expect(block[8]).toContain('best 120/133')
+  })
+
+  it('renders the same face the final report prints for that address', () => {
+    const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
+    const block = buildProgressBlock(progress([candidate({ address })]))
+    expect(block.slice(0, 8)).toEqual(asciiFor(address).map((line) => `  ${line}`))
+  })
+
+  it('includes elapsed time and rate in the status line', () => {
+    const block = buildProgressBlock(progress([candidate()]))
+    expect(block[8]).toContain('1m 05s')
+    expect(block[8]).toContain('1.50M/s')
   })
 })

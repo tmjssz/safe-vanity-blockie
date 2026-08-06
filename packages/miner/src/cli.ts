@@ -60,6 +60,16 @@ function progressLineText(progress: PoolProgress): string {
   )
 }
 
+/**
+ * The live progress display: the current best blockie drawn in the same layout the final
+ * report uses, with the status line beneath it. Just the status line until a candidate exists.
+ */
+export function buildProgressBlock(progress: PoolProgress): string[] {
+  const best = progress.best[0]
+  const face = best ? asciiFor(best.address).map((line) => `  ${line}`) : []
+  return [...face, progressLineText(progress)]
+}
+
 // Retention is score-ranked and blind to --two-color/--min-contrast, which are applied
 // afterwards. Over-retain so filtering has candidates left to show; only two-colour
 // blockies are common enough for this to matter (a grid is two-colour only when no cell
@@ -127,6 +137,15 @@ export async function runMine(options: MineArgs): Promise<number> {
 
   let lastProgress: PoolProgress | undefined
   let lastLoggedAt = 0
+  let drawnLines = 0
+  let loggedBestScore = -1
+
+  /** Redraws the live block in place: up over the previous one, then clear and rewrite. */
+  const redraw = (block: string[]) => {
+    const reset = drawnLines > 0 ? `\u001b[${drawnLines}A\u001b[0J` : ''
+    process.stderr.write(`${reset}${block.join('\n')}\n`)
+    drawnLines = block.length
+  }
 
   const pool = createPool({
     constantsHex: setup.constantsHex,
@@ -138,13 +157,19 @@ export async function runMine(options: MineArgs): Promise<number> {
     onProgress: (progress) => {
       lastProgress = progress
       if (process.stderr.isTTY) {
-        process.stderr.write(`\r${progressLineText(progress)}   `)
+        redraw(buildProgressBlock(progress))
         return
       }
-      // No terminal to interpret \r: emit newline-terminated lines, throttled so a long
-      // unattended run does not flood the log.
+      // No terminal to redraw on: emit newline-terminated lines, throttled so a long
+      // unattended run does not flood the log. The face is logged only when the best
+      // improves, which is bounded by the score range and is the part worth recording.
       const now = Date.now()
-      if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
+      const best = progress.best[0]
+      if (best && best.score > loggedBestScore) {
+        loggedBestScore = best.score
+        lastLoggedAt = now
+        process.stderr.write(`${buildProgressBlock(progress).join('\n')}\n`)
+      } else if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
         lastLoggedAt = now
         process.stderr.write(`${progressLineText(progress)}\n`)
       }
@@ -163,7 +188,9 @@ export async function runMine(options: MineArgs): Promise<number> {
   } finally {
     process.off('SIGINT', onSigint)
     if (process.stderr.isTTY) {
-      process.stderr.write('\n')
+      // Erase the live block so the final report below is not a visual duplicate of it.
+      if (drawnLines > 0) process.stderr.write(`\u001b[${drawnLines}A\u001b[0J`)
+      drawnLines = 0
     } else if (lastProgress) {
       // Always record the final state, even if the throttle above just skipped it.
       process.stderr.write(`${progressLineText(lastProgress)}\n`)
