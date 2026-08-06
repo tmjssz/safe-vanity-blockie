@@ -189,24 +189,23 @@ describe('buildResultsJson elapsed time', () => {
 
 describe('resultColumnsForWidth', () => {
   it('fits as many full-size blockies as the width allows', () => {
-    // Each column is 16 characters wide with a 4-character gutter between columns.
-    expect(resultColumnsForWidth(96, 5)).toBe(5)
-    expect(resultColumnsForWidth(95, 5)).toBe(4)
-    expect(resultColumnsForWidth(80, 5)).toBe(4)
-    expect(resultColumnsForWidth(75, 5)).toBe(3)
-    expect(resultColumnsForWidth(56, 5)).toBe(3)
-    expect(resultColumnsForWidth(36, 5)).toBe(2)
-    expect(resultColumnsForWidth(16, 5)).toBe(1)
+    // Each column is 16 characters wide with a 6-character gutter between columns.
+    expect(resultColumnsForWidth(170, 8)).toBe(8)
+    expect(resultColumnsForWidth(104, 8)).toBe(5)
+    expect(resultColumnsForWidth(103, 8)).toBe(4)
+    expect(resultColumnsForWidth(80, 8)).toBe(3)
+    expect(resultColumnsForWidth(38, 8)).toBe(2)
+    expect(resultColumnsForWidth(16, 8)).toBe(1)
   })
 
   it('never drops below one column, however narrow the terminal', () => {
-    expect(resultColumnsForWidth(5, 5)).toBe(1)
-    expect(resultColumnsForWidth(0, 5)).toBe(1)
-    expect(resultColumnsForWidth(-40, 5)).toBe(1)
+    expect(resultColumnsForWidth(5, 8)).toBe(1)
+    expect(resultColumnsForWidth(0, 8)).toBe(1)
+    expect(resultColumnsForWidth(-40, 8)).toBe(1)
   })
 
   it('never exceeds the requested maximum, however wide the terminal', () => {
-    expect(resultColumnsForWidth(1000, 5)).toBe(5)
+    expect(resultColumnsForWidth(1000, 8)).toBe(8)
     expect(resultColumnsForWidth(1000, 2)).toBe(2)
   })
 })
@@ -224,7 +223,7 @@ describe('buildResultStrip', () => {
       maxResults: 5,
       columnsPerRow: 5,
     })
-    expect(strip).toHaveLength(9)
+    expect(strip).toHaveLength(10)
     expect(strip[0]).toContain('#1 120/133')
     expect(strip[0]).toContain('#2 119/133')
   })
@@ -232,7 +231,7 @@ describe('buildResultStrip', () => {
   it('uses the same full-size renderer as the standalone face', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
     const strip = buildResultStrip([candidate({ address })], { maxResults: 5, columnsPerRow: 5 })
-    expect(strip.slice(1).map((line) => line.trimEnd())).toEqual(
+    expect(strip.slice(1, 9).map((line) => line.trimEnd())).toEqual(
       asciiFor(address).map((line) => line.trimEnd()),
     )
     for (const line of asciiFor(address)) expect(line).toHaveLength(16)
@@ -241,12 +240,12 @@ describe('buildResultStrip', () => {
   it('wraps into a grid when the row cannot hold every result', () => {
     const five = [1, 2, 3, 4, 5].map((rank) => entry(rank, 130 - rank))
     const strip = buildResultStrip(five, { maxResults: 5, columnsPerRow: 2 })
-    // three grid rows of 9 lines, separated by two blank lines
-    expect(strip).toHaveLength(3 * 9 + 2)
+    // three grid rows of 10 lines, separated by two blank lines
+    expect(strip).toHaveLength(3 * 10 + 2)
     expect(strip[0]).toContain('#1')
     expect(strip[0]).toContain('#2')
-    expect(strip[10]).toContain('#3')
-    expect(strip[20]).toContain('#5')
+    expect(strip[11]).toContain('#3')
+    expect(strip[22]).toContain('#5')
   })
 
   it('never breaks an image across a line, whatever the column count', () => {
@@ -254,8 +253,28 @@ describe('buildResultStrip', () => {
     for (const columnsPerRow of [1, 2, 3, 4, 5]) {
       const strip = buildResultStrip(five, { maxResults: 5, columnsPerRow })
       const widest = Math.max(...strip.map((line) => line.length))
-      expect(widest).toBeLessThanOrEqual(columnsPerRow * 16 + (columnsPerRow - 1) * 4)
+      expect(widest).toBeLessThanOrEqual(columnsPerRow * 16 + (columnsPerRow - 1) * 6)
     }
+  })
+
+  it('captions each blockie with its saltNonce', () => {
+    const strip = buildResultStrip(
+      [candidate({ saltNonce: '1885506' }), candidate({ address: '0xb', saltNonce: '3500238' })],
+      { maxResults: 8, columnsPerRow: 8 },
+    )
+    // the caption is the last line of the grid row, under the faces
+    expect(strip[9]).toContain('1885506')
+    expect(strip[9]).toContain('3500238')
+  })
+
+  it('fits the longest saltNonce a run can produce without widening the cell', () => {
+    // derive() caps at Number.MAX_SAFE_INTEGER, which is 16 digits -- exactly the cell width.
+    const strip = buildResultStrip([candidate({ saltNonce: '9007199254740991' })], {
+      maxResults: 8,
+      columnsPerRow: 8,
+    })
+    expect(strip[9]).toContain('9007199254740991')
+    expect(strip.every((line) => line.length === 16)).toBe(true)
   })
 
   it('never shows more results than the maximum', () => {

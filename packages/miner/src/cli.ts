@@ -90,7 +90,7 @@ const RETENTION_MULTIPLIER = 20
 const MIN_RETENTION = 200
 
 /** How many results are drawn side by side, live and in the final report. */
-const RESULT_COLUMNS = 5
+const RESULT_COLUMNS = 8
 
 /** Every result line is written with this much left indent. */
 const OUTPUT_INDENT = 2

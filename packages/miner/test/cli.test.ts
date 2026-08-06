@@ -127,10 +127,11 @@ describe('buildProgressBlock', () => {
 
   it('draws the labelled result strip above the status line once a best exists', () => {
     const block = buildProgressBlock(progress([candidate()]), selection, 5)
-    // blank + label row + 8 face rows + blank + status line
-    expect(block).toHaveLength(12)
+    // blank + label row + 8 face rows + saltNonce caption + blank + status line
+    expect(block).toHaveLength(13)
     expect(block[1]).toContain('#1 120/133')
-    expect(block[11]).toContain('best 120/133')
+    expect(block[10]).toContain('1885506')
+    expect(block[12]).toContain('best 120/133')
   })
 
   it('pads the images with blank lines so they stand apart from the surrounding output', () => {

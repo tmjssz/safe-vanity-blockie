@@ -187,7 +187,7 @@ export function asciiFor(address: string): string[] {
 
 
 /** Wide enough that adjacent blockies do not read as one image. */
-const RESULT_GUTTER_WIDTH = 4
+const RESULT_GUTTER_WIDTH = 6
 const RESULT_GUTTER = ' '.repeat(RESULT_GUTTER_WIDTH)
 /** A full-size blockie is 8 cells of two characters. */
 const RESULT_CELL_WIDTH = 16
@@ -203,12 +203,18 @@ export function resultColumnsForWidth(availableWidth: number, maxColumns: number
   return Math.max(1, Math.min(maxColumns, fits))
 }
 
-function renderRow(entries: { label: string; face: string[] }[]): string[] {
-  const width = Math.max(RESULT_CELL_WIDTH, ...entries.map((entry) => entry.label.length))
-  const lines = [entries.map((entry) => entry.label.padEnd(width)).join(RESULT_GUTTER)]
+function renderRow(entries: { label: string; caption: string; face: string[] }[]): string[] {
+  const width = Math.max(
+    RESULT_CELL_WIDTH,
+    ...entries.map((entry) => Math.max(entry.label.length, entry.caption.length)),
+  )
+  const join = (cells: string[]) => cells.map((cell) => cell.padEnd(width)).join(RESULT_GUTTER)
+
+  const lines = [join(entries.map((entry) => entry.label))]
   for (let row = 0; row < 8; row++) {
-    lines.push(entries.map((entry) => entry.face[row].padEnd(width)).join(RESULT_GUTTER))
+    lines.push(join(entries.map((entry) => entry.face[row])))
   }
+  lines.push(join(entries.map((entry) => entry.caption)))
   return lines.map((line) => line.trimEnd().padEnd(lines[0].length))
 }
 
@@ -216,7 +222,8 @@ function renderRow(entries: { label: string; face: string[] }[]): string[] {
  * The top results drawn at full size, wrapped into as many rows as the terminal width allows.
  * Every blockie is two characters per cell so each pixel stays square — a terminal cell is
  * about twice as tall as it is wide — and no image is ever split across a line break.
- * Ranks start at 1.
+ * Each blockie is labelled with its rank and score above, and captioned with its saltNonce
+ * below. Ranks start at 1.
  */
 export function buildResultStrip(
   candidates: Candidate[],
@@ -227,6 +234,9 @@ export function buildResultStrip(
 
   const entries = shown.map((entry, index) => ({
     label: `#${index + 1} ${entry.score}/${entry.maxScore}`,
+    // A saltNonce is at most 16 digits (derive() caps at MAX_SAFE_INTEGER), so it never
+    // widens the 16-character cell.
+    caption: entry.saltNonce,
     face: asciiFor(entry.address),
   }))
 
