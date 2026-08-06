@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { bloData } from '../src/blo.js'
+import { bloData, bloImage } from '../src/blo.js'
 import { createAddressDeriver } from '../src/address.js'
 import { hexToBytes } from '../src/hex.js'
 import { createKeccak256, type Keccak256 } from '../src/keccak.js'
 import { Leaderboard, compareCandidates, createMiner, type Candidate } from '../src/miner.js'
-import { compileFace, makeScorer } from '../src/scoring.js'
+import { colorContrast, compileFace, isTwoColor, makeScorer } from '../src/scoring.js'
 import { getTemplate } from '../src/templates.js'
 
 const CONSTANTS = {
@@ -75,6 +75,21 @@ describe('Leaderboard', () => {
     expect(compareCandidates(a, b)).toBeLessThan(0)
     expect(compareCandidates(b, a)).toBeGreaterThan(0)
     expect(compareCandidates(a, a)).toBe(0)
+
+    // The tiebreak compares by string length first: '9' must sort before '10',
+    // which plain lexicographic comparison would get backwards.
+    const nine = candidate({ address: '0xc', saltNonce: '9' })
+    const ten = candidate({ address: '0xd', saltNonce: '10' })
+    expect(compareCandidates(nine, ten)).toBeLessThan(0)
+    expect(compareCandidates(ten, nine)).toBeGreaterThan(0)
+
+    // A saltNonce beyond 2^53 (a uint256, represented as a decimal string)
+    // must still sort after both shorter strings.
+    const huge = candidate({ address: '0xe', saltNonce: '18446744073709551616' })
+    expect(compareCandidates(nine, huge)).toBeLessThan(0)
+    expect(compareCandidates(ten, huge)).toBeLessThan(0)
+    expect(compareCandidates(huge, nine)).toBeGreaterThan(0)
+    expect(compareCandidates(huge, ten)).toBeGreaterThan(0)
   })
 })
 
@@ -118,6 +133,12 @@ describe('createMiner', () => {
       expect(entry.score).toBe(score(bloData(entry.address)))
       expect(entry.score).toBeLessThanOrEqual(entry.maxScore)
       expect(Object.keys(entry.regions)).toEqual(['mouth'])
+
+      // Independently recompute twoColor/contrast from the address to pin the
+      // colour indices and rounding used inside buildCandidate.
+      const { data, colors } = bloImage(entry.address)
+      expect(entry.twoColor).toBe(isTwoColor(data))
+      expect(entry.contrast).toBe(Math.round(colorContrast(colors[0], colors[1])))
     }
   })
 

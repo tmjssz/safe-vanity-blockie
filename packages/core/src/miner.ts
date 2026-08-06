@@ -49,6 +49,7 @@ export class Leaderboard {
     this.items.push(candidate)
     this.items.sort(compareCandidates)
     if (this.items.length > this.capacity) this.items.length = this.capacity
+    this.seen = new Set(this.items.map((item) => item.address))
     return true
   }
 
