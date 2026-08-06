@@ -2182,8 +2182,13 @@ export interface SafeSetup {
   isL1SafeSingleton?: boolean
 }
 
-/** zkSync Era and friends derive CREATE2 addresses with a different formula (spec §3.1). */
-export const ZKSYNC_CHAIN_IDS: ReadonlySet<bigint> = new Set([324n, 300n, 302n])
+/**
+ * zkSync-family chains derive CREATE2 addresses with a different formula (spec §3.1).
+ * This list mirrors protocol-kit's own zkSync switch — Era mainnet, Era Sepolia, Lens.
+ * protocol-kit additionally gates the zkSync formula on safeVersion <= 1.4.1, which covers
+ * every version this CLI supports, so plain set membership is sufficient here.
+ */
+export const ZKSYNC_CHAIN_IDS: ReadonlySet<bigint> = new Set([324n, 300n, 232n])
 
 /**
  * Reads chainId and the three constants that stay fixed for a given
