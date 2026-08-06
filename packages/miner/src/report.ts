@@ -1,0 +1,154 @@
+import { bloData, bloSvg, type Candidate } from '@safe-vanity-blockie/core'
+
+export interface ResultConfig {
+  owners: string[]
+  threshold: number
+  safeVersion: string
+  /** Decimal string; chainId is a bigint and JSON has no bigint. */
+  chainId: string
+  target: string
+  maxScore: number
+  start: number
+  scanned: number
+  nextStart: number
+  workers: number
+  perWorker: number
+  generatedAt: string
+}
+
+const GLYPHS = ['  ', '██', '▒▒'] as const
+
+/** 8 lines of 8 cells. Columns 4-7 mirror columns 3-0, exactly as blo renders them. */
+export function renderAscii(data: Uint8Array): string[] {
+  const lines: string[] = []
+  for (let row = 0; row < 8; row++) {
+    let line = ''
+    for (let col = 0; col < 8; col++) {
+      const source = col < 4 ? col : 7 - col
+      line += GLYPHS[data[row * 4 + source]]
+    }
+    lines.push(line)
+  }
+  return lines
+}
+
+export function filterCandidates(
+  candidates: Candidate[],
+  filters: { twoColor: boolean; minContrast: number },
+): Candidate[] {
+  return candidates.filter(
+    (candidate) =>
+      (!filters.twoColor || candidate.twoColor) && candidate.contrast >= filters.minContrast,
+  )
+}
+
+function regionSummary(candidate: Candidate): string {
+  return Object.values(candidate.regions).join('/') || '-'
+}
+
+export function formatLeaderboard(candidates: Candidate[], limit: number): string {
+  const header = ' # | score | 2col | contrast | expression | address                                    | saltNonce'
+  const rows = candidates.slice(0, limit).map((candidate, index) => {
+    return [
+      String(index + 1).padStart(2),
+      `${candidate.score}/${candidate.maxScore}`.padStart(6),
+      (candidate.twoColor ? 'yes' : 'no').padStart(4),
+      String(candidate.contrast).padStart(8),
+      regionSummary(candidate).padStart(10),
+      candidate.address,
+      candidate.saltNonce,
+    ].join(' | ')
+  })
+  return [header, '-'.repeat(header.length), ...rows].join('\n') + '\n'
+}
+
+export function buildResultsJson(config: ResultConfig, candidates: Candidate[]): string {
+  return (
+    JSON.stringify(
+      {
+        config,
+        results: candidates.map((candidate) => ({
+          saltNonce: candidate.saltNonce,
+          address: candidate.address,
+          score: candidate.score,
+          max: candidate.maxScore,
+          twoColor: candidate.twoColor,
+          contrast: candidate.contrast,
+          ...candidate.regions,
+        })),
+      },
+      null,
+      2,
+    ) + '\n'
+  )
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+export function buildGalleryHtml(config: ResultConfig, candidates: Candidate[]): string {
+  const cards = candidates
+    .map((candidate) => {
+      const twoColor = candidate.twoColor ? 'two colours' : 'three colours'
+      return `    <figure class="card">
+      ${bloSvg(candidate.address, 128)}
+      <figcaption>
+        <strong>${candidate.score}/${candidate.maxScore}</strong>
+        <span>${escapeHtml(regionSummary(candidate))} · ${twoColor} · contrast ${candidate.contrast}</span>
+        <code>${escapeHtml(candidate.address)}</code>
+        <code>saltNonce ${escapeHtml(candidate.saltNonce)}</code>
+      </figcaption>
+    </figure>`
+    })
+    .join('\n')
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>safe-vanity-blockie results</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; }
+  .warning { border: 1px solid currentColor; padding: .75rem 1rem; border-radius: .5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+  .card { margin: 0; padding: 1rem; border: 1px solid rgba(128,128,128,.4); border-radius: .5rem; }
+  .card svg { border-radius: .25rem; display: block; }
+  figcaption { display: grid; gap: .25rem; margin-top: .75rem; }
+  code { font-size: 12px; overflow-wrap: anywhere; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; }
+  dt { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>safe-vanity-blockie results</h1>
+<p class="warning"><strong>A matching identicon is cosmetic.</strong> Never treat it as proof of an
+address — blockie look-alikes are a known phishing vector. Always verify the full address.</p>
+<dl>
+  <dt>owners</dt><dd><code>${escapeHtml(config.owners.join(', '))}</code></dd>
+  <dt>threshold</dt><dd>${config.threshold}</dd>
+  <dt>Safe version</dt><dd>${escapeHtml(config.safeVersion)}</dd>
+  <dt>chain id</dt><dd>${escapeHtml(config.chainId)}</dd>
+  <dt>target</dt><dd>${escapeHtml(config.target)}</dd>
+  <dt>scanned</dt><dd>${config.scanned.toLocaleString('en-US')} nonces from ${config.start}</dd>
+  <dt>resume at</dt><dd><code>--start ${config.nextStart} --workers ${config.workers}</code></dd>
+  <dt>generated</dt><dd>${escapeHtml(config.generatedAt)}</dd>
+</dl>
+<div class="grid">
+${cards}
+</div>
+</body>
+</html>
+`
+}
+
+/** Re-exported so cli.ts can preview a candidate without importing core directly. */
+export function asciiFor(address: string): string[] {
+  return renderAscii(bloData(address))
+}
