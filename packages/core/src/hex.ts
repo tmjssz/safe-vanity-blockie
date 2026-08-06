@@ -12,6 +12,9 @@ export function hexToBytes(hex: string): Uint8Array {
   if (body.length % 2 !== 0) {
     throw new Error(`hexToBytes: odd-length hex string (${body.length} characters)`)
   }
+  if (!/^[0-9a-fA-F]*$/.test(body)) {
+    throw new Error(`hexToBytes: invalid hex characters`)
+  }
   const out = new Uint8Array(body.length / 2)
   for (let i = 0; i < out.length; i++) {
     const byte = Number.parseInt(body.slice(i * 2, i * 2 + 2), 16)

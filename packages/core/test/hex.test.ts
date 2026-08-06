@@ -23,5 +23,9 @@ describe('hex', () => {
   it('rejects malformed hex', () => {
     expect(() => hexToBytes('0xabc')).toThrow(/odd-length/)
     expect(() => hexToBytes('0xzz')).toThrow(/invalid hex/)
+    expect(() => hexToBytes('0x1x')).toThrow(/invalid hex/)
+    expect(() => hexToBytes('0x-1')).toThrow(/invalid hex/)
+    expect(() => hexToBytes('0x+1')).toThrow(/invalid hex/)
+    expect(() => hexToBytes('0xa ')).toThrow(/invalid hex/)
   })
 })
