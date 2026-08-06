@@ -2,6 +2,7 @@ import type { Candidate } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
   buildGalleryHtml,
+  formatDuration,
   buildResultsJson,
   filterCandidates,
   formatLeaderboard,
@@ -24,6 +25,7 @@ const CONFIG: ResultConfig = {
   generatedAt: '2026-08-06T00:00:00.000Z',
   isL1SafeSingleton: false,
   selfCheck: 'passed',
+  elapsedMs: 3_725_000,
 }
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
@@ -137,5 +139,47 @@ describe('formatLeaderboard', () => {
     const lines = formatLeaderboard(entries, 2).trim().split('\n')
     expect(lines.filter((line) => line.includes('0x'))).toHaveLength(2)
     expect(lines[0]).toMatch(/score/i)
+  })
+})
+
+describe('formatDuration', () => {
+  it('renders sub-minute durations in whole seconds', () => {
+    expect(formatDuration(0)).toBe('0s')
+    expect(formatDuration(999)).toBe('0s')
+    expect(formatDuration(1000)).toBe('1s')
+    expect(formatDuration(45_000)).toBe('45s')
+    expect(formatDuration(59_999)).toBe('59s')
+  })
+
+  it('renders minutes with zero-padded seconds', () => {
+    expect(formatDuration(60_000)).toBe('1m 00s')
+    expect(formatDuration(125_000)).toBe('2m 05s')
+    expect(formatDuration(3_599_000)).toBe('59m 59s')
+  })
+
+  it('renders hours with zero-padded minutes and seconds', () => {
+    expect(formatDuration(3_600_000)).toBe('1h 00m 00s')
+    expect(formatDuration(3_725_000)).toBe('1h 02m 05s')
+    expect(formatDuration(45 * 3_600_000 + 61_000)).toBe('45h 01m 01s')
+  })
+
+  it('never emits a negative or fractional duration', () => {
+    expect(formatDuration(-5000)).toBe('0s')
+    expect(formatDuration(1500.7)).toBe('1s')
+  })
+})
+
+describe('buildGalleryHtml elapsed time', () => {
+  it('shows how long the run took', () => {
+    const html = buildGalleryHtml(CONFIG, [candidate()])
+    expect(html).toContain('1h 02m 05s')
+    expect(html).toContain('mining time')
+  })
+})
+
+describe('buildResultsJson elapsed time', () => {
+  it('records elapsedMs in the config', () => {
+    const parsed = JSON.parse(buildResultsJson(CONFIG, [candidate()]))
+    expect(parsed.config.elapsedMs).toBe(3_725_000)
   })
 })

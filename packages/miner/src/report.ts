@@ -22,6 +22,24 @@ export interface ResultConfig {
    * prevented the check from running at all).
    */
   selfCheck: 'passed' | 'failed' | 'not-performed'
+  /** Wall-clock time spent mining, in milliseconds. Excludes RPC setup. */
+  elapsedMs: number
+}
+
+/**
+ * Human-readable duration: "45s", "2m 05s", "1h 02m 05s". Seconds and minutes are
+ * zero-padded above their unit so successive progress lines stay aligned.
+ */
+export function formatDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000))
+  const seconds = totalSeconds % 60
+  const minutes = Math.floor(totalSeconds / 60) % 60
+  const hours = Math.floor(totalSeconds / 3600)
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`
+  }
+  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+  return `${seconds}s`
 }
 
 const GLYPHS = ['  ', '██', '▒▒'] as const
@@ -150,6 +168,7 @@ address — blockie look-alikes are a known phishing vector. Always verify the f
   <dt>L1 singleton</dt><dd>${config.isL1SafeSingleton ? 'yes' : 'no'}</dd>
   <dt>self-check</dt><dd>${escapeHtml(config.selfCheck)}</dd>
   <dt>scanned</dt><dd>${config.scanned.toLocaleString('en-US')} nonces from ${config.start}</dd>
+  <dt>mining time</dt><dd>${escapeHtml(formatDuration(config.elapsedMs))}</dd>
   <dt>resume at</dt><dd><code>--start ${config.nextStart} --workers ${config.workers}</code></dd>
   <dt>generated</dt><dd>${escapeHtml(config.generatedAt)}</dd>
 </dl>

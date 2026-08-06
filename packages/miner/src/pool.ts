@@ -41,6 +41,8 @@ export interface PoolResult {
    * slower workers — the guarantee is no-rescan, not full coverage.
    */
   nextStart: number
+  /** Wall-clock time this pool spent mining, in milliseconds. */
+  elapsedMs: number
 }
 
 export function createPool(options: PoolOptions): {
@@ -118,6 +120,7 @@ export function createPool(options: PoolOptions): {
     const scanned = scannedPerWorker.reduce((a, b) => a + b, 0)
     return {
       scanned,
+      elapsedMs: Date.now() - startedAt,
       scannedPerWorker,
       candidates: board.entries(),
       nextStart:

@@ -17,6 +17,7 @@ import {
   buildGalleryHtml,
   buildResultsJson,
   filterCandidates,
+  formatDuration,
   formatLeaderboard,
   type ResultConfig,
 } from './report.js'
@@ -53,7 +54,10 @@ function formatRate(rate: number): string {
 function progressLineText(progress: PoolProgress): string {
   const best = progress.best[0]
   const summary = best ? `best ${best.score}/${best.maxScore}` : 'no candidates yet'
-  return `${progress.scanned.toLocaleString('en-US')} nonces · ${formatRate(progress.rate)} · ${summary}`
+  return (
+    `${formatDuration(progress.elapsedMs)} · ${progress.scanned.toLocaleString('en-US')} nonces · ` +
+    `${formatRate(progress.rate)} · ${summary}`
+  )
 }
 
 // Retention is score-ranked and blind to --two-color/--min-contrast, which are applied
@@ -245,6 +249,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     generatedAt: new Date().toISOString(),
     isL1SafeSingleton: options.isL1SafeSingleton ?? false,
     selfCheck,
+    elapsedMs: result.elapsedMs,
   }
 
   if (options.out) {
@@ -265,6 +270,11 @@ export async function runMine(options: MineArgs): Promise<number> {
   ].filter((flag): flag is string => flag !== undefined)
   process.stdout.write(
     `\nDeploy the top result:\n  safe-vanity-blockie deploy ${deployFlags.join(' ')} --rpc ${options.rpcUrl}\n`,
+  )
+
+  process.stdout.write(
+    `\nMined ${result.scanned.toLocaleString('en-US')} nonces in ` +
+      `${formatDuration(result.elapsedMs)} (${formatRate((result.scanned / Math.max(1, result.elapsedMs)) * 1000)}).\n`,
   )
 
   process.stdout.write(
