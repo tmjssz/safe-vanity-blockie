@@ -3216,14 +3216,16 @@ export function buildResultsJson(config: ResultConfig, candidates: Candidate[]):
     JSON.stringify(
       {
         config,
+        // Region names come from an untrusted --target FaceSpec, so the spread goes FIRST:
+        // a region named "saltNonce" must never shadow the real saltNonce.
         results: candidates.map((candidate) => ({
+          ...candidate.regions,
           saltNonce: candidate.saltNonce,
           address: candidate.address,
           score: candidate.score,
           max: candidate.maxScore,
           twoColor: candidate.twoColor,
           contrast: candidate.contrast,
-          ...candidate.regions,
         })),
       },
       null,
