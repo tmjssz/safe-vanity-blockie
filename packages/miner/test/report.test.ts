@@ -4,6 +4,7 @@ import {
   asciiFor,
   buildGalleryHtml,
   buildResultStrip,
+  resultColumnsForWidth,
   formatDuration,
   buildResultsJson,
   filterCandidates,
@@ -186,16 +187,43 @@ describe('buildResultsJson elapsed time', () => {
   })
 })
 
+describe('resultColumnsForWidth', () => {
+  it('fits as many full-size blockies as the width allows', () => {
+    // Each column is 16 characters wide with a 4-character gutter between columns.
+    expect(resultColumnsForWidth(96, 5)).toBe(5)
+    expect(resultColumnsForWidth(95, 5)).toBe(4)
+    expect(resultColumnsForWidth(80, 5)).toBe(4)
+    expect(resultColumnsForWidth(75, 5)).toBe(3)
+    expect(resultColumnsForWidth(56, 5)).toBe(3)
+    expect(resultColumnsForWidth(36, 5)).toBe(2)
+    expect(resultColumnsForWidth(16, 5)).toBe(1)
+  })
+
+  it('never drops below one column, however narrow the terminal', () => {
+    expect(resultColumnsForWidth(5, 5)).toBe(1)
+    expect(resultColumnsForWidth(0, 5)).toBe(1)
+    expect(resultColumnsForWidth(-40, 5)).toBe(1)
+  })
+
+  it('never exceeds the requested maximum, however wide the terminal', () => {
+    expect(resultColumnsForWidth(1000, 5)).toBe(5)
+    expect(resultColumnsForWidth(1000, 2)).toBe(2)
+  })
+})
+
 describe('buildResultStrip', () => {
   const entry = (rank: number, score: number): Candidate =>
     candidate({ address: '0x' + String(rank).repeat(40), score })
 
   it('is empty when there are no results', () => {
-    expect(buildResultStrip([], 5)).toEqual([])
+    expect(buildResultStrip([], { maxResults: 5, columnsPerRow: 5 })).toEqual([])
   })
 
   it('renders every result at full size, in one row, labelled from #1', () => {
-    const strip = buildResultStrip([entry(1, 120), entry(2, 119)], 5)
+    const strip = buildResultStrip([entry(1, 120), entry(2, 119)], {
+      maxResults: 5,
+      columnsPerRow: 5,
+    })
     expect(strip).toHaveLength(9)
     expect(strip[0]).toContain('#1 120/133')
     expect(strip[0]).toContain('#2 119/133')
@@ -203,22 +231,36 @@ describe('buildResultStrip', () => {
 
   it('uses the same full-size renderer as the standalone face', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
-    const strip = buildResultStrip([candidate({ address })], 5)
-    // Two characters per cell keeps each blockie pixel square in a terminal.
+    const strip = buildResultStrip([candidate({ address })], { maxResults: 5, columnsPerRow: 5 })
     expect(strip.slice(1).map((line) => line.trimEnd())).toEqual(
       asciiFor(address).map((line) => line.trimEnd()),
     )
     for (const line of asciiFor(address)) expect(line).toHaveLength(16)
   })
 
-  it('keeps every row the same width so columns stay aligned', () => {
-    const strip = buildResultStrip([entry(1, 120), entry(2, 119), entry(3, 118)], 5)
-    expect(new Set(strip.map((line) => line.length)).size).toBe(1)
+  it('wraps into a grid when the row cannot hold every result', () => {
+    const five = [1, 2, 3, 4, 5].map((rank) => entry(rank, 130 - rank))
+    const strip = buildResultStrip(five, { maxResults: 5, columnsPerRow: 2 })
+    // three grid rows of 9 lines, separated by two blank lines
+    expect(strip).toHaveLength(3 * 9 + 2)
+    expect(strip[0]).toContain('#1')
+    expect(strip[0]).toContain('#2')
+    expect(strip[10]).toContain('#3')
+    expect(strip[20]).toContain('#5')
   })
 
-  it('never shows more columns than the limit', () => {
+  it('never breaks an image across a line, whatever the column count', () => {
+    const five = [1, 2, 3, 4, 5].map((rank) => entry(rank, 130 - rank))
+    for (const columnsPerRow of [1, 2, 3, 4, 5]) {
+      const strip = buildResultStrip(five, { maxResults: 5, columnsPerRow })
+      const widest = Math.max(...strip.map((line) => line.length))
+      expect(widest).toBeLessThanOrEqual(columnsPerRow * 16 + (columnsPerRow - 1) * 4)
+    }
+  })
+
+  it('never shows more results than the maximum', () => {
     const many = [1, 2, 3, 4, 5, 6, 7].map((rank) => entry(rank, 130 - rank))
-    const strip = buildResultStrip(many, 5)
+    const strip = buildResultStrip(many, { maxResults: 5, columnsPerRow: 5 })
     expect(strip[0]).toContain('#5')
     expect(strip[0]).not.toContain('#6')
   })

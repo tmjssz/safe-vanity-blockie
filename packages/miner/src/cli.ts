@@ -15,6 +15,7 @@ import { WORKER_BLOCK, createPool, type PoolProgress } from './pool.js'
 import {
   asciiFor,
   buildResultStrip,
+  resultColumnsForWidth,
   buildGalleryHtml,
   buildResultsJson,
   filterCandidates,
@@ -67,11 +68,15 @@ function progressLineText(progress: PoolProgress, best: Candidate | undefined): 
 export function buildProgressBlock(
   progress: PoolProgress,
   selection: { twoColor: boolean; minContrast: number; keep: number },
+  columnsPerRow: number,
 ): string[] {
   // Filter live exactly as the final report does, so the faces you watch converge are the
   // ones you end up with -- retention is score-ranked and blind to these flags.
   const { reported } = selectReported(progress.best, selection)
-  const strip = buildResultStrip(reported, RESULT_COLUMNS).map((line) => `  ${line}`)
+  const strip = buildResultStrip(reported, {
+    maxResults: RESULT_COLUMNS,
+    columnsPerRow,
+  }).map((line) => (line === '' ? '' : `${' '.repeat(OUTPUT_INDENT)}${line}`))
   const status = progressLineText(progress, reported[0])
   // Blank lines above and below set the images apart from whatever surrounds them.
   return strip.length > 0 ? ['', ...strip, '', status] : [status]
@@ -86,6 +91,18 @@ const MIN_RETENTION = 200
 
 /** How many results are drawn side by side, live and in the final report. */
 const RESULT_COLUMNS = 5
+
+/** Every result line is written with this much left indent. */
+const OUTPUT_INDENT = 2
+
+/** Assumed width when the stream is piped and reports no size. */
+const ASSUMED_WIDTH = 100
+
+/** How many blockies fit side by side on this stream right now. Re-read on every draw so a
+ *  terminal resize is picked up without restarting the run. */
+function columnsFor(stream: NodeJS.WriteStream): number {
+  return resultColumnsForWidth((stream.columns ?? ASSUMED_WIDTH) - OUTPUT_INDENT, RESULT_COLUMNS)
+}
 
 /** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
 const PROGRESS_LOG_INTERVAL_MS = 30_000
@@ -172,7 +189,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     onProgress: (progress) => {
       lastProgress = progress
       if (process.stderr.isTTY) {
-        redraw(buildProgressBlock(progress, liveSelection))
+        redraw(buildProgressBlock(progress, liveSelection, columnsFor(process.stderr)))
         return
       }
       // No terminal to redraw on: emit newline-terminated lines, throttled so a long
@@ -183,13 +200,21 @@ export async function runMine(options: MineArgs): Promise<number> {
       if (best && best.score > loggedBestScore) {
         loggedBestScore = best.score
         lastLoggedAt = now
-        process.stderr.write(`${buildProgressBlock(progress, liveSelection).join('\n')}\n`)
+        process.stderr.write(
+          `${buildProgressBlock(progress, liveSelection, columnsFor(process.stderr)).join('\n')}\n`,
+        )
       } else if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
         lastLoggedAt = now
         process.stderr.write(`${progressLineText(progress, progress.best[0])}\n`)
       }
     },
   })
+
+  const onResize = () => {
+    // Previously drawn lines may have re-wrapped, so the cursor-up count is no longer valid.
+    drawnLines = 0
+  }
+  process.stdout.on('resize', onResize)
 
   const onSigint = () => {
     process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
@@ -202,6 +227,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     result = await pool.run()
   } finally {
     process.off('SIGINT', onSigint)
+    process.stdout.off('resize', onResize)
     if (process.stderr.isTTY) {
       // Erase the live block so the final report below is not a visual duplicate of it.
       if (drawnLines > 0) process.stderr.write(`\u001b[${drawnLines}A\u001b[0J`)
@@ -272,8 +298,12 @@ export async function runMine(options: MineArgs): Promise<number> {
     }
   }
 
-  for (const line of buildResultStrip(reported, RESULT_COLUMNS)) {
-    process.stdout.write(`  ${line}\n`)
+  const reportStrip = buildResultStrip(reported, {
+    maxResults: RESULT_COLUMNS,
+    columnsPerRow: columnsFor(process.stdout),
+  })
+  for (const line of reportStrip) {
+    process.stdout.write(line === '' ? '\n' : `${' '.repeat(OUTPUT_INDENT)}${line}\n`)
   }
   process.stdout.write('\n')
   process.stdout.write(formatLeaderboard(reported, options.keep))

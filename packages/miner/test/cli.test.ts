@@ -120,13 +120,13 @@ describe('buildProgressBlock', () => {
   const selection = { twoColor: false, minContrast: 0, keep: 5 }
 
   it('is a single status line before any candidate exists', () => {
-    const block = buildProgressBlock(progress([]), selection)
+    const block = buildProgressBlock(progress([]), selection, 5)
     expect(block).toHaveLength(1)
     expect(block[0]).toContain('no candidates yet')
   })
 
   it('draws the labelled result strip above the status line once a best exists', () => {
-    const block = buildProgressBlock(progress([candidate()]), selection)
+    const block = buildProgressBlock(progress([candidate()]), selection, 5)
     // blank + label row + 8 face rows + blank + status line
     expect(block).toHaveLength(12)
     expect(block[1]).toContain('#1 120/133')
@@ -134,13 +134,13 @@ describe('buildProgressBlock', () => {
   })
 
   it('pads the images with blank lines so they stand apart from the surrounding output', () => {
-    const block = buildProgressBlock(progress([candidate()]), selection)
+    const block = buildProgressBlock(progress([candidate()]), selection, 5)
     expect(block[0].trim()).toBe('')
     expect(block[block.length - 2].trim()).toBe('')
   })
 
   it('adds no padding when there is nothing to draw', () => {
-    const block = buildProgressBlock(progress([]), selection)
+    const block = buildProgressBlock(progress([]), selection, 5)
     expect(block).toHaveLength(1)
     expect(block[0].trim()).not.toBe('')
   })
@@ -149,7 +149,7 @@ describe('buildProgressBlock', () => {
     const many = [1, 2, 3, 4, 5, 6].map((n) =>
       candidate({ address: '0x' + String(n).repeat(40), score: 130 - n }),
     )
-    const block = buildProgressBlock(progress(many), selection)
+    const block = buildProgressBlock(progress(many), selection, 5)
     expect(block[1]).toContain('#5')
     expect(block[1]).not.toContain('#6')
   })
@@ -157,11 +157,11 @@ describe('buildProgressBlock', () => {
   it('applies the same filters as the final report, so the live view matches the result', () => {
     const threeColour = candidate({ address: '0x' + 'a'.repeat(40), score: 125, twoColor: false })
     const twoColour = candidate({ address: '0x' + 'b'.repeat(40), score: 120, twoColor: true })
-    const block = buildProgressBlock(progress([threeColour, twoColour]), {
-      twoColor: true,
-      minContrast: 0,
-      keep: 5,
-    })
+    const block = buildProgressBlock(
+      progress([threeColour, twoColour]),
+      { twoColor: true, minContrast: 0, keep: 5 },
+      5,
+    )
     expect(block[1]).toContain('#1 120/133')
     expect(block[1]).not.toContain('125/133')
     expect(block[block.length - 1]).toContain('best 120/133')
@@ -169,14 +169,14 @@ describe('buildProgressBlock', () => {
 
   it('renders the same face the final report prints for that address', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
-    const block = buildProgressBlock(progress([candidate({ address })]), selection)
+    const block = buildProgressBlock(progress([candidate({ address })]), selection, 5)
     expect(block.slice(2, 10).map((line) => line.trim())).toEqual(
       asciiFor(address).map((line) => line.trim()),
     )
   })
 
   it('includes elapsed time and rate in the status line', () => {
-    const block = buildProgressBlock(progress([candidate()]), selection)
+    const block = buildProgressBlock(progress([candidate()]), selection, 5)
     const status = block[block.length - 1]
     expect(status).toContain('1m 05s')
     expect(status).toContain('1.50M/s')

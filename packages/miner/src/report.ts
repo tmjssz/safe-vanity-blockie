@@ -187,25 +187,55 @@ export function asciiFor(address: string): string[] {
 
 
 /** Wide enough that adjacent blockies do not read as one image. */
-const RESULT_GUTTER = '    '
+const RESULT_GUTTER_WIDTH = 4
+const RESULT_GUTTER = ' '.repeat(RESULT_GUTTER_WIDTH)
+/** A full-size blockie is 8 cells of two characters. */
+const RESULT_CELL_WIDTH = 16
 
 /**
- * A side-by-side row of the top results, every blockie at full size so each cell stays square
- * — a terminal cell is about twice as tall as it is wide, so one character per cell would
- * squash the image horizontally and destroy the apparent symmetry. Ranks start at 1.
+ * How many full-size blockies fit side by side in `availableWidth` columns, capped at
+ * `maxColumns` and never below 1 — a single blockie may overflow a very narrow terminal,
+ * but showing nothing would be worse.
  */
-export function buildResultStrip(candidates: Candidate[], maxColumns: number): string[] {
-  const shown = candidates.slice(0, Math.max(0, maxColumns))
-  if (shown.length === 0) return []
+export function resultColumnsForWidth(availableWidth: number, maxColumns: number): number {
+  const perColumn = RESULT_CELL_WIDTH + RESULT_GUTTER_WIDTH
+  const fits = Math.floor((availableWidth + RESULT_GUTTER_WIDTH) / perColumn)
+  return Math.max(1, Math.min(maxColumns, fits))
+}
 
-  const labels = shown.map((entry, index) => `#${index + 1} ${entry.score}/${entry.maxScore}`)
-  const faces = shown.map((entry) => asciiFor(entry.address))
-  const width = Math.max(16, ...labels.map((label) => label.length))
-
-  const lines = [labels.map((label) => label.padEnd(width)).join(RESULT_GUTTER)]
+function renderRow(entries: { label: string; face: string[] }[]): string[] {
+  const width = Math.max(RESULT_CELL_WIDTH, ...entries.map((entry) => entry.label.length))
+  const lines = [entries.map((entry) => entry.label.padEnd(width)).join(RESULT_GUTTER)]
   for (let row = 0; row < 8; row++) {
-    lines.push(faces.map((face) => face[row].padEnd(width)).join(RESULT_GUTTER))
+    lines.push(entries.map((entry) => entry.face[row].padEnd(width)).join(RESULT_GUTTER))
   }
   return lines.map((line) => line.trimEnd().padEnd(lines[0].length))
+}
+
+/**
+ * The top results drawn at full size, wrapped into as many rows as the terminal width allows.
+ * Every blockie is two characters per cell so each pixel stays square — a terminal cell is
+ * about twice as tall as it is wide — and no image is ever split across a line break.
+ * Ranks start at 1.
+ */
+export function buildResultStrip(
+  candidates: Candidate[],
+  options: { maxResults: number; columnsPerRow: number },
+): string[] {
+  const shown = candidates.slice(0, Math.max(0, options.maxResults))
+  if (shown.length === 0) return []
+
+  const entries = shown.map((entry, index) => ({
+    label: `#${index + 1} ${entry.score}/${entry.maxScore}`,
+    face: asciiFor(entry.address),
+  }))
+
+  const perRow = Math.max(1, options.columnsPerRow)
+  const lines: string[] = []
+  for (let start = 0; start < entries.length; start += perRow) {
+    if (start > 0) lines.push('')
+    lines.push(...renderRow(entries.slice(start, start + perRow)))
+  }
+  return lines
 }
 
