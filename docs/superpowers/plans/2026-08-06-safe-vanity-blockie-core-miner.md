@@ -2349,7 +2349,7 @@ describe('createPool', () => {
     expect(result.scanned).toBe(100_000)
     expect(result.scannedPerWorker).toEqual([25_000, 25_000, 25_000, 25_000])
     expect(result.candidates).toEqual(single.candidates)
-    expect(result.nextStart).toBe(25_000)
+    expect(result.nextStart).toBe(100_000)
   })
 
   it('reports aggregate progress while running', async () => {
@@ -2409,7 +2409,7 @@ describe('createPool', () => {
       expect(nonce).toBeGreaterThanOrEqual(500)
       expect(nonce).toBeLessThan(500 + 3 * 1000)
     }
-    expect(result.nextStart).toBe(1500)
+    expect(result.nextStart).toBe(3500)
   })
 })
 ```
@@ -2532,8 +2532,15 @@ export interface PoolResult {
   scannedPerWorker: number[]
   candidates: Candidate[]
   /**
-   * Safe `--start` for a follow-up run with the same worker count and perWorker value:
-   * start + max(scannedPerWorker) can never overlap any range this run covered.
+   * Safe `--start` for a follow-up run with the same worker count and perWorker value.
+   * It is the highest END position any worker reached, so nothing this run covered is
+   * ever rescanned. Note the guarantee is no-rescan, NOT full coverage: after an early
+   * stop the unfinished tails of the slower workers are skipped.
+   *
+   * Taking `max(scannedPerWorker)` without the positional offset is WRONG — it compares
+   * each new worker only against the old worker of the same index, and new worker 0 then
+   * lands inside old worker 1's range. With start=500, workers=3, perWorker=1000 it yields
+   * 1500, re-mining two of the three ranges.
    */
   nextStart: number
 }
@@ -2608,7 +2615,9 @@ export function createPool(options: PoolOptions): {
       scanned,
       scannedPerWorker,
       candidates: board.entries(),
-      nextStart: options.start + Math.max(...scannedPerWorker),
+      nextStart:
+        options.start +
+        Math.max(...scannedPerWorker.map((count, index) => index * options.perWorker + count)),
     }
   }
 
