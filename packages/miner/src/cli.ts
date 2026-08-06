@@ -157,7 +157,7 @@ export async function runMine(options: MineArgs): Promise<number> {
 
   process.stderr.write(
     `chain ${setup.chainId} · Safe ${options.safeVersion} · target "${faceSpec.name}" ` +
-      `(max ${maxScore}) · ${options.workers} workers · ${budget}\n`,
+      `· ${options.workers} workers · ${budget}\n`,
   )
 
   // Retain far more than --keep so filtering below still has candidates to show.
