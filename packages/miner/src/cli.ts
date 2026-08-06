@@ -199,8 +199,32 @@ export async function runMine(options: MineArgs): Promise<number> {
   }
 
   const top = reported[0]
-  await verifyWithProtocolKit(setup, top.saltNonce, top.address)
-  process.stdout.write(`self-check passed: predictSafeAddress agrees with ${top.address}\n\n`)
+
+  // A multi-hour run must not lose its results to one transient RPC failure here. Distinguish a
+  // genuine mismatch (verifyWithProtocolKit's own comparison failed -- the results may be wrong)
+  // from any other error (network/RPC -- the check just could not run) and keep going either way,
+  // so the leaderboard and --out/--gallery files are always written.
+  let selfCheck: 'passed' | 'failed' | 'not-performed'
+  try {
+    await verifyWithProtocolKit(setup, top.saltNonce, top.address)
+    selfCheck = 'passed'
+    process.stdout.write(`self-check passed: predictSafeAddress agrees with ${top.address}\n\n`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('self-check failed')) {
+      selfCheck = 'failed'
+      process.stderr.write(
+        `\n${message}\n` +
+          'SELF-CHECK FAILED: predictSafeAddress disagrees with the fast derivation. ' +
+          'The results below may be WRONG -- do not deploy without investigating.\n\n',
+      )
+    } else {
+      selfCheck = 'not-performed'
+      process.stderr.write(
+        `Warning: could not perform the self-check (${message}); continuing without it.\n\n`,
+      )
+    }
+  }
 
   for (const line of asciiFor(top.address)) process.stdout.write(`  ${line}\n`)
   process.stdout.write('\n')
@@ -219,6 +243,8 @@ export async function runMine(options: MineArgs): Promise<number> {
     workers: options.workers,
     perWorker,
     generatedAt: new Date().toISOString(),
+    isL1SafeSingleton: options.isL1SafeSingleton ?? false,
+    selfCheck,
   }
 
   if (options.out) {
@@ -230,17 +256,31 @@ export async function runMine(options: MineArgs): Promise<number> {
     process.stdout.write(`Wrote ${options.gallery}\n`)
   }
 
+  const deployFlags = [
+    `--salt ${top.saltNonce}`,
+    `--owners ${options.owners.join(',')}`,
+    `--threshold ${options.threshold}`,
+    `--safe-version ${options.safeVersion}`,
+    options.isL1SafeSingleton ? '--l1-singleton' : undefined,
+  ].filter((flag): flag is string => flag !== undefined)
+  process.stdout.write(
+    `\nDeploy the top result:\n  safe-vanity-blockie deploy ${deployFlags.join(' ')} --rpc ${options.rpcUrl}\n`,
+  )
+
   process.stdout.write(
     `\nResume without rescanning:\n  --start ${result.nextStart} --workers ${options.workers}\n`,
   )
   process.stdout.write(
     '\nReminder: a matching identicon is cosmetic. Never trust it as proof of an address.\n',
   )
-  return 0
+  return selfCheck === 'failed' ? 1 : 0
 }
 
 export async function main(argv: string[]): Promise<number> {
-  const defaults = { workers: Math.max(1, availableParallelism() - 1) }
+  const defaults = {
+    workers: Math.max(1, availableParallelism() - 1),
+    deployerKey: process.env.SAFE_VANITY_DEPLOYER_KEY || undefined,
+  }
   const command = parseArgs(argv, defaults)
 
   if (command.kind === 'help') {

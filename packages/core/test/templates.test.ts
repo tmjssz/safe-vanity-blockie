@@ -36,6 +36,12 @@ describe('templates', () => {
     expect(() => getTemplate('nope')).toThrow(/unknown template "nope".*faces/s)
   })
 
+  it('never resolves inherited Object.prototype keys', () => {
+    expect(() => getTemplate('constructor')).toThrow(/unknown template "constructor".*faces/s)
+    expect(() => getTemplate('toString')).toThrow(/unknown template "toString".*faces/s)
+    expect(() => getTemplate('__proto__')).toThrow(/unknown template "__proto__".*faces/s)
+  })
+
   it('faceWithMouths rejects unknown expression names', () => {
     expect(() => faceWithMouths('custom', ['grin'])).toThrow(/unknown mouth "grin"/)
   })

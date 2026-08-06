@@ -14,6 +14,14 @@ export interface ResultConfig {
   workers: number
   perWorker: number
   generatedAt: string
+  /** Whether the L1 Safe singleton was forced. Changes the singleton, hence the address. */
+  isL1SafeSingleton: boolean
+  /**
+   * Outcome of the top result's cross-check against protocol-kit: 'passed', 'failed' (a genuine
+   * mismatch -- treat the results with suspicion), or 'not-performed' (an RPC/network error
+   * prevented the check from running at all).
+   */
+  selfCheck: 'passed' | 'failed' | 'not-performed'
 }
 
 const GLYPHS = ['  ', '██', '▒▒'] as const
@@ -139,6 +147,8 @@ address — blockie look-alikes are a known phishing vector. Always verify the f
   <dt>Safe version</dt><dd>${escapeHtml(config.safeVersion)}</dd>
   <dt>chain id</dt><dd>${escapeHtml(config.chainId)}</dd>
   <dt>target</dt><dd>${escapeHtml(config.target)}</dd>
+  <dt>L1 singleton</dt><dd>${config.isL1SafeSingleton ? 'yes' : 'no'}</dd>
+  <dt>self-check</dt><dd>${escapeHtml(config.selfCheck)}</dd>
   <dt>scanned</dt><dd>${config.scanned.toLocaleString('en-US')} nonces from ${config.start}</dd>
   <dt>resume at</dt><dd><code>--start ${config.nextStart} --workers ${config.workers}</code></dd>
   <dt>generated</dt><dd>${escapeHtml(config.generatedAt)}</dd>

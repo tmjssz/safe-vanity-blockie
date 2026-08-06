@@ -14,6 +14,7 @@ describe('buildDeploymentPlan', () => {
       safeVersion: '1.4.1',
       rpcUrl: RPC_URL,
       privateKey: PRIVATE_KEY,
+      yes: true,
     })
     expect(plan.chainId).toBe(1n)
     expect(plan.address).toMatch(/^0x[0-9a-fA-F]{40}$/)

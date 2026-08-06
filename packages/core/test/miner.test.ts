@@ -158,6 +158,26 @@ describe('createMiner', () => {
     expect(result.scanned).toBe(3000)
   })
 
+  it('rejects a non-positive chunkSize instead of looping forever', () => {
+    const miner = createMiner(CONSTANTS, FACE, keccak256)
+    expect(() => miner.mine({ start: 0, count: 100, chunkSize: 0 })).toThrow(
+      /chunkSize must be a positive integer/,
+    )
+    expect(() => miner.mine({ start: 0, count: 100, chunkSize: -1 })).toThrow(
+      /chunkSize must be a positive integer/,
+    )
+    expect(() => miner.mine({ start: 0, count: 100, chunkSize: 1.5 })).toThrow(
+      /chunkSize must be a positive integer/,
+    )
+  })
+
+  it('rejects a non-positive keep via the Leaderboard it constructs', () => {
+    const miner = createMiner(CONSTANTS, FACE, keccak256)
+    expect(() => miner.mine({ start: 0, count: 100, keep: 0 })).toThrow(
+      /Leaderboard capacity must be a positive integer/,
+    )
+  })
+
   it('covers exactly the requested range', () => {
     const miner = createMiner(CONSTANTS, FACE, keccak256)
     const whole = miner.mine({ start: 0, count: 4000, keep: 3 })

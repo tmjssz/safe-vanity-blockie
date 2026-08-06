@@ -6,9 +6,10 @@
   "description": "Brute-force a Safe saltNonce so the Safe address renders a two-color face as a blo identicon",
   "bin": { "safe-vanity-blockie": "./dist/cli.js" },
   "main": "./dist/cli.js",
-  "files": ["dist"],
+  "files": ["dist", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "test:network": "vitest run --config vitest.network.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

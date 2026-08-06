@@ -22,6 +22,8 @@ const CONFIG: ResultConfig = {
   workers: 4,
   perWorker: 25000,
   generatedAt: '2026-08-06T00:00:00.000Z',
+  isL1SafeSingleton: false,
+  selfCheck: 'passed',
 }
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
@@ -70,7 +72,13 @@ describe('filterCandidates', () => {
 describe('buildResultsJson', () => {
   it('emits config plus results with saltNonce as a string', () => {
     const parsed = JSON.parse(buildResultsJson(CONFIG, [candidate()]))
-    expect(parsed.config).toMatchObject({ chainId: '1', safeVersion: '1.4.1', maxScore: 133 })
+    expect(parsed.config).toMatchObject({
+      chainId: '1',
+      safeVersion: '1.4.1',
+      maxScore: 133,
+      isL1SafeSingleton: false,
+      selfCheck: 'passed',
+    })
     expect(parsed.results).toHaveLength(1)
     expect(parsed.results[0]).toEqual({
       saltNonce: '5254976178',
@@ -108,6 +116,12 @@ describe('buildGalleryHtml', () => {
     expect(html.match(/<svg /g)).toHaveLength(2)
     expect(html).toContain('5254976178')
     expect(html).toContain('cosmetic')
+  })
+
+  it('reports the L1 singleton flag and the self-check outcome', () => {
+    const html = buildGalleryHtml({ ...CONFIG, isL1SafeSingleton: true, selfCheck: 'failed' }, [candidate()])
+    expect(html).toContain('<dt>L1 singleton</dt><dd>yes</dd>')
+    expect(html).toContain('<dt>self-check</dt><dd>failed</dd>')
   })
 
   it('escapes text that comes from the config', () => {

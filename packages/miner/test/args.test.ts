@@ -122,4 +122,93 @@ describe('parseArgs', () => {
       /duplicate owner/,
     )
   })
+
+  it('rejects an empty value for any value flag instead of silently accepting it', () => {
+    // Reachable via `--salt "$SALT"` with SALT unset: an empty string must never be treated as
+    // a present-but-empty value (protocol-kit's two deploy code paths disagree on what '' means).
+    expect(() => parseArgs(['mine', '--owners', '', '--rpc', 'x'], DEFAULTS)).toThrow(
+      /--owners needs a value/,
+    )
+    expect(() =>
+      parseArgs(
+        ['deploy', '--salt', '', ...REQUIRED, '--pk', '0x' + 'ab'.repeat(32)],
+        DEFAULTS,
+      ),
+    ).toThrow(/--salt needs a value/)
+  })
+
+  describe('--salt validation', () => {
+    const PK = ['--pk', '0x' + 'ab'.repeat(32)]
+
+    it('rejects a hex-prefixed salt, which silently means a tiny decimal value', () => {
+      expect(() =>
+        parseArgs(['deploy', '--salt', '0x10', ...REQUIRED, ...PK], DEFAULTS),
+      ).toThrow(/--salt must be a decimal non-negative integer/)
+    })
+
+    it('rejects a non-numeric salt', () => {
+      expect(() =>
+        parseArgs(['deploy', '--salt', 'not-a-number', ...REQUIRED, ...PK], DEFAULTS),
+      ).toThrow(/--salt must be a decimal non-negative integer/)
+    })
+
+    it('rejects a salt above the maximum uint256', () => {
+      const tooBig = (2n ** 256n).toString()
+      expect(() =>
+        parseArgs(['deploy', '--salt', tooBig, ...REQUIRED, ...PK], DEFAULTS),
+      ).toThrow(/--salt exceeds the maximum uint256/)
+    })
+
+    it('accepts a valid huge decimal salt and preserves it exactly as a string', () => {
+      const huge = '18446744073709551616'
+      const command = parseArgs(['deploy', '--salt', huge, ...REQUIRED, ...PK], DEFAULTS)
+      expect(command.kind).toBe('deploy')
+      expect(command.kind === 'deploy' && command.options.saltNonce).toBe(huge)
+    })
+
+    it('accepts the maximum uint256 exactly', () => {
+      const max = (2n ** 256n - 1n).toString()
+      const command = parseArgs(['deploy', '--salt', max, ...REQUIRED, ...PK], DEFAULTS)
+      expect(command.kind === 'deploy' && command.options.saltNonce).toBe(max)
+    })
+  })
+
+  describe('deployer key resolution', () => {
+    const PK = ['--pk', '0x' + 'ab'.repeat(32)]
+
+    it('requires --pk (or the env var) for deploy', () => {
+      expect(() => parseArgs(['deploy', '--salt', '1', ...REQUIRED], DEFAULTS)).toThrow(
+        /--pk is required.*SAFE_VANITY_DEPLOYER_KEY/,
+      )
+    })
+
+    it('accepts --pk when no env var default is supplied', () => {
+      const command = parseArgs(['deploy', '--salt', '1', ...REQUIRED, ...PK], DEFAULTS)
+      expect(command.kind === 'deploy' && command.options.privateKey).toBe(PK[1])
+    })
+
+    it('makes --pk optional when a deployer key default is supplied', () => {
+      const command = parseArgs(
+        ['deploy', '--salt', '1', ...REQUIRED],
+        { ...DEFAULTS, deployerKey: '0x' + 'cd'.repeat(32) },
+      )
+      expect(command.kind === 'deploy' && command.options.privateKey).toBe('0x' + 'cd'.repeat(32))
+    })
+
+    it('prefers the deployer key default over an explicit --pk when both are present', () => {
+      const command = parseArgs(
+        ['deploy', '--salt', '1', ...REQUIRED, ...PK],
+        { ...DEFAULTS, deployerKey: '0x' + 'cd'.repeat(32) },
+      )
+      expect(command.kind === 'deploy' && command.options.privateKey).toBe('0x' + 'cd'.repeat(32))
+    })
+  })
+
+  it('parses --yes as an opt-in boolean flag for deploy', () => {
+    const PK = ['--pk', '0x' + 'ab'.repeat(32)]
+    const withoutYes = parseArgs(['deploy', '--salt', '1', ...REQUIRED, ...PK], DEFAULTS)
+    expect(withoutYes.kind === 'deploy' && withoutYes.options.yes).toBe(false)
+    const withYes = parseArgs(['deploy', '--salt', '1', ...REQUIRED, ...PK, '--yes'], DEFAULTS)
+    expect(withYes.kind === 'deploy' && withYes.options.yes).toBe(true)
+  })
 })

@@ -29,6 +29,7 @@ export interface DeployArgs {
   rpcUrl: string
   privateKey: string
   isL1SafeSingleton?: boolean
+  yes: boolean
 }
 
 export type Command =
@@ -61,8 +62,14 @@ Mine options:
   -h, --help                        show this help
 
 Deploy options:
-  --salt <n>             required   saltNonce from a mining run
-  --pk <key>             required   deployer private key (0x-prefixed)
+  --salt <n>             required   saltNonce from a mining run (decimal, fits in uint256)
+  --pk <key>                        deployer private key (0x-prefixed); required unless
+                                     SAFE_VANITY_DEPLOYER_KEY is set (preferred — avoids the key
+                                     landing in shell history or ps output). The env var wins if
+                                     both are given.
+  --l1-singleton                    force the L1 Safe singleton on an L2 chain
+  --yes                             skip the interactive "type yes to confirm" prompt before
+                                     broadcasting (always skipped when stdin is not a TTY)
 
 A matching identicon is cosmetic. Never trust it as proof of an address.
 `
@@ -105,7 +112,23 @@ function nonNegativeInteger(raw: string, flag: string): number {
   return value
 }
 
-export function parseArgs(argv: string[], defaults: { workers: number }): Command {
+const MAX_UINT256 = (1n << 256n) - 1n
+const DECIMAL_PATTERN = /^[0-9]+$/
+
+function saltNonceString(raw: string): string {
+  if (!DECIMAL_PATTERN.test(raw)) {
+    throw new CliError(`--salt must be a decimal non-negative integer, got "${raw}"`)
+  }
+  if (BigInt(raw) > MAX_UINT256) {
+    throw new CliError(`--salt exceeds the maximum uint256, got "${raw}"`)
+  }
+  return raw
+}
+
+export function parseArgs(
+  argv: string[],
+  defaults: { workers: number; deployerKey?: string },
+): Command {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) return { kind: 'help' }
 
   let rest = argv
@@ -117,7 +140,7 @@ export function parseArgs(argv: string[], defaults: { workers: number }): Comman
 
   const values = new Map<string, string>()
   const flags = new Set<string>()
-  const BOOLEAN_FLAGS = new Set(['--two-color', '--no-two-color', '--l1-singleton'])
+  const BOOLEAN_FLAGS = new Set(['--two-color', '--no-two-color', '--l1-singleton', '--yes'])
   const VALUE_FLAGS = new Set([
     '--owners', '--threshold', '--safe-version', '--rpc', '--target', '--min-contrast',
     '--workers', '--max-iterations', '--start', '--keep', '--out', '--gallery', '--salt', '--pk',
@@ -131,7 +154,7 @@ export function parseArgs(argv: string[], defaults: { workers: number }): Comman
     }
     if (!VALUE_FLAGS.has(token)) throw new CliError(`unknown option "${token}"`)
     const value = rest[i + 1]
-    if (value === undefined || value.startsWith('--')) {
+    if (value === undefined || value === '' || value.startsWith('--')) {
       throw new CliError(`${token} needs a value`)
     }
     values.set(token, value)
@@ -165,16 +188,23 @@ export function parseArgs(argv: string[], defaults: { workers: number }): Comman
   const isL1SafeSingleton = flags.has('--l1-singleton') ? true : undefined
 
   if (kind === 'deploy') {
+    const privateKey = defaults.deployerKey ?? values.get('--pk')
+    if (privateKey === undefined) {
+      throw new CliError(
+        '--pk is required (or set the SAFE_VANITY_DEPLOYER_KEY environment variable, which is preferred)',
+      )
+    }
     return {
       kind: 'deploy',
       options: {
-        saltNonce: require('--salt'),
+        saltNonce: saltNonceString(require('--salt')),
         owners,
         threshold,
         safeVersion,
         rpcUrl,
-        privateKey: require('--pk'),
+        privateKey,
         isL1SafeSingleton,
+        yes: flags.has('--yes'),
       },
     }
   }

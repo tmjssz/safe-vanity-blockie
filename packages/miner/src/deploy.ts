@@ -1,5 +1,7 @@
+import { createInterface } from 'node:readline/promises'
 import Safe, { getSafeAddressFromDeploymentTx, type SafeConfig } from '@safe-global/protocol-kit'
 import type { Transaction } from '@safe-global/types-kit'
+import { createAddressDeriver, createKeccak256 } from '@safe-vanity-blockie/core'
 import { createWalletClient, http, publicActions, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { DeployArgs } from './args.js'
@@ -49,6 +51,25 @@ export async function buildDeploymentPlan(options: DeployArgs): Promise<Deployme
   })
 
   const address = await safe.getAddress()
+
+  // Independent cross-implementation check: derive the address ourselves from the constants
+  // loadSafeConstants already computed, using the same fast deriver the miner uses. For a
+  // predictedSafe, protocol-kit's Safe.getAddress() IS predictSafeAddress() with these same
+  // inputs, so comparing verifyWithProtocolKit's predictSafeAddress call against `address`
+  // (below) can never disagree -- it is a consistency check on protocol-kit's own inputs, not
+  // an independent one. This deriver comparison is the independent one: a different --owners
+  // order, --threshold, --safe-version, or --l1-singleton mismatch would change `setup.constants`
+  // but not `address` in a way this catches.
+  const keccak256 = await createKeccak256()
+  const derived = createAddressDeriver(setup.constants, keccak256).deriveBig(BigInt(options.saltNonce))
+  if (derived.toLowerCase() !== address.toLowerCase()) {
+    throw new Error(
+      `self-check failed for saltNonce ${options.saltNonce}: protocol-kit predicted ${address}, ` +
+        `the independent CREATE2 deriver gave ${derived}`,
+    )
+  }
+
+  // Cheap and harmless consistency check on protocol-kit's own inputs (see comment above).
   await verifyWithProtocolKit(setup, options.saltNonce, address)
   const transaction = await safe.createSafeDeploymentTransaction()
 
@@ -62,8 +83,24 @@ export async function buildDeploymentPlan(options: DeployArgs): Promise<Deployme
 export async function runDeploy(options: DeployArgs): Promise<number> {
   const plan = await buildDeploymentPlan(options)
   process.stdout.write(
-    `Deploying Safe ${plan.address} on chain ${plan.chainId} with saltNonce ${options.saltNonce}\n`,
+    `Deploying Safe ${plan.address} on chain ${plan.chainId} with saltNonce ${options.saltNonce}\n` +
+      `  owners: ${options.owners.join(', ')}\n` +
+      `  threshold: ${options.threshold}\n`,
   )
+
+  if (process.stdin.isTTY && !options.yes) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    let answer: string
+    try {
+      answer = await rl.question('Type "yes" to broadcast this deployment transaction: ')
+    } finally {
+      rl.close()
+    }
+    if (answer.trim() !== 'yes') {
+      process.stderr.write('Aborted: deployment not confirmed. No transaction was sent.\n')
+      return 1
+    }
+  }
 
   const account = privateKeyToAccount(options.privateKey as Hex)
   const client = createWalletClient({

@@ -65,14 +65,27 @@ brute-forceable. Scoring pushes residual error into the lowest-weight corner cel
 | very clean (~127–128) | ~0.7–4B | 4–25 min |
 | near-perfect (~131) | ~8B | 45–55 min |
 
+The figures above (other than the first row) are modelled estimates from the design spec, not
+measurements. The measured rate is ~470k nonces/s per worker core (1.89M/s aggregate on 4 workers of
+a 6-core machine); only the first row has been observed directly, in a 6M-nonce run that reached
+122/133. The table assumes 8 cores, so times roughly double on a 4-core laptop.
+
 ### Deploying
 
 The mined config is counterfactual — deploy whenever you like, on any chain with the canonical Safe
 contracts (zkSync-based chains are rejected: they derive addresses differently).
 
+Set the deployer key via an environment variable rather than `--pk`, so it never lands in shell
+history or `ps` output:
+
+    export SAFE_VANITY_DEPLOYER_KEY=0xYourDeployerKey
     npx safe-vanity-blockie deploy \
       --salt 5254976178 --owners 0xYourOwner --threshold 1 \
-      --rpc https://… --pk 0xYourDeployerKey
+      --rpc https://…
+
+`deploy` prints the plan (address, chain, saltNonce, owners, threshold) and, when run at an
+interactive terminal, asks you to type `yes` before broadcasting. Pass `--yes` to skip the prompt
+for scripted use; anything other than `yes` aborts with no transaction sent.
 
 ## Testing
 

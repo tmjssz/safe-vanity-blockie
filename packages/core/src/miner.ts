@@ -102,8 +102,12 @@ export function createMiner(
 
   return {
     mine(options: MineOptions): MineResult {
-      const board = new Leaderboard(options.keep ?? 20)
       const chunkSize = options.chunkSize ?? 250_000
+      if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+        throw new Error(`chunkSize must be a positive integer, got ${chunkSize}`)
+      }
+      // keep is validated by the Leaderboard constructor below.
+      const board = new Leaderboard(options.keep ?? 20)
       // Allocated once for the whole run; the hot loop allocates nothing else.
       const data = new Uint8Array(32)
       const rseed = new Uint32Array(4)

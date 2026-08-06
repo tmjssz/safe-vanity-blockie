@@ -63,7 +63,10 @@ export function faceWithMouths(name: string, mouthNames: string[]): FaceSpec {
   return { name, fixed: baseFixedCells(), regions: [mouthRegion(alternatives)] }
 }
 
-export const TEMPLATES: Record<string, FaceSpec> = {
+// Built on a null prototype so a lookup by an attacker- or URL-controlled name can never resolve
+// an inherited Object.prototype key (e.g. "constructor", "toString", "__proto__") instead of
+// throwing the intended "unknown template" error.
+export const TEMPLATES: Record<string, FaceSpec> = Object.assign(Object.create(null), {
   faces: faceWithMouths(
     'faces',
     MOUTHS.map((mouth) => mouth.name),
@@ -71,14 +74,13 @@ export const TEMPLATES: Record<string, FaceSpec> = {
   ...Object.fromEntries(
     MOUTHS.map((mouth) => [mouth.name, faceWithMouths(mouth.name, [mouth.name])]),
   ),
-}
+})
 
 export function getTemplate(name: string): FaceSpec {
-  const template = TEMPLATES[name]
-  if (!template) {
+  if (!Object.hasOwn(TEMPLATES, name)) {
     throw new Error(`unknown template "${name}"; available: ${Object.keys(TEMPLATES).join(', ')}`)
   }
-  return template
+  return TEMPLATES[name]
 }
 
 function requirePositiveInteger(value: unknown, label: string): number {
