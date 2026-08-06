@@ -127,10 +127,22 @@ describe('buildProgressBlock', () => {
 
   it('draws the labelled result strip above the status line once a best exists', () => {
     const block = buildProgressBlock(progress([candidate()]), selection)
-    // label row + 8 face rows + status line
-    expect(block).toHaveLength(10)
-    expect(block[0]).toContain('#1 120/133')
-    expect(block[9]).toContain('best 120/133')
+    // blank + label row + 8 face rows + blank + status line
+    expect(block).toHaveLength(12)
+    expect(block[1]).toContain('#1 120/133')
+    expect(block[11]).toContain('best 120/133')
+  })
+
+  it('pads the images with blank lines so they stand apart from the surrounding output', () => {
+    const block = buildProgressBlock(progress([candidate()]), selection)
+    expect(block[0].trim()).toBe('')
+    expect(block[block.length - 2].trim()).toBe('')
+  })
+
+  it('adds no padding when there is nothing to draw', () => {
+    const block = buildProgressBlock(progress([]), selection)
+    expect(block).toHaveLength(1)
+    expect(block[0].trim()).not.toBe('')
   })
 
   it('shows up to five results side by side, the same as the final report', () => {
@@ -138,8 +150,8 @@ describe('buildProgressBlock', () => {
       candidate({ address: '0x' + String(n).repeat(40), score: 130 - n }),
     )
     const block = buildProgressBlock(progress(many), selection)
-    expect(block[0]).toContain('#5')
-    expect(block[0]).not.toContain('#6')
+    expect(block[1]).toContain('#5')
+    expect(block[1]).not.toContain('#6')
   })
 
   it('applies the same filters as the final report, so the live view matches the result', () => {
@@ -150,15 +162,15 @@ describe('buildProgressBlock', () => {
       minContrast: 0,
       keep: 5,
     })
-    expect(block[0]).toContain('#1 120/133')
-    expect(block[0]).not.toContain('125/133')
+    expect(block[1]).toContain('#1 120/133')
+    expect(block[1]).not.toContain('125/133')
     expect(block[block.length - 1]).toContain('best 120/133')
   })
 
   it('renders the same face the final report prints for that address', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
     const block = buildProgressBlock(progress([candidate({ address })]), selection)
-    expect(block.slice(1, 9).map((line) => line.trim())).toEqual(
+    expect(block.slice(2, 10).map((line) => line.trim())).toEqual(
       asciiFor(address).map((line) => line.trim()),
     )
   })

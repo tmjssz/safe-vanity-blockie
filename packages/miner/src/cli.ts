@@ -72,7 +72,9 @@ export function buildProgressBlock(
   // ones you end up with -- retention is score-ranked and blind to these flags.
   const { reported } = selectReported(progress.best, selection)
   const strip = buildResultStrip(reported, RESULT_COLUMNS).map((line) => `  ${line}`)
-  return [...strip, progressLineText(progress, reported[0])]
+  const status = progressLineText(progress, reported[0])
+  // Blank lines above and below set the images apart from whatever surrounds them.
+  return strip.length > 0 ? ['', ...strip, '', status] : [status]
 }
 
 // Retention is score-ranked and blind to --two-color/--min-contrast, which are applied
