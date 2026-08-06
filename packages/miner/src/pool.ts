@@ -34,8 +34,11 @@ export interface PoolResult {
   scannedPerWorker: number[]
   candidates: Candidate[]
   /**
-   * Safe `--start` for a follow-up run with the same worker count and perWorker value:
-   * start + max(scannedPerWorker) can never overlap any range this run covered.
+   * Safe `--start` for a follow-up run with the same worker count and perWorker value: the
+   * highest end position (`start + index * perWorker + scanned`) any worker reached, so a
+   * follow-up run never rescans anything this run covered. On full completion this equals
+   * `start + workers * perWorker`. After an early stop it may SKIP unscanned gaps left by
+   * slower workers — the guarantee is no-rescan, not full coverage.
    */
   nextStart: number
 }
@@ -69,6 +72,8 @@ export function createPool(options: PoolOptions): {
       })
     }
 
+    const workers: Worker[] = []
+
     const runs = Array.from({ length: options.workers }, (_, index) => {
       const input: WorkerInput = {
         constantsHex: options.constantsHex,
@@ -82,6 +87,7 @@ export function createPool(options: PoolOptions): {
 
       return new Promise<void>((resolve, reject) => {
         const worker = new Worker(workerUrl, { workerData: input })
+        workers.push(worker)
         worker.on('message', (message: WorkerMessage) => {
           if (message.type === 'error') {
             reject(new Error(`worker ${index} failed: ${message.message}`))
@@ -103,6 +109,10 @@ export function createPool(options: PoolOptions): {
       await Promise.all(runs)
     } finally {
       stop()
+      // On the happy path every worker has already exited by the time Promise.all resolves, so
+      // these are no-ops. On the error path they stop survivors immediately instead of leaving
+      // them mining until their next chunk boundary notices the stop flag.
+      for (const worker of workers) void worker.terminate()
     }
 
     const scanned = scannedPerWorker.reduce((a, b) => a + b, 0)
@@ -110,7 +120,9 @@ export function createPool(options: PoolOptions): {
       scanned,
       scannedPerWorker,
       candidates: board.entries(),
-      nextStart: options.start + Math.max(...scannedPerWorker),
+      nextStart:
+        options.start +
+        Math.max(...scannedPerWorker.map((scanned, index) => index * options.perWorker + scanned)),
     }
   }
 

@@ -50,7 +50,7 @@ describe('createPool', () => {
     expect(result.scanned).toBe(100_000)
     expect(result.scannedPerWorker).toEqual([25_000, 25_000, 25_000, 25_000])
     expect(result.candidates).toEqual(single.candidates)
-    expect(result.nextStart).toBe(25_000)
+    expect(result.nextStart).toBe(100_000)
   })
 
   it('reports aggregate progress while running', async () => {
@@ -113,6 +113,40 @@ describe('createPool', () => {
       expect(nonce).toBeGreaterThanOrEqual(500)
       expect(nonce).toBeLessThan(500 + 3 * 1000)
     }
-    expect(result.nextStart).toBe(1500)
+    expect(result.nextStart).toBe(3500)
+  })
+
+  it('resumes from nextStart without rescanning or overlapping the previous run', async () => {
+    const poolA = createPool({
+      constantsHex: CONSTANTS_HEX,
+      faceSpec: FACE_SPEC,
+      start: 0,
+      workers: 2,
+      perWorker: 1000,
+      keep: 20,
+      workerUrl: new URL('../dist/worker.js', import.meta.url),
+    })
+    const resultA = await poolA.run()
+    expect(resultA.nextStart).toBe(2000)
+
+    const poolB = createPool({
+      constantsHex: CONSTANTS_HEX,
+      faceSpec: FACE_SPEC,
+      start: resultA.nextStart,
+      workers: 2,
+      perWorker: 1000,
+      keep: 20,
+      workerUrl: new URL('../dist/worker.js', import.meta.url),
+    })
+    const resultB = await poolB.run()
+
+    const noncesA = resultA.candidates.map((candidate) => Number(candidate.saltNonce))
+    const noncesB = resultB.candidates.map((candidate) => Number(candidate.saltNonce))
+    for (const nonce of noncesA) expect(nonce).toBeLessThan(2000)
+    for (const nonce of noncesB) expect(nonce).toBeGreaterThanOrEqual(2000)
+
+    const addressesA = new Set(resultA.candidates.map((candidate) => candidate.address))
+    const addressesB = new Set(resultB.candidates.map((candidate) => candidate.address))
+    for (const address of addressesB) expect(addressesA.has(address)).toBe(false)
   })
 })
