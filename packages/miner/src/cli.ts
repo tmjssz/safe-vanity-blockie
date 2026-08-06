@@ -14,6 +14,7 @@ import { CliError, HELP_TEXT, parseArgs, type MineArgs } from './args.js'
 import { WORKER_BLOCK, createPool, type PoolProgress } from './pool.js'
 import {
   asciiFor,
+  buildComparisonStrip,
   buildGalleryHtml,
   buildResultsJson,
   filterCandidates,
@@ -76,6 +77,9 @@ export function buildProgressBlock(progress: PoolProgress): string[] {
 // uses the spot colour).
 const RETENTION_MULTIPLIER = 20
 const MIN_RETENTION = 200
+
+/** Runner-up blockies drawn compact beneath the winner, so it can be judged against rivals. */
+const COMPARISON_COLUMNS = 4
 
 /** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
 const PROGRESS_LOG_INTERVAL_MS = 30_000
@@ -259,6 +263,13 @@ export async function runMine(options: MineArgs): Promise<number> {
 
   for (const line of asciiFor(top.address)) process.stdout.write(`  ${line}\n`)
   process.stdout.write('\n')
+
+  const comparison = buildComparisonStrip(reported.slice(1), COMPARISON_COLUMNS)
+  if (comparison.length > 0) {
+    for (const line of comparison) process.stdout.write(`  ${line}\n`)
+    process.stdout.write('\n')
+  }
+
   process.stdout.write(formatLeaderboard(reported, options.keep))
 
   const config: ResultConfig = {
