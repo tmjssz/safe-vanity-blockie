@@ -11,7 +11,7 @@ import {
   type FaceSpec,
 } from '@safe-vanity-blockie/core'
 import { CliError, HELP_TEXT, parseArgs, type MineArgs } from './args.js'
-import { WORKER_BLOCK, createPool } from './pool.js'
+import { WORKER_BLOCK, createPool, type PoolProgress } from './pool.js'
 import {
   asciiFor,
   buildGalleryHtml,
@@ -50,6 +50,49 @@ function formatRate(rate: number): string {
   return rate >= 1e6 ? `${(rate / 1e6).toFixed(2)}M/s` : `${Math.round(rate / 1000)}k/s`
 }
 
+function progressLineText(progress: PoolProgress): string {
+  const best = progress.best[0]
+  const summary = best ? `best ${best.score}/${best.maxScore}` : 'no candidates yet'
+  return `${progress.scanned.toLocaleString('en-US')} nonces · ${formatRate(progress.rate)} · ${summary}`
+}
+
+// Retention is score-ranked and blind to --two-color/--min-contrast, which are applied
+// afterwards. Over-retain so filtering has candidates left to show; only two-colour
+// blockies are common enough for this to matter (a grid is two-colour only when no cell
+// uses the spot colour).
+const RETENTION_MULTIPLIER = 20
+const MIN_RETENTION = 200
+
+/** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
+const PROGRESS_LOG_INTERVAL_MS = 30_000
+
+export interface SelectReportedResult {
+  reported: Candidate[]
+  /** Candidates removed by --two-color / --min-contrast filtering; 0 when the fallback fired. */
+  droppedCount: number
+  /** True when filtering would have emptied the list, so the unfiltered candidates were used. */
+  usedFallback: boolean
+}
+
+/**
+ * Applies --two-color / --min-contrast filtering to the over-retained leaderboard, falls back to
+ * the unfiltered list if filtering would empty it, and trims to --keep. Pure and independent of
+ * the network so it can be unit tested directly.
+ */
+export function selectReported(
+  candidates: Candidate[],
+  options: { twoColor: boolean; minContrast: number; keep: number },
+): SelectReportedResult {
+  const filtered = filterCandidates(candidates, {
+    twoColor: options.twoColor,
+    minContrast: options.minContrast,
+  })
+  const usedFallback = filtered.length === 0 && candidates.length > 0
+  const usable = usedFallback ? candidates : filtered
+  const droppedCount = usedFallback ? 0 : candidates.length - filtered.length
+  return { reported: usable.slice(0, options.keep), droppedCount, usedFallback }
+}
+
 export async function runMine(options: MineArgs): Promise<number> {
   const faceSpec = resolveFaceSpec(options.target)
   const maxScore = compileFace(faceSpec).maxScore
@@ -75,19 +118,32 @@ export async function runMine(options: MineArgs): Promise<number> {
       `(max ${maxScore}) · ${options.workers} workers · ${budget}\n`,
   )
 
+  // Retain far more than --keep so filtering below still has candidates to show.
+  const retain = Math.max(options.keep * RETENTION_MULTIPLIER, MIN_RETENTION)
+
+  let lastProgress: PoolProgress | undefined
+  let lastLoggedAt = 0
+
   const pool = createPool({
     constantsHex: setup.constantsHex,
     faceSpec,
     start: options.start,
     workers: options.workers,
     perWorker,
-    keep: options.keep,
+    keep: retain,
     onProgress: (progress) => {
-      const best = progress.best[0]
-      const summary = best ? `best ${best.score}/${best.maxScore}` : 'no candidates yet'
-      process.stderr.write(
-        `\r${progress.scanned.toLocaleString('en-US')} nonces · ${formatRate(progress.rate)} · ${summary}   `,
-      )
+      lastProgress = progress
+      if (process.stderr.isTTY) {
+        process.stderr.write(`\r${progressLineText(progress)}   `)
+        return
+      }
+      // No terminal to interpret \r: emit newline-terminated lines, throttled so a long
+      // unattended run does not flood the log.
+      const now = Date.now()
+      if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
+        lastLoggedAt = now
+        process.stderr.write(`${progressLineText(progress)}\n`)
+      }
     },
   })
 
@@ -102,17 +158,38 @@ export async function runMine(options: MineArgs): Promise<number> {
     result = await pool.run()
   } finally {
     process.off('SIGINT', onSigint)
-    process.stderr.write('\n')
+    if (process.stderr.isTTY) {
+      process.stderr.write('\n')
+    } else if (lastProgress) {
+      // Always record the final state, even if the throttle above just skipped it.
+      process.stderr.write(`${progressLineText(lastProgress)}\n`)
+    }
   }
 
-  const filtered = filterCandidates(result.candidates, {
+  const { reported, droppedCount, usedFallback } = selectReported(result.candidates, {
     twoColor: options.twoColor,
     minContrast: options.minContrast,
+    keep: options.keep,
   })
-  const reported: Candidate[] = filtered.length > 0 ? filtered : result.candidates
-  if (filtered.length === 0 && result.candidates.length > 0) {
+
+  if (usedFallback) {
     process.stderr.write(
       'No result passed the --two-color / --min-contrast filters; showing unfiltered results.\n',
+    )
+  } else if (droppedCount > 0) {
+    const criteria = [
+      options.twoColor ? '--two-color' : undefined,
+      options.minContrast > 0 ? '--min-contrast' : undefined,
+    ].filter((criterion): criterion is string => criterion !== undefined)
+    process.stderr.write(
+      `Dropped ${droppedCount.toLocaleString('en-US')} candidate${droppedCount === 1 ? '' : 's'} that failed ${criteria.join(' / ')}.\n`,
+    )
+  }
+
+  if (reported.length > 0 && reported.length < options.keep) {
+    process.stderr.write(
+      `Showing ${reported.length} result${reported.length === 1 ? '' : 's'}, fewer than --keep ${options.keep}; ` +
+        'that is all the candidates available.\n',
     )
   }
 
