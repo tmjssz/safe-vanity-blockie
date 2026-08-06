@@ -78,10 +78,12 @@ export function createAddressDeriver(
         saltPreimage[i] = Number(remaining & 0xffn)
         remaining >>= 8n
       }
-      const address = finish()
-      // Restore the invariant derive() relies on: bytes 32..56 are zero.
-      saltPreimage.fill(0, 32, 56)
-      return address
+      try {
+        return finish()
+      } finally {
+        // Restore the invariant derive() relies on: bytes 32..56 are zero.
+        saltPreimage.fill(0, 32, 56)
+      }
     },
   }
 }

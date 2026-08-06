@@ -15,7 +15,7 @@
 - **Runtime floors (spec §2):** Node ≥ 20 (we develop on 24 LTS), TypeScript ≥ 5.4 (we use ^6.0.3), pnpm ≥ 9 (we use 11).
 - **`core` purity:** no `node:*` imports, no DOM APIs, no filesystem, no network anywhere in `packages/core/src`. Enforced by a test in Task 5.
 - **Worker leanness (spec §3.2):** worker threads may import `@safe-vanity-blockie/core` and `hash-wasm` only. They must never import `@safe-global/protocol-kit` or `viem`.
-- **Hot path rules (spec §5.5, §11):** integer-only arithmetic, flattened typed arrays, no per-candidate allocation, no per-candidate division, no array-of-objects lookups.
+- **Hot path rules (spec §5.5, §11):** flattened typed arrays, no per-candidate allocation, no array-of-objects lookups. **The scoring loop specifically** must be integer-only with no per-candidate division — that is the rule spec §5.5 states, and it binds `scoring.ts`. It does not bind `address.ts`: `derive()` uses one float division to split the nonce into high/low 32-bit words, which is unavoidable without BigInt (banned for allocation reasons) since a shift count of 32 reduces mod 32. One division alongside two keccak-256 hashes is unmeasurable, and it is strictly cheaper than the source spec's own reference loop, which allocated a BigInt per iteration.
 - **One source of truth (spec §11):** the mining loop lives in `core`, not in `miner`. The CLI worker is a thin wrapper so the future Web Worker can reuse the exact same code.
 - **Chain support:** standard (non-zkSync) chains only. zkSync-family chain IDs must throw a clear error, never silently mis-derive (spec §3.1, §11).
 - **`saltNonce` is emitted as a decimal string everywhere** (JSON, CLI output, deep links) because it may exceed `2^53` (spec §7.3).
