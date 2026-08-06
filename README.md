@@ -24,3 +24,66 @@ looks the same to a human. Always verify the full address, never the picture.
     mise install
     pnpm install
     pnpm test
+
+## Usage
+
+    npx safe-vanity-blockie \
+      --owners 0xYourOwner,0xAnotherOwner \
+      --threshold 1 \
+      --rpc https://ethereum-rpc.publicnode.com \
+      --target faces \
+      --keep 20 \
+      --out results.json \
+      --gallery gallery.html
+
+Run `npx safe-vanity-blockie --help` for every flag. `Ctrl+C` stops the workers and keeps the best
+results found so far.
+
+### Targets
+
+`--target` accepts a builtin name (`faces`, `smile`, `frown`, `neutral`, `open`, `small`) or a path
+to a `FaceSpec` JSON file. `faces` pins the eyes and accepts any of the five expressions, crediting
+each candidate with its best-fitting one.
+
+### Resuming and merging runs
+
+Each run prints a resume line. Start the next run there, with the same `--workers`, and merge the
+JSON files by deduping on `address`:
+
+    npx safe-vanity-blockie … --start 8400000000 --workers 8 --out results-2.json
+
+### What score to expect
+
+A mathematically perfect face (all 32 cells exact) is roughly a 1-in-4×10¹¹ event, so it is not
+brute-forceable. Scoring pushes residual error into the lowest-weight corner cells, which makes
+128–131 out of 133 the practical ceiling — one or two faint stray pixels, never in the eyes or mouth.
+
+| quality (of 133) | ~nonces | CLI (~2.5–3M/s on 8 cores) |
+|---|---|---|
+| recognisable face (~121) | ~3–10M | seconds |
+| clean face (~125) | ~0.1–0.4B | seconds to 2 min |
+| very clean (~127–128) | ~0.7–4B | 4–25 min |
+| near-perfect (~131) | ~8B | 45–55 min |
+
+### Deploying
+
+The mined config is counterfactual — deploy whenever you like, on any chain with the canonical Safe
+contracts (zkSync-based chains are rejected: they derive addresses differently).
+
+    npx safe-vanity-blockie deploy \
+      --salt 5254976178 --owners 0xYourOwner --threshold 1 \
+      --rpc https://… --pk 0xYourDeployerKey
+
+## Testing
+
+    pnpm test           # offline: unit + worker-pool integration
+    pnpm test:network   # additionally hits a public RPC and protocol-kit
+
+Set `TEST_RPC_URL` to use your own endpoint.
+
+## Prior art
+
+Austin Griffith's [`vanity-blockie-miner`](https://github.com/austintgriffith/vanity-blockie-miner)
+brute-forces EOA private keys against the older `ethereum/blockies` algorithm. This project targets a
+Safe CREATE2 `saltNonce` — a deploy config, not a key — against `blo` specifically, with a two-colour,
+multi-expression scoring model.
