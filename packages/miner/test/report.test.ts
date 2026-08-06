@@ -1,11 +1,10 @@
-import { bloData, type Candidate } from '@safe-vanity-blockie/core'
+import type { Candidate } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
-  buildComparisonStrip,
+  asciiFor,
   buildGalleryHtml,
-  compactAsciiFor,
+  buildResultStrip,
   formatDuration,
-  renderAsciiCompact,
   buildResultsJson,
   filterCandidates,
   formatLeaderboard,
@@ -187,68 +186,40 @@ describe('buildResultsJson elapsed time', () => {
   })
 })
 
-describe('compactAsciiFor', () => {
-  const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
-
-  it('is half the width of the full renderer but the same 8 rows', () => {
-    const compact = compactAsciiFor(address)
-    expect(compact).toHaveLength(8)
-    for (const line of compact) expect(line).toHaveLength(8)
-  })
-
-  it('preserves the same shape as the full-size render', () => {
-    const full = renderAscii(bloData(address))
-    const compact = compactAsciiFor(address)
-    // Every cell that is blank at full size must be blank compact, and vice versa.
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const fullCell = full[row].slice(col * 2, col * 2 + 2)
-        expect(compact[row][col] === ' ').toBe(fullCell === '  ')
-      }
-    }
-  })
-
-  it('keeps the spot colour distinguishable from the main colour', () => {
-    const data = new Uint8Array(32)
-    data[0] = 1
-    data[1] = 2
-    const line = renderAsciiCompact(data)[0]
-    expect(line[0]).toBe('\u2588')
-    expect(line[1]).toBe('\u2592')
-    expect(line[2]).toBe(' ')
-  })
-})
-
-describe('buildComparisonStrip', () => {
-  const runnerUp = (rank: number, score: number): Candidate =>
+describe('buildResultStrip', () => {
+  const entry = (rank: number, score: number): Candidate =>
     candidate({ address: '0x' + String(rank).repeat(40), score })
 
-  it('is empty when there is nothing to compare against', () => {
-    expect(buildComparisonStrip([], 4)).toEqual([])
+  it('is empty when there are no results', () => {
+    expect(buildResultStrip([], 5)).toEqual([])
   })
 
-  it('lays thumbnails out side by side with rank and score labels', () => {
-    const strip = buildComparisonStrip([runnerUp(2, 119), runnerUp(3, 117)], 4)
-    // one label row + 8 thumbnail rows
+  it('renders every result at full size, in one row, labelled from #1', () => {
+    const strip = buildResultStrip([entry(1, 120), entry(2, 119)], 5)
     expect(strip).toHaveLength(9)
+    expect(strip[0]).toContain('#1 120/133')
     expect(strip[0]).toContain('#2 119/133')
-    expect(strip[0]).toContain('#3 117/133')
-    // every row is the same width, so the columns line up
-    const widths = new Set(strip.map((line) => line.length))
-    expect(widths.size).toBe(1)
+  })
+
+  it('uses the same full-size renderer as the standalone face', () => {
+    const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
+    const strip = buildResultStrip([candidate({ address })], 5)
+    // Two characters per cell keeps each blockie pixel square in a terminal.
+    expect(strip.slice(1).map((line) => line.trimEnd())).toEqual(
+      asciiFor(address).map((line) => line.trimEnd()),
+    )
+    for (const line of asciiFor(address)) expect(line).toHaveLength(16)
+  })
+
+  it('keeps every row the same width so columns stay aligned', () => {
+    const strip = buildResultStrip([entry(1, 120), entry(2, 119), entry(3, 118)], 5)
+    expect(new Set(strip.map((line) => line.length)).size).toBe(1)
   })
 
   it('never shows more columns than the limit', () => {
-    const many = [2, 3, 4, 5, 6, 7].map((rank) => runnerUp(rank, 120 - rank))
-    const strip = buildComparisonStrip(many, 3)
-    expect(strip[0]).toContain('#2')
-    expect(strip[0]).toContain('#4')
-    expect(strip[0]).not.toContain('#5')
-  })
-
-  it('numbers ranks from 2, since rank 1 is the full-size face above it', () => {
-    const strip = buildComparisonStrip([runnerUp(2, 119)], 4)
-    expect(strip[0]).toContain('#2')
-    expect(strip[0]).not.toContain('#1')
+    const many = [1, 2, 3, 4, 5, 6, 7].map((rank) => entry(rank, 130 - rank))
+    const strip = buildResultStrip(many, 5)
+    expect(strip[0]).toContain('#5')
+    expect(strip[0]).not.toContain('#6')
   })
 })

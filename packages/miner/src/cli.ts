@@ -14,7 +14,7 @@ import { CliError, HELP_TEXT, parseArgs, type MineArgs } from './args.js'
 import { WORKER_BLOCK, createPool, type PoolProgress } from './pool.js'
 import {
   asciiFor,
-  buildComparisonStrip,
+  buildResultStrip,
   buildGalleryHtml,
   buildResultsJson,
   filterCandidates,
@@ -52,8 +52,7 @@ function formatRate(rate: number): string {
   return rate >= 1e6 ? `${(rate / 1e6).toFixed(2)}M/s` : `${Math.round(rate / 1000)}k/s`
 }
 
-function progressLineText(progress: PoolProgress): string {
-  const best = progress.best[0]
+function progressLineText(progress: PoolProgress, best: Candidate | undefined): string {
   const summary = best ? `best ${best.score}/${best.maxScore}` : 'no candidates yet'
   return (
     `${formatDuration(progress.elapsedMs)} · ${progress.scanned.toLocaleString('en-US')} nonces · ` +
@@ -65,10 +64,15 @@ function progressLineText(progress: PoolProgress): string {
  * The live progress display: the current best blockie drawn in the same layout the final
  * report uses, with the status line beneath it. Just the status line until a candidate exists.
  */
-export function buildProgressBlock(progress: PoolProgress): string[] {
-  const best = progress.best[0]
-  const face = best ? asciiFor(best.address).map((line) => `  ${line}`) : []
-  return [...face, progressLineText(progress)]
+export function buildProgressBlock(
+  progress: PoolProgress,
+  selection: { twoColor: boolean; minContrast: number; keep: number },
+): string[] {
+  // Filter live exactly as the final report does, so the faces you watch converge are the
+  // ones you end up with -- retention is score-ranked and blind to these flags.
+  const { reported } = selectReported(progress.best, selection)
+  const strip = buildResultStrip(reported, RESULT_COLUMNS).map((line) => `  ${line}`)
+  return [...strip, progressLineText(progress, reported[0])]
 }
 
 // Retention is score-ranked and blind to --two-color/--min-contrast, which are applied
@@ -78,8 +82,8 @@ export function buildProgressBlock(progress: PoolProgress): string[] {
 const RETENTION_MULTIPLIER = 20
 const MIN_RETENTION = 200
 
-/** Runner-up blockies drawn compact beneath the winner, so it can be judged against rivals. */
-const COMPARISON_COLUMNS = 4
+/** How many results are drawn side by side, live and in the final report. */
+const RESULT_COLUMNS = 5
 
 /** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
 const PROGRESS_LOG_INTERVAL_MS = 30_000
@@ -142,6 +146,11 @@ export async function runMine(options: MineArgs): Promise<number> {
   let lastProgress: PoolProgress | undefined
   let lastLoggedAt = 0
   let drawnLines = 0
+  const liveSelection = {
+    twoColor: options.twoColor,
+    minContrast: options.minContrast,
+    keep: RESULT_COLUMNS,
+  }
   let loggedBestScore = -1
 
   /** Redraws the live block in place: up over the previous one, then clear and rewrite. */
@@ -161,7 +170,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     onProgress: (progress) => {
       lastProgress = progress
       if (process.stderr.isTTY) {
-        redraw(buildProgressBlock(progress))
+        redraw(buildProgressBlock(progress, liveSelection))
         return
       }
       // No terminal to redraw on: emit newline-terminated lines, throttled so a long
@@ -172,10 +181,10 @@ export async function runMine(options: MineArgs): Promise<number> {
       if (best && best.score > loggedBestScore) {
         loggedBestScore = best.score
         lastLoggedAt = now
-        process.stderr.write(`${buildProgressBlock(progress).join('\n')}\n`)
+        process.stderr.write(`${buildProgressBlock(progress, liveSelection).join('\n')}\n`)
       } else if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
         lastLoggedAt = now
-        process.stderr.write(`${progressLineText(progress)}\n`)
+        process.stderr.write(`${progressLineText(progress, progress.best[0])}\n`)
       }
     },
   })
@@ -197,7 +206,7 @@ export async function runMine(options: MineArgs): Promise<number> {
       drawnLines = 0
     } else if (lastProgress) {
       // Always record the final state, even if the throttle above just skipped it.
-      process.stderr.write(`${progressLineText(lastProgress)}\n`)
+      process.stderr.write(`${progressLineText(lastProgress, lastProgress.best[0])}\n`)
     }
   }
 
@@ -261,15 +270,10 @@ export async function runMine(options: MineArgs): Promise<number> {
     }
   }
 
-  for (const line of asciiFor(top.address)) process.stdout.write(`  ${line}\n`)
-  process.stdout.write('\n')
-
-  const comparison = buildComparisonStrip(reported.slice(1), COMPARISON_COLUMNS)
-  if (comparison.length > 0) {
-    for (const line of comparison) process.stdout.write(`  ${line}\n`)
-    process.stdout.write('\n')
+  for (const line of buildResultStrip(reported, RESULT_COLUMNS)) {
+    process.stdout.write(`  ${line}\n`)
   }
-
+  process.stdout.write('\n')
   process.stdout.write(formatLeaderboard(reported, options.keep))
 
   const config: ResultConfig = {

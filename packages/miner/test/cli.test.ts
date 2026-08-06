@@ -117,29 +117,56 @@ describe('buildProgressBlock', () => {
     ...overrides,
   })
 
+  const selection = { twoColor: false, minContrast: 0, keep: 5 }
+
   it('is a single status line before any candidate exists', () => {
-    const block = buildProgressBlock(progress([]))
+    const block = buildProgressBlock(progress([]), selection)
     expect(block).toHaveLength(1)
     expect(block[0]).toContain('no candidates yet')
   })
 
-  it('draws the 8-row face above the status line once a best exists', () => {
-    const block = buildProgressBlock(progress([candidate()]))
-    expect(block).toHaveLength(9)
-    // Same layout as the final report: two spaces of indent, 8 cells of two characters.
-    for (const line of block.slice(0, 8)) expect(line).toHaveLength(18)
-    expect(block[8]).toContain('best 120/133')
+  it('draws the labelled result strip above the status line once a best exists', () => {
+    const block = buildProgressBlock(progress([candidate()]), selection)
+    // label row + 8 face rows + status line
+    expect(block).toHaveLength(10)
+    expect(block[0]).toContain('#1 120/133')
+    expect(block[9]).toContain('best 120/133')
+  })
+
+  it('shows up to five results side by side, the same as the final report', () => {
+    const many = [1, 2, 3, 4, 5, 6].map((n) =>
+      candidate({ address: '0x' + String(n).repeat(40), score: 130 - n }),
+    )
+    const block = buildProgressBlock(progress(many), selection)
+    expect(block[0]).toContain('#5')
+    expect(block[0]).not.toContain('#6')
+  })
+
+  it('applies the same filters as the final report, so the live view matches the result', () => {
+    const threeColour = candidate({ address: '0x' + 'a'.repeat(40), score: 125, twoColor: false })
+    const twoColour = candidate({ address: '0x' + 'b'.repeat(40), score: 120, twoColor: true })
+    const block = buildProgressBlock(progress([threeColour, twoColour]), {
+      twoColor: true,
+      minContrast: 0,
+      keep: 5,
+    })
+    expect(block[0]).toContain('#1 120/133')
+    expect(block[0]).not.toContain('125/133')
+    expect(block[block.length - 1]).toContain('best 120/133')
   })
 
   it('renders the same face the final report prints for that address', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
-    const block = buildProgressBlock(progress([candidate({ address })]))
-    expect(block.slice(0, 8)).toEqual(asciiFor(address).map((line) => `  ${line}`))
+    const block = buildProgressBlock(progress([candidate({ address })]), selection)
+    expect(block.slice(1, 9).map((line) => line.trim())).toEqual(
+      asciiFor(address).map((line) => line.trim()),
+    )
   })
 
   it('includes elapsed time and rate in the status line', () => {
-    const block = buildProgressBlock(progress([candidate()]))
-    expect(block[8]).toContain('1m 05s')
-    expect(block[8]).toContain('1.50M/s')
+    const block = buildProgressBlock(progress([candidate()]), selection)
+    const status = block[block.length - 1]
+    expect(status).toContain('1m 05s')
+    expect(status).toContain('1.50M/s')
   })
 })

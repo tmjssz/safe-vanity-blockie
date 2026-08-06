@@ -185,47 +185,27 @@ export function asciiFor(address: string): string[] {
   return renderAscii(bloData(address))
 }
 
-/** One character per cell instead of two: half the width, same 8 rows and same shape. */
-const COMPACT_GLYPHS = [' ', '\u2588', '\u2592'] as const
 
-export function renderAsciiCompact(data: Uint8Array): string[] {
-  const lines: string[] = []
-  for (let row = 0; row < 8; row++) {
-    let line = ''
-    for (let col = 0; col < 8; col++) {
-      const source = col < 4 ? col : 7 - col
-      line += COMPACT_GLYPHS[data[row * 4 + source]]
-    }
-    lines.push(line)
-  }
-  return lines
-}
-
-export function compactAsciiFor(address: string): string[] {
-  return renderAsciiCompact(bloData(address))
-}
-
-/** Wide enough that adjacent thumbnails do not read as one image. */
-const COMPARISON_GUTTER = '    '
+/** Wide enough that adjacent blockies do not read as one image. */
+const RESULT_GUTTER = '    '
 
 /**
- * A side-by-side strip of runner-up blockies, drawn compact beneath the full-size winner so
- * the top result can be judged against its nearest rivals. Ranks start at 2 — rank 1 is the
- * full-size face above.
+ * A side-by-side row of the top results, every blockie at full size so each cell stays square
+ * — a terminal cell is about twice as tall as it is wide, so one character per cell would
+ * squash the image horizontally and destroy the apparent symmetry. Ranks start at 1.
  */
-export function buildComparisonStrip(candidates: Candidate[], maxColumns: number): string[] {
+export function buildResultStrip(candidates: Candidate[], maxColumns: number): string[] {
   const shown = candidates.slice(0, Math.max(0, maxColumns))
   if (shown.length === 0) return []
 
-  const labels = shown.map(
-    (entry, index) => `#${index + 2} ${entry.score}/${entry.maxScore}`,
-  )
-  const width = Math.max(8, ...labels.map((label) => label.length))
-  const thumbnails = shown.map((entry) => compactAsciiFor(entry.address))
+  const labels = shown.map((entry, index) => `#${index + 1} ${entry.score}/${entry.maxScore}`)
+  const faces = shown.map((entry) => asciiFor(entry.address))
+  const width = Math.max(16, ...labels.map((label) => label.length))
 
-  const lines = [labels.map((label) => label.padEnd(width)).join(COMPARISON_GUTTER)]
+  const lines = [labels.map((label) => label.padEnd(width)).join(RESULT_GUTTER)]
   for (let row = 0; row < 8; row++) {
-    lines.push(thumbnails.map((thumbnail) => thumbnail[row].padEnd(width)).join(COMPARISON_GUTTER))
+    lines.push(faces.map((face) => face[row].padEnd(width)).join(RESULT_GUTTER))
   }
   return lines.map((line) => line.trimEnd().padEnd(lines[0].length))
 }
+
