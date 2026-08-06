@@ -88,6 +88,16 @@ describe('buildResultsJson', () => {
     const parsed = JSON.parse(buildResultsJson(CONFIG, [candidate({ saltNonce: huge })]))
     expect(parsed.results[0].saltNonce).toBe(huge)
   })
+
+  it('never lets an untrusted region name shadow a fixed result field', () => {
+    const entry = candidate({
+      regions: { saltNonce: 'smile', address: 'frown', score: 'neutral' },
+    })
+    const parsed = JSON.parse(buildResultsJson(CONFIG, [entry]))
+    expect(parsed.results[0].saltNonce).toBe(entry.saltNonce)
+    expect(parsed.results[0].address).toBe(entry.address)
+    expect(parsed.results[0].score).toBe(entry.score)
+  })
 })
 
 describe('buildGalleryHtml', () => {

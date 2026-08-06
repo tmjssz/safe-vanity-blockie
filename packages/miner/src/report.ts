@@ -67,14 +67,17 @@ export function buildResultsJson(config: ResultConfig, candidates: Candidate[]):
     JSON.stringify(
       {
         config,
+        // Region names come from an untrusted FaceSpec (`--target <file>.json`) and are
+        // validated only as strings, so the spread goes FIRST: a region named e.g. "saltNonce"
+        // must never be able to shadow the fixed, safety-critical fields below it.
         results: candidates.map((candidate) => ({
+          ...candidate.regions,
           saltNonce: candidate.saltNonce,
           address: candidate.address,
           score: candidate.score,
           max: candidate.maxScore,
           twoColor: candidate.twoColor,
           contrast: candidate.contrast,
-          ...candidate.regions,
         })),
       },
       null,
