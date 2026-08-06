@@ -42,6 +42,15 @@ export function formatDuration(elapsedMs: number): string {
   return `${seconds}s`
 }
 
+/**
+ * A score as a percentage of the template's maximum. One decimal, because the interesting
+ * results sit in a narrow band near the top and whole percent would collapse distinct scores.
+ */
+export function formatScore(score: number, maxScore: number): string {
+  if (maxScore <= 0) return '0.0%'
+  return `${((score / maxScore) * 100).toFixed(1)}%`
+}
+
 const GLYPHS = ['  ', '██', '▒▒'] as const
 
 /** 8 lines of 8 cells. Columns 4-7 mirror columns 3-0, exactly as blo renders them. */
@@ -77,7 +86,7 @@ export function formatLeaderboard(candidates: Candidate[], limit: number): strin
   const rows = candidates.slice(0, limit).map((candidate, index) => {
     return [
       String(index + 1).padStart(2),
-      `${candidate.score}/${candidate.maxScore}`.padStart(6),
+      formatScore(candidate.score, candidate.maxScore).padStart(6),
       (candidate.twoColor ? 'yes' : 'no').padStart(4),
       String(candidate.contrast).padStart(8),
       regionSummary(candidate).padStart(10),
@@ -102,6 +111,7 @@ export function buildResultsJson(config: ResultConfig, candidates: Candidate[]):
           address: candidate.address,
           score: candidate.score,
           max: candidate.maxScore,
+          percent: Number(((candidate.score / candidate.maxScore) * 100).toFixed(1)),
           twoColor: candidate.twoColor,
           contrast: candidate.contrast,
         })),
@@ -127,7 +137,7 @@ export function buildGalleryHtml(config: ResultConfig, candidates: Candidate[]):
       return `    <figure class="card">
       ${bloSvg(candidate.address, 128)}
       <figcaption>
-        <strong>${candidate.score}/${candidate.maxScore}</strong>
+        <strong>${formatScore(candidate.score, candidate.maxScore)}</strong>
         <span>${escapeHtml(regionSummary(candidate))} · ${twoColor} · contrast ${candidate.contrast}</span>
         <code>${escapeHtml(candidate.address)}</code>
         <code>saltNonce ${escapeHtml(candidate.saltNonce)}</code>
@@ -233,7 +243,7 @@ export function buildResultStrip(
   if (shown.length === 0) return []
 
   const entries = shown.map((entry, index) => ({
-    label: `#${index + 1} ${entry.score}/${entry.maxScore}`,
+    label: `#${index + 1} ${formatScore(entry.score, entry.maxScore)}`,
     // A saltNonce is at most 16 digits (derive() caps at MAX_SAFE_INTEGER), so it never
     // widens the 16-character cell.
     caption: entry.saltNonce,

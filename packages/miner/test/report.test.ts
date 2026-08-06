@@ -6,6 +6,7 @@ import {
   buildResultStrip,
   resultColumnsForWidth,
   formatDuration,
+  formatScore,
   buildResultsJson,
   filterCandidates,
   formatLeaderboard,
@@ -90,6 +91,7 @@ describe('buildResultsJson', () => {
       address: '0xd8da6bf26964af9d7eed9e03e53415d37aa96045',
       score: 131,
       max: 133,
+      percent: 98.5,
       twoColor: true,
       contrast: 170,
       mouth: 'small',
@@ -224,8 +226,8 @@ describe('buildResultStrip', () => {
       columnsPerRow: 5,
     })
     expect(strip).toHaveLength(10)
-    expect(strip[0]).toContain('#1 120/133')
-    expect(strip[0]).toContain('#2 119/133')
+    expect(strip[0]).toContain('#1 90.2%')
+    expect(strip[0]).toContain('#2 89.5%')
   })
 
   it('uses the same full-size renderer as the standalone face', () => {
@@ -282,5 +284,53 @@ describe('buildResultStrip', () => {
     const strip = buildResultStrip(many, { maxResults: 5, columnsPerRow: 5 })
     expect(strip[0]).toContain('#5')
     expect(strip[0]).not.toContain('#6')
+  })
+})
+
+describe('formatScore', () => {
+  it('renders the score as a percentage of the template maximum', () => {
+    expect(formatScore(133, 133)).toBe('100.0%')
+    expect(formatScore(120, 133)).toBe('90.2%')
+    expect(formatScore(131, 133)).toBe('98.5%')
+    expect(formatScore(0, 133)).toBe('0.0%')
+  })
+
+  it('keeps one decimal, since the interesting range is a narrow band near the top', () => {
+    // 121/133 and 122/133 must not collapse to the same figure.
+    expect(formatScore(121, 133)).not.toBe(formatScore(122, 133))
+  })
+
+  it('does not divide by zero for a degenerate template', () => {
+    expect(formatScore(0, 0)).toBe('0.0%')
+  })
+})
+
+describe('percentage display', () => {
+  it('labels each blockie with a percentage rather than a raw fraction', () => {
+    const strip = buildResultStrip([candidate({ score: 120 })], {
+      maxResults: 8,
+      columnsPerRow: 8,
+    })
+    expect(strip[0]).toContain('#1 90.2%')
+    expect(strip[0]).not.toContain('120/133')
+  })
+
+  it('shows a percentage in the leaderboard table', () => {
+    const table = formatLeaderboard([candidate({ score: 120 })], 5)
+    expect(table).toContain('90.2%')
+    expect(table).not.toContain('120/133')
+  })
+
+  it('shows a percentage in the gallery', () => {
+    const html = buildGalleryHtml(CONFIG, [candidate({ score: 120 })])
+    expect(html).toContain('90.2%')
+    expect(html).not.toContain('120/133')
+  })
+
+  it('keeps the raw score and maximum in the JSON, and adds the percentage', () => {
+    const parsed = JSON.parse(buildResultsJson(CONFIG, [candidate({ score: 120 })]))
+    expect(parsed.results[0].score).toBe(120)
+    expect(parsed.results[0].max).toBe(133)
+    expect(parsed.results[0].percent).toBe(90.2)
   })
 })

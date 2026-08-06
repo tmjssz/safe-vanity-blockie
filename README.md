@@ -56,19 +56,19 @@ JSON files by deduping on `address`:
 
 A mathematically perfect face (all 32 cells exact) is roughly a 1-in-4×10¹¹ event, so it is not
 brute-forceable. Scoring pushes residual error into the lowest-weight corner cells, which makes
-128–131 out of 133 the practical ceiling — one or two faint stray pixels, never in the eyes or mouth.
+96–98% the practical ceiling — one or two faint stray pixels, never in the eyes or mouth.
 
-| quality (of 133) | ~nonces | CLI (~2.5–3M/s on 8 cores) |
+| quality | ~nonces | CLI (~2.5–3M/s on 8 cores) |
 |---|---|---|
-| recognisable face (~121) | ~3–10M | seconds |
-| clean face (~125) | ~0.1–0.4B | seconds to 2 min |
-| very clean (~127–128) | ~0.7–4B | 4–25 min |
-| near-perfect (~131) | ~8B | 45–55 min |
+| recognisable face (~91%) | ~3–10M | seconds |
+| clean face (~94%) | ~0.1–0.4B | seconds to 2 min |
+| very clean (~95–96%) | ~0.7–4B | 4–25 min |
+| near-perfect (~98%) | ~8B | 45–55 min |
 
 The figures above (other than the first row) are modelled estimates from the design spec, not
 measurements. The measured rate is ~470k nonces/s per worker core (1.89M/s aggregate on 4 workers of
 a 6-core machine); only the first row has been observed directly, in a 6M-nonce run that reached
-122/133. The table assumes 8 cores, so times roughly double on a 4-core laptop.
+92%. The table assumes 8 cores, so times roughly double on a 4-core laptop.
 
 ### Deploying
 

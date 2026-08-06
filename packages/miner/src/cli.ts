@@ -20,6 +20,7 @@ import {
   buildResultsJson,
   filterCandidates,
   formatDuration,
+  formatScore,
   formatLeaderboard,
   type ResultConfig,
 } from './report.js'
@@ -54,7 +55,7 @@ function formatRate(rate: number): string {
 }
 
 function progressLineText(progress: PoolProgress, best: Candidate | undefined): string {
-  const summary = best ? `best ${best.score}/${best.maxScore}` : 'no candidates yet'
+  const summary = best ? `best ${formatScore(best.score, best.maxScore)}` : 'no candidates yet'
   return (
     `${formatDuration(progress.elapsedMs)} · ${progress.scanned.toLocaleString('en-US')} nonces · ` +
     `${formatRate(progress.rate)} · ${summary}`
