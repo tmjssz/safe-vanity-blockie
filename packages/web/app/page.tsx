@@ -4,6 +4,7 @@ import type { Candidate } from '@safe-vanity-blockie/core'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useMemo, useState } from 'react'
 import { ConfigForm } from '../components/ConfigForm'
+import { DeployPanel } from '../components/DeployPanel'
 import { FacePicker } from '../components/FacePicker'
 import { MiningView } from '../components/MiningView'
 import { SecurityNotice } from '../components/SecurityNotice'
@@ -58,11 +59,7 @@ function HomeContent() {
             onFiltersChange={setFilters}
           />
           <MiningView config={config} faceSpec={faceSpec} filters={filters} onSelect={setSelected} />
-          {selected && (
-            <p>
-              Selected saltNonce {selected.saltNonce} for {selected.address}.
-            </p>
-          )}
+          {selected && <DeployPanel config={config} candidate={selected} />}
         </>
       ) : (
         <>

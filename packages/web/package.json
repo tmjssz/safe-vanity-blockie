@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@safe-global/protocol-kit": "^8.0.5",
+    "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
     "@tanstack/react-query": "^5.101.4",
