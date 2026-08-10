@@ -1,0 +1,102 @@
+# safe-vanity-blockie
+
+Brute-force a Safe deployment config (`saltNonce`) so the resulting Safe address renders a chosen
+two-color face when drawn by [`blo`](https://github.com/bpierre/blo), the identicon library used by
+the Safe UI.
+
+The address is **counterfactual**: mining only finds a config. The address exists deterministically
+whether or not the Safe is deployed, and on non-zkSync chains it is identical on every chain that has
+the canonical Safe contracts.
+
+## ⚠️ Security caveat
+
+**A matching identicon is cosmetic and must never be trusted as proof of an address.** Blockie
+look-alikes are a known phishing vector: an attacker can mine a different address whose identicon
+looks the same to a human. Always verify the full address, never the picture.
+
+## Packages
+
+- `packages/core` — pure, isomorphic library: `blo` port, CREATE2 derivation, scoring, templates
+- `packages/miner` — multi-core CLI
+
+## Development
+
+    mise install
+    pnpm install
+    pnpm test
+
+## Usage
+
+    npx safe-vanity-blockie \
+      --owners 0xYourOwner,0xAnotherOwner \
+      --threshold 1 \
+      --rpc https://ethereum-rpc.publicnode.com \
+      --target faces \
+      --keep 20 \
+      --out results.json \
+      --gallery gallery.html
+
+Run `npx safe-vanity-blockie --help` for every flag. `Ctrl+C` stops the workers and keeps the best
+results found so far.
+
+### Targets
+
+`--target` accepts a builtin name (`faces`, `smile`, `frown`, `neutral`, `open`, `small`) or a path
+to a `FaceSpec` JSON file. `faces` pins the eyes and accepts any of the five expressions, crediting
+each candidate with its best-fitting one.
+
+### Resuming and merging runs
+
+Each run prints a resume line. Start the next run there, with the same `--workers`, and merge the
+JSON files by deduping on `address`:
+
+    npx safe-vanity-blockie … --start 8400000000 --workers 8 --out results-2.json
+
+### What score to expect
+
+A mathematically perfect face (all 32 cells exact) is roughly a 1-in-4×10¹¹ event, so it is not
+brute-forceable. Scoring pushes residual error into the lowest-weight corner cells, which makes
+96–98% the practical ceiling — one or two faint stray pixels, never in the eyes or mouth.
+
+| quality | ~nonces | CLI (~2.5–3M/s on 8 cores) |
+|---|---|---|
+| recognisable face (~91%) | ~3–10M | seconds |
+| clean face (~94%) | ~0.1–0.4B | seconds to 2 min |
+| very clean (~95–96%) | ~0.7–4B | 4–25 min |
+| near-perfect (~98%) | ~8B | 45–55 min |
+
+The figures above (other than the first row) are modelled estimates from the design spec, not
+measurements. The measured rate is ~470k nonces/s per worker core (1.89M/s aggregate on 4 workers of
+a 6-core machine); only the first row has been observed directly, in a 6M-nonce run that reached
+92%. The table assumes 8 cores, so times roughly double on a 4-core laptop.
+
+### Deploying
+
+The mined config is counterfactual — deploy whenever you like, on any chain with the canonical Safe
+contracts (zkSync-based chains are rejected: they derive addresses differently).
+
+Set the deployer key via an environment variable rather than `--pk`, so it never lands in shell
+history or `ps` output:
+
+    export SAFE_VANITY_DEPLOYER_KEY=0xYourDeployerKey
+    npx safe-vanity-blockie deploy \
+      --salt 5254976178 --owners 0xYourOwner --threshold 1 \
+      --rpc https://…
+
+`deploy` prints the plan (address, chain, saltNonce, owners, threshold) and, when run at an
+interactive terminal, asks you to type `yes` before broadcasting. Pass `--yes` to skip the prompt
+for scripted use; anything other than `yes` aborts with no transaction sent.
+
+## Testing
+
+    pnpm test           # offline: unit + worker-pool integration
+    pnpm test:network   # additionally hits a public RPC and protocol-kit
+
+Set `TEST_RPC_URL` to use your own endpoint.
+
+## Prior art
+
+Austin Griffith's [`vanity-blockie-miner`](https://github.com/austintgriffith/vanity-blockie-miner)
+brute-forces EOA private keys against the older `ethereum/blockies` algorithm. This project targets a
+Safe CREATE2 `saltNonce` — a deploy config, not a key — against `blo` specifically, with a two-colour,
+multi-expression scoring model.

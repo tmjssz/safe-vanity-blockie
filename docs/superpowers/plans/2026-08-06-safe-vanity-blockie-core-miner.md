@@ -15,7 +15,7 @@
 - **Runtime floors (spec §2):** Node ≥ 20 (we develop on 24 LTS), TypeScript ≥ 5.4 (we use ^6.0.3), pnpm ≥ 9 (we use 11).
 - **`core` purity:** no `node:*` imports, no DOM APIs, no filesystem, no network anywhere in `packages/core/src`. Enforced by a test in Task 5.
 - **Worker leanness (spec §3.2):** worker threads may import `@safe-vanity-blockie/core` and `hash-wasm` only. They must never import `@safe-global/protocol-kit` or `viem`.
-- **Hot path rules (spec §5.5, §11):** integer-only arithmetic, flattened typed arrays, no per-candidate allocation, no per-candidate division, no array-of-objects lookups.
+- **Hot path rules (spec §5.5, §11):** flattened typed arrays, no per-candidate allocation, no array-of-objects lookups. **The scoring loop specifically** must be integer-only with no per-candidate division — that is the rule spec §5.5 states, and it binds `scoring.ts`. It does not bind `address.ts`: `derive()` uses one float division to split the nonce into high/low 32-bit words, which is unavoidable without BigInt (banned for allocation reasons) since a shift count of 32 reduces mod 32. One division alongside two keccak-256 hashes is unmeasurable, and it is strictly cheaper than the source spec's own reference loop, which allocated a BigInt per iteration.
 - **One source of truth (spec §11):** the mining loop lives in `core`, not in `miner`. The CLI worker is a thin wrapper so the future Web Worker can reuse the exact same code.
 - **Chain support:** standard (non-zkSync) chains only. zkSync-family chain IDs must throw a clear error, never silently mis-derive (spec §3.1, §11).
 - **`saltNonce` is emitted as a decimal string everywhere** (JSON, CLI output, deep links) because it may exceed `2^53` (spec §7.3).
@@ -29,6 +29,8 @@
 2. **No `BigInt` in the hot loop.** The spec's reference loop calls `BigInt(nonce)` and four `setBigUint64` writes per iteration. Task 3 writes two `setUint32`s from a plain `number` and keeps bytes 32..56 permanently zero, which is allocation-free and identical in output. A separate `deriveBig()` covers the full `uint256` range for verification.
 3. **`blo` grid generation reuses caller-owned buffers.** `bloDataInto()` writes into a caller-supplied `Uint8Array(32)` + `Uint32Array(4)` and skips building the three colour tuples (it only advances the PRNG 18 times). Byte-for-byte identical to `bloImage().data`, proven by a test.
 4. **JSON output is `{ config, results }`, not a bare array.** Spec §7.3 shows an array but then requires the config context be included "in a header or sibling field"; an object satisfies both and keeps a result self-describing.
+5. **The CLI over-retains before filtering** (added during Task 9, after a real mainnet run exposed the bug). Retention is score-ranked and blind to `--two-color`/`--min-contrast`, which are applied afterwards — so sizing the pool's leaderboard at `--keep` meant higher-scoring three-colour candidates consumed the slots and were then filtered away, discarding the two-colour candidates that would have filled them. Observed: progress reached `best 122/133`, the table topped out at `120/133` with 2 rows instead of 5, and nothing explained either. `cli.ts` now asks the pool for `max(keep * 20, 200)`, filters, then slices to `--keep`, and always reports how many candidates were dropped and why. A grid is two-colour only when no cell uses the spot colour, so this is the common case, not an edge case.
+6. **Progress output detects a non-TTY stderr** (added during Task 9). The `\r` live-overwrite is kept for terminals; piped or redirected output gets newline-terminated lines throttled to one per 30s, plus a guaranteed final line. Without this, an unattended multi-hour run wrote one unbounded line into its log.
 
 ## File structure
 
@@ -2182,8 +2184,13 @@ export interface SafeSetup {
   isL1SafeSingleton?: boolean
 }
 
-/** zkSync Era and friends derive CREATE2 addresses with a different formula (spec §3.1). */
-export const ZKSYNC_CHAIN_IDS: ReadonlySet<bigint> = new Set([324n, 300n, 302n])
+/**
+ * zkSync-family chains derive CREATE2 addresses with a different formula (spec §3.1).
+ * This list mirrors protocol-kit's own zkSync switch — Era mainnet, Era Sepolia, Lens.
+ * protocol-kit additionally gates the zkSync formula on safeVersion <= 1.4.1, which covers
+ * every version this CLI supports, so plain set membership is sufficient here.
+ */
+export const ZKSYNC_CHAIN_IDS: ReadonlySet<bigint> = new Set([324n, 300n, 232n])
 
 /**
  * Reads chainId and the three constants that stay fixed for a given
@@ -2344,7 +2351,7 @@ describe('createPool', () => {
     expect(result.scanned).toBe(100_000)
     expect(result.scannedPerWorker).toEqual([25_000, 25_000, 25_000, 25_000])
     expect(result.candidates).toEqual(single.candidates)
-    expect(result.nextStart).toBe(25_000)
+    expect(result.nextStart).toBe(100_000)
   })
 
   it('reports aggregate progress while running', async () => {
@@ -2404,7 +2411,7 @@ describe('createPool', () => {
       expect(nonce).toBeGreaterThanOrEqual(500)
       expect(nonce).toBeLessThan(500 + 3 * 1000)
     }
-    expect(result.nextStart).toBe(1500)
+    expect(result.nextStart).toBe(3500)
   })
 })
 ```
@@ -2527,8 +2534,15 @@ export interface PoolResult {
   scannedPerWorker: number[]
   candidates: Candidate[]
   /**
-   * Safe `--start` for a follow-up run with the same worker count and perWorker value:
-   * start + max(scannedPerWorker) can never overlap any range this run covered.
+   * Safe `--start` for a follow-up run with the same worker count and perWorker value.
+   * It is the highest END position any worker reached, so nothing this run covered is
+   * ever rescanned. Note the guarantee is no-rescan, NOT full coverage: after an early
+   * stop the unfinished tails of the slower workers are skipped.
+   *
+   * Taking `max(scannedPerWorker)` without the positional offset is WRONG — it compares
+   * each new worker only against the old worker of the same index, and new worker 0 then
+   * lands inside old worker 1's range. With start=500, workers=3, perWorker=1000 it yields
+   * 1500, re-mining two of the three ranges.
    */
   nextStart: number
 }
@@ -2603,7 +2617,9 @@ export function createPool(options: PoolOptions): {
       scanned,
       scannedPerWorker,
       candidates: board.entries(),
-      nextStart: options.start + Math.max(...scannedPerWorker),
+      nextStart:
+        options.start +
+        Math.max(...scannedPerWorker.map((count, index) => index * options.perWorker + count)),
     }
   }
 
@@ -3202,14 +3218,16 @@ export function buildResultsJson(config: ResultConfig, candidates: Candidate[]):
     JSON.stringify(
       {
         config,
+        // Region names come from an untrusted --target FaceSpec, so the spread goes FIRST:
+        // a region named "saltNonce" must never shadow the real saltNonce.
         results: candidates.map((candidate) => ({
+          ...candidate.regions,
           saltNonce: candidate.saltNonce,
           address: candidate.address,
           score: candidate.score,
           max: candidate.maxScore,
           twoColor: candidate.twoColor,
           contrast: candidate.contrast,
-          ...candidate.regions,
         })),
       },
       null,
