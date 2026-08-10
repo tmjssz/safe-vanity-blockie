@@ -229,12 +229,23 @@ export async function runMine(options: MineArgs): Promise<number> {
   // file that never emits 'resize'.
   process.stderr.on('resize', onResize)
 
+  // Installing a handler suppresses Node's default terminate, so Ctrl+C alone can no longer kill
+  // a wedged run. Honour the first interrupt as a graceful stop and let the second one through.
+  let interrupted = false
   const onSigint = () => {
+    if (interrupted) {
+      process.stderr.write('\nInterrupted again; exiting without saving results.\n')
+      process.off('SIGINT', onSigint)
+      process.kill(process.pid, 'SIGINT')
+      return
+    }
+    interrupted = true
     // Erase the live block before writing beneath it. Otherwise these lines land between the
     // cursor and the block, and every later cursor-up count is short by that many rows --
     // leaving stale block rows stranded above the final report.
     eraseLiveBlock()
     process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
+    process.stderr.write('Press Ctrl+C again to quit immediately and discard them.\n')
     pool.stop()
   }
   process.on('SIGINT', onSigint)
