@@ -9,6 +9,12 @@ const CONFIG = {
   saltNonce: '1885506',
 }
 
+// encodeConfigParam is typed to SharedConfig, so malformed/adversarial payloads that don't fit
+// that shape are encoded by hand, the same way encodeConfigParam does it internally.
+function encodeRaw(value: unknown): string {
+  return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 describe('config deep link', () => {
   it('round-trips a config', () => {
     const { config, error } = decodeConfigParam(encodeConfigParam(CONFIG))
@@ -44,5 +50,51 @@ describe('config deep link', () => {
   it('rejects a non-numeric saltNonce', () => {
     const bad = encodeConfigParam({ ...CONFIG, saltNonce: '0x10' })
     expect(decodeConfigParam(bad).error).toMatch(/saltNonce/)
+  })
+
+  it('rejects owners containing a non-string entry, rather than dropping it and mining a different Safe', () => {
+    const bad = encodeRaw({
+      ...CONFIG,
+      owners: [1234, '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
+    })
+    const { config, error } = decodeConfigParam(bad)
+    expect(error).toMatch(/invalid owner/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects JSON that decodes to a bare number', () => {
+    const { config, error } = decodeConfigParam(encodeRaw(42))
+    expect(error).toMatch(/could not decode/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects JSON that decodes to a bare string', () => {
+    const { config, error } = decodeConfigParam(encodeRaw('hello'))
+    expect(error).toMatch(/could not decode/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects JSON that decodes to null', () => {
+    const { config, error } = decodeConfigParam(encodeRaw(null))
+    expect(error).toMatch(/could not decode/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects JSON that decodes to an array', () => {
+    const { config, error } = decodeConfigParam(encodeRaw([1, 2, 3]))
+    expect(error).toMatch(/could not decode/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects an owners field that is present but not an array', () => {
+    const { config, error } = decodeConfigParam(encodeRaw({ ...CONFIG, owners: 'not-an-array' }))
+    expect(error).toMatch(/add at least one owner/i)
+    expect(config).toBeUndefined()
+  })
+
+  it('rejects a saltNonce given as a number rather than a string', () => {
+    const { config, error } = decodeConfigParam(encodeRaw({ ...CONFIG, saltNonce: 1885506 }))
+    expect(error).toMatch(/saltNonce/)
+    expect(config).toBeUndefined()
   })
 })

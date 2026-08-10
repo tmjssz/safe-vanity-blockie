@@ -38,9 +38,13 @@ export function decodeConfigParam(param: string): { config?: SharedConfig; error
   }
   const candidate = raw as Record<string, unknown>
 
-  const owners = Array.isArray(candidate.owners)
-    ? candidate.owners.filter((owner): owner is string => typeof owner === 'string')
-    : []
+  if (
+    Array.isArray(candidate.owners) &&
+    candidate.owners.some((owner) => typeof owner !== 'string')
+  ) {
+    return { error: 'This link contains an invalid owner entry.' }
+  }
+  const owners = Array.isArray(candidate.owners) ? (candidate.owners as string[]) : []
   const { errors } = validateMineConfig({
     owners,
     threshold: Number(candidate.threshold),
