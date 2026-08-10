@@ -653,7 +653,11 @@ export function validateMineConfig(input: {
     errors.safeVersion = `Unsupported Safe version "${input.safeVersion}".`
   }
 
-  if (ZKSYNC_CHAIN_IDS.has(BigInt(input.chainId))) {
+  // Guard before BigInt(): it throws a RangeError for NaN/Infinity/non-integers, and the
+  // ?config= parser calls this with Number(untrustedValue). Validation must never throw.
+  if (!Number.isInteger(input.chainId)) {
+    errors.chainId = `Chain ${input.chainId} is not supported.`
+  } else if (ZKSYNC_CHAIN_IDS.has(BigInt(input.chainId))) {
     errors.chainId = 'zkSync-based chains derive addresses with a different formula.'
   } else if (!SUPPORTED_CHAINS.some((chain) => chain.id === input.chainId)) {
     errors.chainId = `Chain ${input.chainId} is not supported.`
