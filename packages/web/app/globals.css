@@ -7,3 +7,7 @@ input, select { padding: .5rem; font: inherit; }
 .notice { border: 1px solid currentColor; border-radius: .5rem; padding: .75rem 1rem; }
 [role='alert'] { color: #b00020; margin: 0; }
 button { padding: .6rem 1rem; font: inherit; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+.card { margin: 0; padding: 1rem; border: 1px solid rgba(128,128,128,.4); border-radius: .5rem; }
+figcaption { display: grid; gap: .25rem; margin-top: .75rem; }
+code { font-size: 12px; overflow-wrap: anywhere; }
