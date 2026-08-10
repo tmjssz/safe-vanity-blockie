@@ -32,7 +32,7 @@ describe('validateMineConfig', () => {
 
   it('rejects duplicate owners, case-insensitively', () => {
     const errors = validateMineConfig(input({ owners: [OWNER_A, OWNER_A.toLowerCase()] })).errors
-    expect(errors.owners).toMatch(/duplicate/)
+    expect(errors.owners).toMatch(/duplicate/i)
   })
 
   it('rejects a threshold above the owner count', () => {
@@ -48,7 +48,7 @@ describe('validateMineConfig', () => {
 
   it('rejects an unsupported Safe version', () => {
     expect(validateMineConfig(input({ safeVersion: '1.2.0' })).errors.safeVersion).toMatch(
-      /unsupported/,
+      /unsupported/i,
     )
   })
 
@@ -58,5 +58,23 @@ describe('validateMineConfig', () => {
 
   it('rejects zkSync-family chains explicitly, since they derive addresses differently', () => {
     expect(validateMineConfig(input({ chainId: 324 })).errors.chainId).toMatch(/zkSync/)
+  })
+
+  it('rejects a non-integer chainId (NaN) without throwing', () => {
+    const { config, errors } = validateMineConfig(input({ chainId: NaN }))
+    expect(config).toBeUndefined()
+    expect(errors.chainId).toMatch(/not supported/)
+  })
+
+  it('rejects a non-integer chainId (fractional) without throwing', () => {
+    const { config, errors } = validateMineConfig(input({ chainId: 1.5 }))
+    expect(config).toBeUndefined()
+    expect(errors.chainId).toMatch(/not supported/)
+  })
+
+  it('rejects a non-integer chainId (Infinity) without throwing', () => {
+    const { config, errors } = validateMineConfig(input({ chainId: Infinity }))
+    expect(config).toBeUndefined()
+    expect(errors.chainId).toMatch(/not supported/)
   })
 })

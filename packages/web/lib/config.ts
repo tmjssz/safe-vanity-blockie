@@ -50,7 +50,7 @@ export function validateMineConfig(input: {
         seen.add(key)
         return false
       })
-      if (duplicate) errors.owners = `duplicate owner ${duplicate}.`
+      if (duplicate) errors.owners = `Duplicate owner ${duplicate}.`
     }
   }
 
@@ -63,10 +63,12 @@ export function validateMineConfig(input: {
   }
 
   if (!SUPPORTED_SAFE_VERSIONS.includes(input.safeVersion as SupportedSafeVersion)) {
-    errors.safeVersion = `unsupported Safe version "${input.safeVersion}".`
+    errors.safeVersion = `Unsupported Safe version "${input.safeVersion}".`
   }
 
-  if (ZKSYNC_CHAIN_IDS.has(BigInt(input.chainId))) {
+  if (!Number.isInteger(input.chainId)) {
+    errors.chainId = `Chain ${input.chainId} is not supported.`
+  } else if (ZKSYNC_CHAIN_IDS.has(BigInt(input.chainId))) {
     errors.chainId = 'zkSync-based chains derive addresses with a different formula.'
   } else if (!SUPPORTED_CHAINS.some((chain) => chain.id === input.chainId)) {
     errors.chainId = `Chain ${input.chainId} is not supported.`
