@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
+import { chainById } from '../lib/wagmi'
+import { CliHandoff } from './CliHandoff'
 import { ResultCard } from './ResultCard'
 
 const DISPLAY_COUNT = 8
@@ -55,6 +57,7 @@ export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewPr
         {workers} workers
         {state.droppedCount > 0 && ` · ${state.droppedCount} filtered out`}
       </p>
+      <CliHandoff config={config} rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]} />
       <button type="button" onClick={state.running ? stop : () => undefined}>
         {state.running ? 'Stop' : 'Stopped'}
       </button>

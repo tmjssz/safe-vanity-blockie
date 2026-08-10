@@ -18,6 +18,20 @@ looks the same to a human. Always verify the full address, never the picture.
 
 - `packages/core` — pure, isomorphic library: `blo` port, CREATE2 derivation, scoring, templates
 - `packages/miner` — multi-core CLI
+- `packages/web` — browser app: mine in a Web Worker pool, connect a wallet, deploy the result
+
+## Web app
+
+`packages/web` is a Next.js app that mines a `saltNonce` across a pool of Web Workers, shows
+live results as real `blo` SVGs, restores a config from a `?config=` share link, and deploys a
+chosen result with a connected injected wallet. It cross-checks the deployed address twice
+before showing success — see [`packages/web/README.md`](packages/web/README.md) for how it
+mines, its performance figures, and its wallet support. Every result card also offers a
+ready-to-paste `npx safe-vanity-blockie` command, for searches long enough to want every CPU
+core and resumability.
+
+    mise exec -- pnpm -r build
+    mise exec -- pnpm --filter @safe-vanity-blockie/web dev
 
 ## Development
 
