@@ -153,10 +153,11 @@ export async function runMine(options: MineArgs): Promise<number> {
     isL1SafeSingleton: options.isL1SafeSingleton,
   })
 
-  const perWorker = Number.isFinite(options.maxIterations)
-    ? Math.ceil(options.maxIterations / options.workers)
-    : WORKER_BLOCK
-  const budget = Number.isFinite(options.maxIterations)
+  const bounded = Number.isFinite(options.maxIterations)
+  // Ceil so the ranges cover the whole budget; totalCount below trims the tail workers back so
+  // the run scans exactly --max-iterations rather than up to workers-1 nonces past it.
+  const perWorker = bounded ? Math.ceil(options.maxIterations / options.workers) : WORKER_BLOCK
+  const budget = bounded
     ? `${options.maxIterations.toLocaleString('en-US')} nonces`
     : 'until Ctrl+C'
 
@@ -200,6 +201,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     start: options.start,
     workers: options.workers,
     perWorker,
+    totalCount: bounded ? options.maxIterations : undefined,
     keep: retain,
     onProgress: (progress) => {
       lastProgress = progress

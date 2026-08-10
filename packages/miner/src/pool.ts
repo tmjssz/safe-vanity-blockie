@@ -21,8 +21,14 @@ export interface PoolOptions {
   faceSpec: FaceSpec
   start: number
   workers: number
-  /** Nonces assigned to each worker; also the stride between worker ranges. */
+  /** Stride between worker ranges, and the most nonces any one worker scans. */
   perWorker: number
+  /**
+   * Cap on the nonces scanned across all workers. `perWorker * workers` rounds up when the
+   * budget does not divide evenly, so without this the run would overshoot the caller's limit;
+   * the trailing workers get short ranges instead. Unbounded when omitted.
+   */
+  totalCount?: number
   keep: number
   chunkSize?: number
   workerUrl?: URL
@@ -37,8 +43,9 @@ export interface PoolResult {
    * Safe `--start` for a follow-up run with the same worker count and perWorker value: the
    * highest end position (`start + index * perWorker + scanned`) any worker reached, so a
    * follow-up run never rescans anything this run covered. On full completion this equals
-   * `start + workers * perWorker`. After an early stop it may SKIP unscanned gaps left by
-   * slower workers — the guarantee is no-rescan, not full coverage.
+   * `start + totalCount` (or `start + workers * perWorker` when uncapped). After an early stop
+   * it may SKIP unscanned gaps left by slower workers — the guarantee is no-rescan, not full
+   * coverage.
    */
   nextStart: number
   /** Wall-clock time this pool spent mining, in milliseconds. */
@@ -76,12 +83,19 @@ export function createPool(options: PoolOptions): {
 
     const workers: Worker[] = []
 
+    // Ranges stay `perWorker` apart whatever the cap does to the counts, so they never overlap
+    // and nextStart's `index * perWorker + scanned` arithmetic below still holds.
+    const countFor = (index: number): number =>
+      options.totalCount === undefined
+        ? options.perWorker
+        : Math.max(0, Math.min(options.perWorker, options.totalCount - index * options.perWorker))
+
     const runs = Array.from({ length: options.workers }, (_, index) => {
       const input: WorkerInput = {
         constantsHex: options.constantsHex,
         faceSpec: options.faceSpec,
         start: options.start + index * options.perWorker,
-        count: options.perWorker,
+        count: countFor(index),
         keep: options.keep,
         chunkSize: options.chunkSize ?? 250_000,
         stopFlag,
@@ -118,14 +132,17 @@ export function createPool(options: PoolOptions): {
     }
 
     const scanned = scannedPerWorker.reduce((a, b) => a + b, 0)
+    // Workers the cap left with an empty range are excluded: they were never assigned territory,
+    // so treating their range start as "reached" would push nextStart past unscanned nonces.
+    const ends = scannedPerWorker
+      .map((scanned, index) => (countFor(index) === 0 ? 0 : index * options.perWorker + scanned))
+      .concat(0)
     return {
       scanned,
       elapsedMs: Date.now() - startedAt,
       scannedPerWorker,
       candidates: board.entries(),
-      nextStart:
-        options.start +
-        Math.max(...scannedPerWorker.map((scanned, index) => index * options.perWorker + scanned)),
+      nextStart: options.start + Math.max(...ends),
     }
   }
 

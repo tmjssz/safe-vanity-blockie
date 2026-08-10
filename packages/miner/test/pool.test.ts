@@ -116,6 +116,44 @@ describe('createPool', () => {
     expect(result.nextStart).toBe(3500)
   })
 
+  it('never scans past totalCount when it does not divide evenly across workers', async () => {
+    const pool = createPool({
+      constantsHex: CONSTANTS_HEX,
+      faceSpec: FACE_SPEC,
+      start: 0,
+      workers: 3,
+      // What the CLI derives from `--max-iterations 1000 --workers 3`.
+      perWorker: Math.ceil(1000 / 3),
+      totalCount: 1000,
+      keep: 20,
+      chunkSize: 100,
+      workerUrl: new URL('../dist/worker.js', import.meta.url),
+    })
+    const result = await pool.run()
+
+    expect(result.scanned).toBe(1000)
+    expect(result.scannedPerWorker).toEqual([334, 334, 332])
+    expect(result.nextStart).toBe(1000)
+  })
+
+  it('leaves no unscanned gap when totalCount is smaller than the worker count', async () => {
+    const pool = createPool({
+      constantsHex: CONSTANTS_HEX,
+      faceSpec: FACE_SPEC,
+      start: 700,
+      workers: 8,
+      perWorker: Math.ceil(2 / 8),
+      totalCount: 2,
+      keep: 20,
+      workerUrl: new URL('../dist/worker.js', import.meta.url),
+    })
+    const result = await pool.run()
+
+    expect(result.scanned).toBe(2)
+    // The six idle workers must not push nextStart past 702 -- nothing scanned beyond it.
+    expect(result.nextStart).toBe(702)
+  })
+
   it('resumes from nextStart without rescanning or overlapping the previous run', async () => {
     const poolA = createPool({
       constantsHex: CONSTANTS_HEX,
