@@ -178,6 +178,10 @@ export async function runMine(options: MineArgs): Promise<number> {
   }
   let loggedBestScore = -1
 
+  /** The candidate the live block puts first, i.e. the best one that survives the filters. */
+  const liveTop = (progress: PoolProgress): Candidate | undefined =>
+    selectReported(progress.best, liveSelection).reported[0]
+
   /** Moves back over the drawn block and clears it, leaving the cursor where the block began. */
   const eraseLiveBlock = () => {
     process.stderr.write(cursorUpAndClear(drawnLines))
@@ -207,7 +211,10 @@ export async function runMine(options: MineArgs): Promise<number> {
       // unattended run does not flood the log. The face is logged only when the best
       // improves, which is bounded by the score range and is the part worth recording.
       const now = Date.now()
-      const best = progress.best[0]
+      // The filtered top, matching what the block and the final report show. Triggering on the
+      // unfiltered progress.best[0] would end the log on a "best" higher than any reported
+      // result, and re-log an unchanged face whenever a filtered-out candidate beat it.
+      const best = liveTop(progress)
       if (best && best.score > loggedBestScore) {
         loggedBestScore = best.score
         lastLoggedAt = now
@@ -216,7 +223,7 @@ export async function runMine(options: MineArgs): Promise<number> {
         )
       } else if (now - lastLoggedAt >= PROGRESS_LOG_INTERVAL_MS) {
         lastLoggedAt = now
-        process.stderr.write(`${progressLineText(progress, progress.best[0])}\n`)
+        process.stderr.write(`${progressLineText(progress, best)}\n`)
       }
     },
   })
@@ -261,7 +268,7 @@ export async function runMine(options: MineArgs): Promise<number> {
       eraseLiveBlock()
     } else if (lastProgress) {
       // Always record the final state, even if the throttle above just skipped it.
-      process.stderr.write(`${progressLineText(lastProgress, lastProgress.best[0])}\n`)
+      process.stderr.write(`${progressLineText(lastProgress, liveTop(lastProgress))}\n`)
     }
   }
 
