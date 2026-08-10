@@ -32,6 +32,11 @@ function HomeContent() {
   const [filters, setFilters] = useState<FaceFilters>(DEFAULT_FACE_FILTERS)
   const [selected, setSelected] = useState<Candidate | undefined>()
   const [linkCandidateError, setLinkCandidateError] = useState<string | undefined>()
+  // Distinct from `selected`: once the reconstruction attempt has settled (either way), the app
+  // must never go back to "awaiting" it, even after the user later clears `selected` by clicking
+  // "Back to mining" — that used to re-derive `awaitingLinkCandidate` from `!selected` alone,
+  // which flipped back to true and left mining paused forever with no candidate and no way out.
+  const [linkCandidateSettled, setLinkCandidateSettled] = useState(false)
 
   // Memoised so a re-render (e.g. from mining progress updates) does not hand MiningView a new
   // FaceSpec object and restart the run — only an actual change to the accepted expressions
@@ -64,11 +69,15 @@ function HomeContent() {
     let cancelled = false
     candidateFromSaltNonce(constantsForLink.data.constants, linked.saltNonce, faceSpec)
       .then((candidate) => {
-        if (!cancelled) setSelected(candidate)
+        if (!cancelled) {
+          setSelected(candidate)
+          setLinkCandidateSettled(true)
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
           setLinkCandidateError(error instanceof Error ? error.message : String(error))
+          setLinkCandidateSettled(true)
         }
       })
     return () => {
@@ -80,8 +89,10 @@ function HomeContent() {
   // never spins up workers just to have them stopped again a moment later once `selected` is
   // set. Falls through to normal mining if reconstruction errors, or the constants fetch itself
   // fails (in which case MiningView's own useSafeConstants call will surface that same error).
+  // Gated on `linkCandidateSettled`, not `!selected`: the attempt resolving (either way) is what
+  // ends the "awaiting" state, permanently — not whatever the user does with `selected` next.
   const awaitingLinkCandidate =
-    Boolean(linked?.saltNonce) && !selected && !linkCandidateError && !constantsForLink.error
+    Boolean(linked?.saltNonce) && !linkCandidateSettled && !constantsForLink.error
 
   return (
     <>

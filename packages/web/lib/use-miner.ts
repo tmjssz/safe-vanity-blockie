@@ -30,6 +30,14 @@ export interface StartMiningInput {
   twoColor: boolean
   minContrast: number
   start?: number
+  /**
+   * Continues the existing run instead of starting a fresh one: keeps the current leaderboard
+   * and cumulative scanned/elapsed totals rather than discarding them, and expects `start` to be
+   * the resume point (normally the previous run's `nextStart`) so nothing already covered gets
+   * rescanned. Ignored (treated as a fresh start) if there is no existing board to resume — e.g.
+   * the very first call.
+   */
+  resume?: boolean
 }
 
 export interface MinerState {
@@ -70,6 +78,13 @@ export function useMiner(): {
   const boardRef = useRef<Leaderboard | undefined>(undefined)
   const startedAtRef = useRef(0)
   const liveRef = useRef(0)
+  // Cumulative scanned count / active-mining time from segments before the current one. A
+  // "segment" ends whenever start() is called again (pause or a fresh run); on resume these
+  // fold the ending segment's numbers in instead of losing them, so pausing to inspect a result
+  // and resuming does not reset the displayed scanned count or rate back to zero. Reset to 0 on
+  // a genuinely fresh start.
+  const priorScannedRef = useRef(0)
+  const priorElapsedRef = useRef(0)
   // Filters are a display concern: retention (RETENTION_MULTIPLIER/MIN_RETENTION above) is
   // score-ranked and filter-blind, so re-filtering never needs to touch the worker pool or
   // discard mining progress. `publish` (defined fresh inside every start()) reads this ref
@@ -97,6 +112,10 @@ export function useMiner(): {
 
   const start = useCallback(
     (input: StartMiningInput) => {
+      // Only a real resume of an existing run preserves anything — a `resume: true` with no
+      // prior board (e.g. the very first call) is indistinguishable from a fresh start.
+      const resuming = Boolean(input.resume) && boardRef.current !== undefined
+
       teardown()
 
       runIdRef.current += 1
@@ -106,18 +125,30 @@ export function useMiner(): {
       const from = input.start ?? 0
       const ranges = planWorkerRanges(from, input.workers, WORKER_BLOCK)
 
+      if (resuming) {
+        // Fold the segment that just ended into the running totals instead of discarding them.
+        // `boardRef.current` is left as-is (same Leaderboard instance, same entries).
+        priorScannedRef.current += scannedRef.current.reduce((a, b) => a + b, 0)
+        priorElapsedRef.current += Date.now() - startedAtRef.current
+      } else {
+        boardRef.current = new Leaderboard(retain)
+        priorScannedRef.current = 0
+        priorElapsedRef.current = 0
+      }
+
       scannedRef.current = new Array(input.workers).fill(0)
-      boardRef.current = new Leaderboard(retain)
       startedAtRef.current = Date.now()
       liveRef.current = input.workers
       filtersRef.current = { twoColor: input.twoColor, minContrast: input.minContrast }
-      setState({ ...IDLE, running: true })
+      setState((previous) =>
+        resuming ? { ...previous, running: true, error: undefined } : { ...IDLE, running: true },
+      )
 
       const publish = () => {
         const board = boardRef.current
         if (!board) return
-        const scanned = scannedRef.current.reduce((a, b) => a + b, 0)
-        const elapsedMs = Math.max(1, Date.now() - startedAtRef.current)
+        const scanned = priorScannedRef.current + scannedRef.current.reduce((a, b) => a + b, 0)
+        const elapsedMs = Math.max(1, priorElapsedRef.current + (Date.now() - startedAtRef.current))
         const { reported, droppedCount } = selectReported(board.entries(), {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,

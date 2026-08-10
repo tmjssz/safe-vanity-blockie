@@ -1,7 +1,7 @@
 'use client'
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
@@ -33,6 +33,16 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
   const { twoColor, minContrast } = filters
 
+  // Identifies "the same run" across a pause/resume cycle: constants/faceSpec/workers are
+  // exactly the inputs that genuinely invalidate a run in progress (see below), so if none of
+  // them changed since the last time this effect actually started mining, un-pausing is a
+  // resume of that run rather than a fresh one. Left untouched while paused, so a config/face
+  // change made while paused (e.g. via FacePicker, still visible next to a selected result) is
+  // correctly detected as "different" once mining resumes.
+  const runIdentityRef = useRef<{ data: unknown; faceSpec: FaceSpec; workers: number } | null>(
+    null,
+  )
+
   // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast are
   // deliberately excluded: they're a display filter over already-mined candidates, not
   // something that requires re-mining, and restarting on every keystroke in the contrast field
@@ -40,10 +50,20 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
   //
   // `paused` toggling to true re-runs this effect, whose cleanup (`stop`) fires for the run that
   // was in progress, then the body returns early instead of starting a new one — so pausing
-  // stops the live run without terminating the worker pool. Toggling back to false starts fresh.
+  // stops the live run without terminating the worker pool. Toggling back to false resumes that
+  // same run (continuing from `state.nextStart`, keeping the leaderboard) when nothing else
+  // changed, or starts fresh if constants/faceSpec/workers changed while paused.
   useEffect(() => {
     if (!constants.data) return
     if (paused) return
+
+    const sameRun =
+      runIdentityRef.current !== null &&
+      runIdentityRef.current.data === constants.data &&
+      runIdentityRef.current.faceSpec === faceSpec &&
+      runIdentityRef.current.workers === workers
+    runIdentityRef.current = { data: constants.data, faceSpec, workers }
+
     start({
       constantsHex: constants.data.constantsHex,
       faceSpec,
@@ -51,6 +71,8 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
       keep: DISPLAY_COUNT,
       twoColor,
       minContrast,
+      resume: sameRun,
+      start: sameRun ? state.nextStart : undefined,
     })
     return stop
     // eslint-disable-next-line react-hooks/exhaustive-deps

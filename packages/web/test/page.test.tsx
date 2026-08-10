@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Page from '../app/page'
+import { encodeConfigParam } from '../lib/deep-link'
 
 // CRITICAL regression coverage: page.tsx renders `{selected && <DeployPanel .../>}` with no
 // `key`. Without a key, choosing a second candidate re-renders the SAME DeployPanel instance,
@@ -42,6 +43,7 @@ const {
   waitForTransactionReceiptMock,
   getSafeAddressFromDeploymentTxMock,
   facePickerPropsRef,
+  searchParamsRef,
 } = vi.hoisted(() => ({
   useAccountMock: vi.fn(() => ({ isConnected: true, address: '0x' + 'cc'.repeat(20), chainId: 1 })),
   useSwitchChainMock: vi.fn(() => ({ switchChain: vi.fn() })),
@@ -54,6 +56,7 @@ const {
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
   facePickerPropsRef: { current: undefined as { value: string[] } | undefined },
+  searchParamsRef: { current: new URLSearchParams() },
 }))
 
 vi.mock('wagmi', () => ({
@@ -66,6 +69,9 @@ vi.mock('wagmi', () => ({
 
 vi.mock('@safe-vanity-blockie/safe-config', () => ({
   loadSafeConstants: loadSafeConstantsMock,
+  // `../lib/config`'s validateMineConfig (exercised by decodeConfigParam, in the NEW-1 test
+  // below) reads this directly — an empty set means nothing this suite's chain IDs collide with.
+  ZKSYNC_CHAIN_IDS: new Set(),
 }))
 
 vi.mock('../lib/deploy', () => ({ buildDeploymentPlan: buildDeploymentPlanMock }))
@@ -82,7 +88,7 @@ vi.mock('@safe-global/protocol-kit', () => ({
 }))
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsRef.current,
 }))
 
 vi.mock('../components/ConfigForm', () => ({
@@ -123,6 +129,7 @@ vi.mock('../components/MiningView', () => ({
 }))
 
 beforeEach(() => {
+  searchParamsRef.current = new URLSearchParams()
   loadSafeConstantsMock.mockReset().mockResolvedValue({
     chainId: 1n,
     constants: {
@@ -196,6 +203,40 @@ describe('Page', () => {
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
     expect(screen.getByText(CANDIDATE_B.address)).toBeDefined()
     expect(screen.queryByText(CANDIDATE_A.address)).toBeNull()
+  })
+
+  it('NEW-1 regression: a share-link user who clicks "Back to mining" is not stranded paused forever', async () => {
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    // The mocked ConfigForm ignores `initial` and always submits the same CONFIG, but that's
+    // enough: what matters here is that the URL carried a saltNonce.
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    // The link candidate reconstructs and gets selected automatically — DeployPanel appears and
+    // mining is paused for it, without ever clicking a "select" button.
+    await screen.findByRole('button', { name: /^deploy this safe/i })
+    expect(screen.getByText('paused')).toBeDefined()
+    expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+
+    // Clicking "Back to mining" must leave mining running, not paused — and must not print the
+    // reconstruction-failed alert or otherwise re-enter an "awaiting the link candidate" limbo.
+    await user.click(screen.getByRole('button', { name: /back to mining/i }))
+
+    expect(screen.getByText('running')).toBeDefined()
+    expect(screen.queryByText('paused')).toBeNull()
+    expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /^deploy this safe/i })).toBeNull()
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {
