@@ -360,14 +360,22 @@ export async function runMine(options: MineArgs): Promise<number> {
     elapsedMs: result.elapsedMs,
   }
 
-  if (options.out) {
-    writeFileSync(options.out, buildResultsJson(config, reported))
-    process.stdout.write(`\nWrote ${options.out}\n`)
+  // A bad --out path must not cost a multi-hour run its gallery, deploy command and --start
+  // resume line. Report the failure and keep going; the results are already on stdout.
+  const writeOutput = (path: string, contents: string): void => {
+    try {
+      writeFileSync(path, contents)
+      process.stdout.write(`Wrote ${path}\n`)
+    } catch (error) {
+      process.stderr.write(
+        `Warning: could not write ${path} (${error instanceof Error ? error.message : String(error)}).\n`,
+      )
+    }
   }
-  if (options.gallery) {
-    writeFileSync(options.gallery, buildGalleryHtml(config, reported))
-    process.stdout.write(`Wrote ${options.gallery}\n`)
-  }
+
+  if (options.out || options.gallery) process.stdout.write('\n')
+  if (options.out) writeOutput(options.out, buildResultsJson(config, reported))
+  if (options.gallery) writeOutput(options.gallery, buildGalleryHtml(config, reported))
 
   const deployFlags = [
     `--salt ${top.saltNonce}`,
