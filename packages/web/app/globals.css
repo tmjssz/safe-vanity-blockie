@@ -1,0 +1,9 @@
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; padding: 2rem; max-width: 72rem; }
+form { display: grid; gap: .5rem; max-width: 34rem; }
+label { font-weight: 600; }
+input, select { padding: .5rem; font: inherit; }
+.hint { color: color-mix(in srgb, currentColor 60%, transparent); font-size: 13px; margin: 0; }
+.notice { border: 1px solid currentColor; border-radius: .5rem; padding: .75rem 1rem; }
+[role='alert'] { color: #b00020; margin: 0; }
+button { padding: .6rem 1rem; font: inherit; cursor: pointer; }

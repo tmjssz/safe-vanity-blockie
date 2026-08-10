@@ -1,0 +1,32 @@
+{
+  "name": "@safe-vanity-blockie/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@safe-global/protocol-kit": "^8.0.5",
+    "@safe-vanity-blockie/core": "workspace:*",
+    "@safe-vanity-blockie/safe-config": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "viem": "^2.55.11",
+    "wagmi": "^3.7.6"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1"
+  }
+}
