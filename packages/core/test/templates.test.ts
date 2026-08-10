@@ -66,4 +66,13 @@ describe('templates', () => {
       }),
     ).toThrow(/weight must be a positive integer/)
   })
+
+  it('parseFaceSpec reports non-object array entries instead of throwing a TypeError', () => {
+    expect(() => parseFaceSpec({ fixed: [null] })).toThrow(/fixed\[0\] must be an object/)
+    expect(() => parseFaceSpec({ regions: [null] })).toThrow(/regions\[0\] must be an object/)
+    expect(() => parseFaceSpec({ regions: [{ indices: [0], alternatives: [null] }] })).toThrow(
+      /regions\[0\]\.alternatives\[0\] must be an object/,
+    )
+    expect(() => parseFaceSpec({ fixed: ['nope'] })).toThrow(/fixed\[0\] must be an object/)
+  })
 })

@@ -83,6 +83,15 @@ export function getTemplate(name: string): FaceSpec {
   return TEMPLATES[name]
 }
 
+/** Guards the `entry as Record<string, unknown>` casts below: a null or primitive entry would
+ *  otherwise surface as a raw TypeError from the first property read. */
+function requireObject(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object, got ${JSON.stringify(value)}`)
+  }
+  return value as Record<string, unknown>
+}
+
 function requirePositiveInteger(value: unknown, label: string): number {
   if (!Number.isInteger(value) || (value as number) <= 0) {
     throw new Error(`${label} must be a positive integer, got ${JSON.stringify(value)}`)
@@ -100,7 +109,7 @@ export function parseFaceSpec(input: unknown): FaceSpec {
 
   const fixedInput = Array.isArray(raw.fixed) ? raw.fixed : []
   const fixed: FixedCell[] = fixedInput.map((entry, i) => {
-    const cell = entry as Record<string, unknown>
+    const cell = requireObject(entry, `fixed[${i}]`)
     const index = cell.index
     if (!Number.isInteger(index) || (index as number) < 0 || (index as number) > 31) {
       throw new Error(`fixed[${i}].index must be an integer between 0 and 31`)
@@ -117,8 +126,8 @@ export function parseFaceSpec(input: unknown): FaceSpec {
 
   const regionsInput = Array.isArray(raw.regions) ? raw.regions : []
   const regions: FaceRegion[] = regionsInput.map((entry, r) => {
-    const region = entry as Record<string, unknown>
     const label = `regions[${r}]`
+    const region = requireObject(entry, label)
     if (!Array.isArray(region.indices) || region.indices.length === 0) {
       throw new Error(`${label}.indices must be a non-empty array`)
     }
@@ -131,7 +140,7 @@ export function parseFaceSpec(input: unknown): FaceSpec {
       throw new Error(`${label}.alternatives must contain at least one alternative`)
     }
     const alternatives: RegionAlternative[] = region.alternatives.map((altEntry, a) => {
-      const alternative = altEntry as Record<string, unknown>
+      const alternative = requireObject(altEntry, `${label}.alternatives[${a}]`)
       if (!Array.isArray(alternative.cells)) {
         throw new Error(`${label}.alternatives[${a}].cells must be an array`)
       }
