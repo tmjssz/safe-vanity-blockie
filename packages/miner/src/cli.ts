@@ -215,7 +215,9 @@ export async function runMine(options: MineArgs): Promise<number> {
     // Previously drawn lines may have re-wrapped, so the cursor-up count is no longer valid.
     drawnLines = 0
   }
-  process.stdout.on('resize', onResize)
+  // On stderr, not stdout: the live block is drawn on stderr, and stdout may be redirected to a
+  // file that never emits 'resize'.
+  process.stderr.on('resize', onResize)
 
   const onSigint = () => {
     process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
@@ -228,7 +230,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     result = await pool.run()
   } finally {
     process.off('SIGINT', onSigint)
-    process.stdout.off('resize', onResize)
+    process.stderr.off('resize', onResize)
     if (process.stderr.isTTY) {
       // Erase the live block so the final report below is not a visual duplicate of it.
       if (drawnLines > 0) process.stderr.write(`\u001b[${drawnLines}A\u001b[0J`)
