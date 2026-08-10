@@ -485,10 +485,14 @@ export default defineConfig({
 })
 ```
 
-`packages/web/vitest.setup.ts`:
+`packages/web/vitest.setup.ts` — Testing Library does not auto-unmount under vitest, so
+without this every render leaks into the next test's DOM query:
 
 ```ts
-import '@testing-library/react'
+import { cleanup } from '@testing-library/react'
+import { afterEach } from 'vitest'
+
+afterEach(cleanup)
 ```
 
 Install:
@@ -986,7 +990,7 @@ describe('FacePicker', () => {
     render(<FacePicker value={['smile']} onChange={onChange} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /smile/i }))
     expect(onChange).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveProperty('textContent', expect.stringMatching(/at least one/i))
+    expect(screen.getByRole('alert').textContent).toMatch(/at least one/i)
   })
 })
 ```
@@ -1651,9 +1655,13 @@ Expected: FAIL — `Failed to resolve import "../lib/use-miner.js"`.
 ```ts
 'use client'
 
-import { selectReported, type Candidate, type FaceSpec } from '@safe-vanity-blockie/core'
+import {
+  Leaderboard,
+  selectReported,
+  type Candidate,
+  type FaceSpec,
+} from '@safe-vanity-blockie/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Leaderboard } from '@safe-vanity-blockie/core'
 import {
   WORKER_BLOCK,
   nextStartFrom,
@@ -1925,7 +1933,6 @@ Expected: FAIL — the two new component modules do not resolve.
 
 import { loadSafeConstants, type SafeSetup } from '@safe-vanity-blockie/safe-config'
 import { useEffect, useState } from 'react'
-import { http, createPublicClient } from 'viem'
 import type { MineConfig } from './config.js'
 import { chainById } from './wagmi.js'
 
@@ -1979,8 +1986,6 @@ export function useSafeConstants(config: MineConfig | undefined): {
   return state
 }
 ```
-
-> `createPublicClient`/`http` are imported so the module compiles against viem's chain types used by `chainById`; if the implementer finds them unused after writing `wagmi.ts` in Task 8, delete the import rather than leaving it.
 
 - [ ] **Step 4: Write the components**
 
