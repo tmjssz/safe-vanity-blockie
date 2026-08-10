@@ -45,6 +45,9 @@ importers:
       '@safe-vanity-blockie/core':
         specifier: workspace:*
         version: link:../core
+      '@safe-vanity-blockie/safe-config':
+        specifier: workspace:*
+        version: link:../safe-config
       viem:
         specifier: ^2.55.11
         version: 2.55.11(typescript@6.0.3)
@@ -52,6 +55,21 @@ importers:
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+
+  packages/safe-config:
+    dependencies:
+      '@safe-global/protocol-kit':
+        specifier: ^8.0.5
+        version: 8.0.5(typescript@6.0.3)
+      '@safe-global/types-kit':
+        specifier: ^4.0.1
+        version: 4.0.1(typescript@6.0.3)
+      '@safe-vanity-blockie/core':
+        specifier: workspace:*
+        version: link:../core
+      viem:
+        specifier: ^2.55.11
+        version: 2.55.11(typescript@6.0.3)
 
 packages:
 

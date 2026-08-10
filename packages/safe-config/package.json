@@ -1,12 +1,13 @@
 {
-  "name": "safe-vanity-blockie",
+  "name": "@safe-vanity-blockie/safe-config",
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
-  "description": "Brute-force a Safe saltNonce so the Safe address renders a two-color face as a blo identicon",
-  "bin": { "safe-vanity-blockie": "./dist/cli.js" },
-  "main": "./dist/cli.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "files": ["dist", "LICENSE"],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "pnpm build",
@@ -18,10 +19,6 @@
     "@safe-global/protocol-kit": "^8.0.5",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
-    "@safe-vanity-blockie/safe-config": "workspace:*",
     "viem": "^2.55.11"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.3"
   }
 }

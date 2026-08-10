@@ -1,4 +1,10 @@
-import { bloData, bloSvg, type Candidate } from '@safe-vanity-blockie/core'
+import {
+  bloData,
+  bloSvg,
+  filterCandidates,
+  formatScore,
+  type Candidate,
+} from '@safe-vanity-blockie/core'
 
 export interface ResultConfig {
   owners: string[]
@@ -42,15 +48,6 @@ export function formatDuration(elapsedMs: number): string {
   return `${seconds}s`
 }
 
-/**
- * A score as a percentage of the template's maximum. One decimal, because the interesting
- * results sit in a narrow band near the top and whole percent would collapse distinct scores.
- */
-export function formatScore(score: number, maxScore: number): string {
-  if (maxScore <= 0) return '0.0%'
-  return `${((score / maxScore) * 100).toFixed(1)}%`
-}
-
 const GLYPHS = ['  ', '██', '▒▒'] as const
 
 /** 8 lines of 8 cells. Columns 4-7 mirror columns 3-0, exactly as blo renders them. */
@@ -65,16 +62,6 @@ export function renderAscii(data: Uint8Array): string[] {
     lines.push(line)
   }
   return lines
-}
-
-export function filterCandidates(
-  candidates: Candidate[],
-  filters: { twoColor: boolean; minContrast: number },
-): Candidate[] {
-  return candidates.filter(
-    (candidate) =>
-      (!filters.twoColor || candidate.twoColor) && candidate.contrast >= filters.minContrast,
-  )
 }
 
 function regionSummary(candidate: Candidate): string {

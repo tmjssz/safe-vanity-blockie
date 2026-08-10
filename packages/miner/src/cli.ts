@@ -4,8 +4,10 @@ import { availableParallelism } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import {
   compileFace,
+  formatScore,
   getTemplate,
   parseFaceSpec,
+  selectReported,
   TEMPLATES,
   type Candidate,
   type FaceSpec,
@@ -18,13 +20,11 @@ import {
   resultColumnsForWidth,
   buildGalleryHtml,
   buildResultsJson,
-  filterCandidates,
   formatDuration,
-  formatScore,
   formatLeaderboard,
   type ResultConfig,
 } from './report.js'
-import { loadSafeConstants, verifyWithProtocolKit } from './setup.js'
+import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
 
 /** A builtin template name, or a path to a FaceSpec JSON file. */
 export function resolveFaceSpec(target: string): FaceSpec {
@@ -112,33 +112,6 @@ function columnsFor(stream: NodeJS.WriteStream): number {
 
 /** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
 const PROGRESS_LOG_INTERVAL_MS = 30_000
-
-export interface SelectReportedResult {
-  reported: Candidate[]
-  /** Candidates removed by --two-color / --min-contrast filtering; 0 when the fallback fired. */
-  droppedCount: number
-  /** True when filtering would have emptied the list, so the unfiltered candidates were used. */
-  usedFallback: boolean
-}
-
-/**
- * Applies --two-color / --min-contrast filtering to the over-retained leaderboard, falls back to
- * the unfiltered list if filtering would empty it, and trims to --keep. Pure and independent of
- * the network so it can be unit tested directly.
- */
-export function selectReported(
-  candidates: Candidate[],
-  options: { twoColor: boolean; minContrast: number; keep: number },
-): SelectReportedResult {
-  const filtered = filterCandidates(candidates, {
-    twoColor: options.twoColor,
-    minContrast: options.minContrast,
-  })
-  const usedFallback = filtered.length === 0 && candidates.length > 0
-  const usable = usedFallback ? candidates : filtered
-  const droppedCount = usedFallback ? 0 : candidates.length - filtered.length
-  return { reported: usable.slice(0, options.keep), droppedCount, usedFallback }
-}
 
 export async function runMine(options: MineArgs): Promise<number> {
   const faceSpec = resolveFaceSpec(options.target)
