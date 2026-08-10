@@ -62,6 +62,11 @@ function progressLineText(progress: PoolProgress, best: Candidate | undefined): 
   )
 }
 
+/** ANSI: move the cursor up `lines` rows and clear everything from there down. */
+function cursorUpAndClear(lines: number): string {
+  return lines > 0 ? `\u001b[${lines}A\u001b[0J` : ''
+}
+
 /**
  * The live progress display: the current best blockie drawn in the same layout the final
  * report uses, with the status line beneath it. Just the status line until a candidate exists.
@@ -173,10 +178,15 @@ export async function runMine(options: MineArgs): Promise<number> {
   }
   let loggedBestScore = -1
 
+  /** Moves back over the drawn block and clears it, leaving the cursor where the block began. */
+  const eraseLiveBlock = () => {
+    process.stderr.write(cursorUpAndClear(drawnLines))
+    drawnLines = 0
+  }
+
   /** Redraws the live block in place: up over the previous one, then clear and rewrite. */
   const redraw = (block: string[]) => {
-    const reset = drawnLines > 0 ? `\u001b[${drawnLines}A\u001b[0J` : ''
-    process.stderr.write(`${reset}${block.join('\n')}\n`)
+    process.stderr.write(`${cursorUpAndClear(drawnLines)}${block.join('\n')}\n`)
     drawnLines = block.length
   }
 
@@ -220,6 +230,10 @@ export async function runMine(options: MineArgs): Promise<number> {
   process.stderr.on('resize', onResize)
 
   const onSigint = () => {
+    // Erase the live block before writing beneath it. Otherwise these lines land between the
+    // cursor and the block, and every later cursor-up count is short by that many rows --
+    // leaving stale block rows stranded above the final report.
+    eraseLiveBlock()
     process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
     pool.stop()
   }
@@ -233,8 +247,7 @@ export async function runMine(options: MineArgs): Promise<number> {
     process.stderr.off('resize', onResize)
     if (process.stderr.isTTY) {
       // Erase the live block so the final report below is not a visual duplicate of it.
-      if (drawnLines > 0) process.stderr.write(`\u001b[${drawnLines}A\u001b[0J`)
-      drawnLines = 0
+      eraseLiveBlock()
     } else if (lastProgress) {
       // Always record the final state, even if the throttle above just skipped it.
       process.stderr.write(`${progressLineText(lastProgress, lastProgress.best[0])}\n`)
