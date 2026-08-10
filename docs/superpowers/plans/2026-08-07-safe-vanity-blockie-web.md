@@ -377,6 +377,13 @@ Report the work as staged. Suggested commit message: `refactor: extract safe-con
 
 ### Task 2: Next.js app scaffold and the Configure step
 
+> **Module specifiers in `packages/web`:** relative imports are written **without** a file
+> extension (`from '../lib/config'`). The web package uses `moduleResolution: bundler`, and
+> Turbopack — Next 16's build bundler — cannot resolve a `.js` specifier that points at a
+> `.ts`/`.tsx` source, even though Vite/vitest can. The `.js` convention used in `core`,
+> `safe-config` and `miner` is correct for those packages (NodeNext) and wrong here.
+
+
 **Files:**
 - Create: `packages/web/package.json`, `tsconfig.json`, `next.config.ts`, `vitest.config.ts`, `vitest.setup.ts`, `app/layout.tsx`, `app/page.tsx`, `app/globals.css`, `lib/config.ts`, `components/ConfigForm.tsx`, `components/SecurityNotice.tsx`
 - Test: `packages/web/test/config.test.ts`, `packages/web/test/ConfigForm.test.tsx`
@@ -507,7 +514,7 @@ mise exec -- pnpm install
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { validateMineConfig } from '../lib/config.js'
+import { validateMineConfig } from '../lib/config'
 
 const OWNER_A = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 const OWNER_B = '0x' + '22'.repeat(20)
@@ -540,7 +547,7 @@ describe('validateMineConfig', () => {
 
   it('rejects duplicate owners, case-insensitively', () => {
     const errors = validateMineConfig(input({ owners: [OWNER_A, OWNER_A.toLowerCase()] })).errors
-    expect(errors.owners).toMatch(/duplicate/)
+    expect(errors.owners).toMatch(/duplicate/i)
   })
 
   it('rejects a threshold above the owner count', () => {
@@ -556,7 +563,7 @@ describe('validateMineConfig', () => {
 
   it('rejects an unsupported Safe version', () => {
     expect(validateMineConfig(input({ safeVersion: '1.2.0' })).errors.safeVersion).toMatch(
-      /unsupported/,
+      /unsupported/i,
     )
   })
 
@@ -673,7 +680,7 @@ export function validateMineConfig(input: {
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { ConfigForm } from '../components/ConfigForm.js'
+import { ConfigForm } from '../components/ConfigForm'
 
 const OWNER = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 
@@ -743,7 +750,7 @@ import {
   validateMineConfig,
   type ConfigErrors,
   type MineConfig,
-} from '../lib/config.js'
+} from '../lib/config'
 
 export interface ConfigFormProps {
   initial?: Partial<{ owners: string; threshold: number; safeVersion: string; chainId: number }>
@@ -858,9 +865,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 'use client'
 
 import { useState } from 'react'
-import { ConfigForm } from '../components/ConfigForm.js'
-import { SecurityNotice } from '../components/SecurityNotice.js'
-import type { MineConfig } from '../lib/config.js'
+import { ConfigForm } from '../components/ConfigForm'
+import { SecurityNotice } from '../components/SecurityNotice'
+import type { MineConfig } from '../lib/config'
 
 export default function Page() {
   const [config, setConfig] = useState<MineConfig | undefined>()
@@ -932,7 +939,7 @@ Suggested commit message: `feat(web): scaffold the Next.js app and the config st
 ```ts
 import { compileFace } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection.js'
+import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
 
 describe('faceSpecFromSelection', () => {
   it('offers the five built-in expressions', () => {
@@ -970,7 +977,7 @@ describe('faceSpecFromSelection', () => {
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { FacePicker } from '../components/FacePicker.js'
+import { FacePicker } from '../components/FacePicker'
 
 describe('FacePicker', () => {
   it('renders a toggle for every expression', () => {
@@ -1050,7 +1057,7 @@ export function Blockie({ address, size = 64 }: BlockieProps) {
 'use client'
 
 import { useState } from 'react'
-import { ALL_MOUTH_NAMES } from '../lib/face-selection.js'
+import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 
 export interface FacePickerProps {
   value: string[]
@@ -1150,7 +1157,7 @@ import {
   hexToBytes,
 } from '@safe-vanity-blockie/core'
 import { describe, expect, it, vi } from 'vitest'
-import { runBrowserMiner } from '../lib/browser-miner.js'
+import { runBrowserMiner } from '../lib/browser-miner'
 
 const CONSTANTS_HEX = {
   initializerHash: '0x' + '11'.repeat(32),
@@ -1381,7 +1388,7 @@ Suggested commit message: `feat(web): add the sliced browser mining loop`.
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { nextStartFrom, planWorkerRanges } from '../lib/worker-protocol.js'
+import { nextStartFrom, planWorkerRanges } from '../lib/worker-protocol'
 
 describe('planWorkerRanges', () => {
   it('gives every worker a disjoint, gapless block', () => {
@@ -1488,8 +1495,8 @@ export function nextStartFrom(
 
 ```ts
 /// <reference lib="webworker" />
-import { runBrowserMiner } from '../lib/browser-miner.js'
-import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol.js'
+import { runBrowserMiner } from '../lib/browser-miner'
+import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
 
 let stopRequested = false
 
@@ -1525,8 +1532,8 @@ self.onmessage = async (message: MessageEvent<WorkerRequest>) => {
 ```tsx
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol.js'
-import { useMiner } from '../lib/use-miner.js'
+import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
+import { useMiner } from '../lib/use-miner'
 
 const instances: FakeWorker[] = []
 
@@ -1668,7 +1675,7 @@ import {
   planWorkerRanges,
   type WorkerEvent,
   type WorkerRequest,
-} from './worker-protocol.js'
+} from './worker-protocol'
 
 /**
  * Retention is score-ranked and blind to the two-colour and contrast filters, which are
@@ -1849,7 +1856,7 @@ Suggested commit message: `feat(web): add the mining worker and useMiner hook`.
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { ResultCard } from '../components/ResultCard.js'
+import { ResultCard } from '../components/ResultCard'
 
 const candidate = {
   saltNonce: '1885506',
@@ -1899,7 +1906,7 @@ describe('ResultCard', () => {
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { MiningView } from '../components/MiningView.js'
+import { MiningView } from '../components/MiningView'
 
 const CONFIG = { owners: ['0x' + '11'.repeat(20)], threshold: 1, safeVersion: '1.4.1', chainId: 1 }
 
@@ -1933,8 +1940,8 @@ Expected: FAIL — the two new component modules do not resolve.
 
 import { loadSafeConstants, type SafeSetup } from '@safe-vanity-blockie/safe-config'
 import { useEffect, useState } from 'react'
-import type { MineConfig } from './config.js'
-import { chainById } from './wagmi.js'
+import type { MineConfig } from './config'
+import { chainById } from './wagmi'
 
 /**
  * Reads chainId and the three CREATE2 constants once per config. Everything protocol-kit
@@ -1993,7 +2000,7 @@ export function useSafeConstants(config: MineConfig | undefined): {
 
 ```tsx
 import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
-import { Blockie } from './Blockie.js'
+import { Blockie } from './Blockie'
 
 export interface ResultCardProps {
   candidate: Candidate
@@ -2029,10 +2036,10 @@ export function ResultCard({ candidate, onSelect }: ResultCardProps) {
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
 import { useEffect, useState } from 'react'
-import type { MineConfig } from '../lib/config.js'
-import { useMiner } from '../lib/use-miner.js'
-import { useSafeConstants } from '../lib/use-safe-constants.js'
-import { ResultCard } from './ResultCard.js'
+import type { MineConfig } from '../lib/config'
+import { useMiner } from '../lib/use-miner'
+import { useSafeConstants } from '../lib/use-safe-constants'
+import { ResultCard } from './ResultCard'
 
 const DISPLAY_COUNT = 8
 
@@ -2134,7 +2141,7 @@ Suggested commit message: `feat(web): add the live mining view and result cards`
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link.js'
+import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
 const CONFIG = {
   owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
@@ -2191,7 +2198,7 @@ Expected: FAIL — `Failed to resolve import "../lib/deep-link.js"`.
 - [ ] **Step 3: Write `lib/deep-link.ts`**
 
 ```ts
-import { validateMineConfig } from './config.js'
+import { validateMineConfig } from './config'
 
 export interface SharedConfig {
   owners: string[]
@@ -2267,7 +2274,7 @@ export function decodeConfigParam(param: string): { config?: SharedConfig; error
 'use client'
 
 import { useState } from 'react'
-import { encodeConfigParam, type SharedConfig } from '../lib/deep-link.js'
+import { encodeConfigParam, type SharedConfig } from '../lib/deep-link'
 
 export function ShareConfig({ config }: { config: SharedConfig }) {
   const [copied, setCopied] = useState(false)
@@ -2327,8 +2334,8 @@ Suggested commit message: `feat(web): add ?config= deep links`.
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { SUPPORTED_CHAINS } from '../lib/config.js'
-import { chainById, wagmiConfig } from '../lib/wagmi.js'
+import { SUPPORTED_CHAINS } from '../lib/config'
+import { chainById, wagmiConfig } from '../lib/wagmi'
 
 describe('wagmi config', () => {
   it('covers exactly the chains the app offers', () => {
@@ -2394,7 +2401,7 @@ export function chainById(chainId: number): Chain {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { WagmiProvider } from 'wagmi'
-import { wagmiConfig } from '../lib/wagmi.js'
+import { wagmiConfig } from '../lib/wagmi'
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
@@ -2486,7 +2493,7 @@ Suggested commit message: `feat(web): connect injected wallets via wagmi`.
 ```ts
 import { createAddressDeriver, createKeccak256, hexToBytes } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { assertDerivedAddressMatches } from '../lib/deploy.js'
+import { assertDerivedAddressMatches } from '../lib/deploy'
 
 const CONSTANTS = {
   initializerHash: hexToBytes('0x' + '11'.repeat(32)),
@@ -2531,7 +2538,7 @@ describe('assertDerivedAddressMatches', () => {
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { DeployPanel } from '../components/DeployPanel.js'
+import { DeployPanel } from '../components/DeployPanel'
 
 vi.mock('wagmi', () => ({
   useAccount: () => ({ isConnected: false, address: undefined, chainId: 1 }),
@@ -2674,9 +2681,9 @@ export async function buildDeploymentPlan(input: {
 import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
 import { useState } from 'react'
 import { useAccount, useConnectorClient, useSwitchChain } from 'wagmi'
-import type { MineConfig } from '../lib/config.js'
-import { ShareConfig } from './ShareConfig.js'
-import { Blockie } from './Blockie.js'
+import type { MineConfig } from '../lib/config'
+import { ShareConfig } from './ShareConfig'
+import { Blockie } from './Blockie'
 
 export function DeployPanel({ config, candidate }: { config: MineConfig; candidate: Candidate }) {
   const { isConnected, address, chainId } = useAccount()
@@ -2825,7 +2832,7 @@ Suggested commit message: `feat(web): add the deploy flow with an independent ad
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CliHandoff, npxCommandFor } from '../components/CliHandoff.js'
+import { CliHandoff, npxCommandFor } from '../components/CliHandoff'
 
 const config = {
   owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', '0x' + '22'.repeat(20)],
@@ -2865,7 +2872,7 @@ Expected: FAIL — `Failed to resolve import "../components/CliHandoff.js"`.
 - [ ] **Step 3: Write `components/CliHandoff.tsx`**
 
 ```tsx
-import type { MineConfig } from '../lib/config.js'
+import type { MineConfig } from '../lib/config'
 
 export function npxCommandFor(config: MineConfig, options: { rpcUrl: string }): string {
   return [
