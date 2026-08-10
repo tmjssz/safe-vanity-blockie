@@ -64,9 +64,17 @@ export function useMiner(): {
   const boardRef = useRef<Leaderboard | undefined>(undefined)
   const startedAtRef = useRef(0)
   const liveRef = useRef(0)
+  // Bumped at the top of every start() and captured per-worker below. terminate() does not
+  // un-queue a message a worker already dispatched, so a stale message can still arrive after
+  // teardown; the handler compares its captured run id against this ref and bails out rather
+  // than merge a candidate mined under a superseded config's constantsHex/faceSpec.
+  const runIdRef = useRef(0)
 
   const teardown = useCallback(() => {
-    for (const worker of workersRef.current) worker.terminate()
+    for (const worker of workersRef.current) {
+      worker.onmessage = null
+      worker.terminate()
+    }
     workersRef.current = []
   }, [])
 
@@ -75,6 +83,9 @@ export function useMiner(): {
   const start = useCallback(
     (input: StartMiningInput) => {
       teardown()
+
+      runIdRef.current += 1
+      const runId = runIdRef.current
 
       const retain = Math.max(input.keep * RETENTION_MULTIPLIER, MIN_RETENTION)
       const from = input.start ?? 0
@@ -112,6 +123,7 @@ export function useMiner(): {
           type: 'module',
         })
         worker.onmessage = (message: MessageEvent<WorkerEvent>) => {
+          if (runIdRef.current !== runId) return
           const event = message.data
           if (event.type === 'error') {
             setState((previous) => ({ ...previous, running: false, error: event.message }))

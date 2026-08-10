@@ -117,4 +117,32 @@ describe('useMiner', () => {
     act(() => instances[0].emit({ type: 'error', message: 'wasm failed to load' }))
     await waitFor(() => expect(result.current.state.error).toMatch(/wasm failed to load/))
   })
+
+  it('ignores a message from a superseded run, so a stale worker cannot corrupt the new one', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+    const staleWorker = instances[0]
+
+    const secondRunInput = {
+      ...startInput,
+      workers: 3,
+    } as unknown as Parameters<ReturnType<typeof useMiner>['start']>[0]
+    act(() => result.current.start(secondRunInput))
+
+    // terminate() does not un-queue a message the old worker already dispatched — this
+    // simulates that message arriving after the new run has already replaced the refs it
+    // would write into.
+    act(() =>
+      staleWorker.emit({
+        type: 'progress',
+        scanned: 999_999,
+        candidates: [candidate('0xstale', 999)],
+      }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.state.scanned).toBe(0)
+      expect(result.current.state.candidates).toEqual([])
+    })
+  })
 })
