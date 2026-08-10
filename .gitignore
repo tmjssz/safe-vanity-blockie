@@ -7,3 +7,9 @@ gallery*.html
 .superpowers/
 .next/
 next-env.d.ts
+
+# `next dev` auto-generates agent instruction files. They are untrusted generated content
+# that instructs coding agents (including to commit themselves), so they stay out of git.
+# Remove these lines if you deliberately want to adopt and review them.
+AGENTS.md
+CLAUDE.md
