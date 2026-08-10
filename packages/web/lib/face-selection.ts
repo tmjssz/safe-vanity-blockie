@@ -12,3 +12,23 @@ export function faceSpecFromSelection(mouthNames: string[]): FaceSpec {
   }
   return faceWithMouths(mouthNames.join('+'), mouthNames)
 }
+
+/**
+ * The 32 target cells (left half of the 8x8 grid) for one accepted expression: the pinned
+ * eyes/background plus that expression's mouth shape. This is the pattern the miner is aiming
+ * at, not an identicon of any real address — `faceWithMouths` throws `unknown mouth "…"` for a
+ * name it does not recognise, which propagates unchanged from here.
+ */
+export function targetGridFor(mouthName: string): (0 | 1)[] {
+  const spec = faceWithMouths(mouthName, [mouthName])
+  const grid: (0 | 1)[] = new Array(32).fill(0)
+  for (const cell of spec.fixed) {
+    grid[cell.index] = cell.value
+  }
+  const [region] = spec.regions
+  const [alternative] = region.alternatives
+  region.indices.forEach((index, position) => {
+    grid[index] = alternative.cells[position]
+  })
+  return grid
+}

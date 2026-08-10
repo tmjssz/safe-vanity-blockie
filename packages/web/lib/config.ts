@@ -25,6 +25,16 @@ export type ConfigErrors = Partial<
   Record<'owners' | 'threshold' | 'safeVersion' | 'chainId', string>
 >
 
+/** Filters applied to candidates before they can be reported as a match. */
+export interface FaceFilters {
+  /** Reject candidates whose blockie uses the spot colour — the common case to want. */
+  twoColor: boolean
+  /** Minimum RGB distance required between the two blockie colours. 0-442; 442 is black/white. */
+  minContrast: number
+}
+
+export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 0 }
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 export function validateMineConfig(input: {

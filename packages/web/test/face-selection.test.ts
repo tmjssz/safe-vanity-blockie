@@ -1,6 +1,6 @@
 import { compileFace } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
+import { ALL_MOUTH_NAMES, faceSpecFromSelection, targetGridFor } from '../lib/face-selection'
 
 describe('faceSpecFromSelection', () => {
   it('offers the five built-in expressions', () => {
@@ -28,5 +28,28 @@ describe('faceSpecFromSelection', () => {
 
   it('rejects an unknown expression name', () => {
     expect(() => faceSpecFromSelection(['grin'])).toThrow(/unknown mouth "grin"/)
+  })
+})
+
+describe('targetGridFor', () => {
+  it('returns 32 cells, each 0 or 1', () => {
+    const grid = targetGridFor('smile')
+    expect(grid).toHaveLength(32)
+    expect(grid.every((cell) => cell === 0 || cell === 1)).toBe(true)
+  })
+
+  it('pins the eye cell for every expression', () => {
+    // index 10 is the eye pixel BASE_TARGET fixes regardless of mouth — see templates.ts.
+    for (const name of ALL_MOUTH_NAMES) {
+      expect(targetGridFor(name)[10]).toBe(1)
+    }
+  })
+
+  it('gives different expressions different grids', () => {
+    expect(targetGridFor('smile')).not.toEqual(targetGridFor('frown'))
+  })
+
+  it('rejects an unknown expression name', () => {
+    expect(() => targetGridFor('grin')).toThrow(/unknown mouth "grin"/)
   })
 })
