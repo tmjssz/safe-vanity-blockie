@@ -13,6 +13,8 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
   const { data: client } = useConnectorClient()
   const [status, setStatus] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
+  const [busy, setBusy] = useState(false)
+  const [completed, setCompleted] = useState(false)
 
   const wrongChain = isConnected && chainId !== config.chainId
 
@@ -43,16 +45,23 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
       {isConnected && !wrongChain && (
         <button
           type="button"
+          disabled={busy || completed}
           onClick={async () => {
             if (!client || !address) return
             setError(undefined)
-            // Hoisted so the catch block can still report it if waitForTransactionReceipt
-            // fails after broadcast — a lost hash after gas is spent is worse than an error.
+            setBusy(true)
+            // Hoisted so the catch block can still report them if something fails after the
+            // point they were set — a lost hash (or a lost "we don't know") after gas may
+            // already be spent is worse than an error.
             let hash: `0x${string}` | undefined
+            let sendDispatched = false
             try {
               setStatus('Reading Safe constants…')
               const { loadSafeConstants } = await import('@safe-vanity-blockie/safe-config')
               const { chainById } = await import('../lib/wagmi')
+              // Re-read rather than reuse anything already computed for mining: that is what
+              // keeps this an independent constants source for the deriver cross-check below,
+              // not a re-check of our own cached values.
               const setup = await loadSafeConstants({
                 rpcUrl: chainById(config.chainId).rpcUrls.default.http[0],
                 owners: config.owners,
@@ -70,10 +79,22 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
                 chainId: config.chainId,
               })
 
+              // Ties the plan built for the send path to the candidate the user actually picked
+              // and is looking at on screen. Cannot diverge today (both derive from the same
+              // saltNonce and config), but a saltNonce arriving from elsewhere (e.g. a share
+              // link) would make this reachable, so it is checked before anything is spent.
+              if (plan.address.toLowerCase() !== candidate.address.toLowerCase()) {
+                throw new Error(
+                  `Deployment plan address ${plan.address} does not match the selected ` +
+                    `candidate ${candidate.address}. Refusing to deploy.`,
+                )
+              }
+
               setStatus(`Sending — confirm in your wallet to deploy ${plan.address}…`)
               // useConnectorClient() returns a plain viem Client, not one extended with wallet
               // actions, so sendTransaction is called as a standalone action against it.
               const { sendTransaction } = await import('viem/actions')
+              sendDispatched = true
               hash = await sendTransaction(client, {
                 to: plan.transaction.to as `0x${string}`,
                 value: BigInt(plan.transaction.value),
@@ -92,19 +113,46 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
                 setError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
                 return
               }
-              setStatus(`Safe deployed at ${plan.address}.`)
+
+              // The transaction succeeded, but success only means the calldata protocol-kit
+              // built for `plan.address` executed without reverting — it does not by itself
+              // prove a Safe now exists at that address. Read the address the deployment
+              // actually produced back out of the receipt's logs and cross-check it before
+              // telling the user it worked.
+              const { getSafeAddressFromDeploymentTx } = await import('@safe-global/protocol-kit')
+              const deployed = getSafeAddressFromDeploymentTx(receipt, config.safeVersion)
+              if (deployed.toLowerCase() !== plan.address.toLowerCase()) {
+                setStatus(undefined)
+                setError(
+                  `Deployed address ${deployed} does not match the predicted ${plan.address}. ` +
+                    `Transaction ${hash}.`,
+                )
+                return
+              }
+
+              setCompleted(true)
+              setStatus(`Safe deployed at ${deployed}.`)
             } catch (thrown) {
               setStatus(undefined)
               const message = thrown instanceof Error ? thrown.message : String(thrown)
-              setError(
-                hash
-                  ? `${message} Transaction ${hash} was already sent — check its status before retrying.`
-                  : message,
-              )
+              if (hash) {
+                setError(
+                  `${message} Transaction ${hash} was already sent — check its status before retrying.`,
+                )
+              } else if (sendDispatched) {
+                setError(
+                  `${message} The transaction may already have been broadcast — check your ` +
+                    "wallet's activity list before retrying.",
+                )
+              } else {
+                setError(message)
+              }
+            } finally {
+              setBusy(false)
             }
           }}
         >
-          Deploy this Safe
+          {busy ? 'Deploying…' : 'Deploy this Safe'}
         </button>
       )}
       {status && <p>{status}</p>}
