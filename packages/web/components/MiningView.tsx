@@ -15,10 +15,19 @@ export interface MiningViewProps {
   config: MineConfig
   faceSpec: FaceSpec
   filters: FaceFilters
+  /**
+   * Stops mining without unmounting: the deploy step is the one screen where a user must read
+   * an address carefully, and the grid above must not keep re-sorting itself underneath it. The
+   * already-mined leaderboard stays visible and selectable — including the row that is
+   * currently selected — so the "Use this" flow that DeployPanel's `key` fix guards against
+   * stays reachable. Toggling back to `false` resumes mining (a fresh run; see start()'s always-
+   * reset leaderboard) rather than permanently disabling it.
+   */
+  paused?: boolean
   onSelect: (candidate: Candidate) => void
 }
 
-export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewProps) {
+export function MiningView({ config, faceSpec, filters, paused = false, onSelect }: MiningViewProps) {
   const constants = useSafeConstants(config)
   const { state, start, stop, setFilters } = useMiner()
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
@@ -28,8 +37,13 @@ export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewPr
   // deliberately excluded: they're a display filter over already-mined candidates, not
   // something that requires re-mining, and restarting on every keystroke in the contrast field
   // would discard all progress found so far (see the effect below, which re-filters instead).
+  //
+  // `paused` toggling to true re-runs this effect, whose cleanup (`stop`) fires for the run that
+  // was in progress, then the body returns early instead of starting a new one — so pausing
+  // stops the live run without terminating the worker pool. Toggling back to false starts fresh.
   useEffect(() => {
     if (!constants.data) return
+    if (paused) return
     start({
       constantsHex: constants.data.constantsHex,
       faceSpec,
@@ -40,7 +54,7 @@ export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewPr
     })
     return stop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [constants.data, faceSpec, start, stop, workers])
+  }, [constants.data, faceSpec, start, stop, workers, paused])
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.
   useEffect(() => {
@@ -57,7 +71,11 @@ export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewPr
         {workers} workers
         {state.droppedCount > 0 && ` · ${state.droppedCount} filtered out`}
       </p>
-      <CliHandoff config={config} rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]} />
+      <CliHandoff
+        config={config}
+        rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
+        filters={filters}
+      />
       <button type="button" onClick={state.running ? stop : () => undefined}>
         {state.running ? 'Stop' : 'Stopped'}
       </button>

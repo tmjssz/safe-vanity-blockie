@@ -1,5 +1,17 @@
+import {
+  bloImage,
+  colorContrast,
+  compileFace,
+  createAddressDeriver,
+  createKeccak256,
+  describeMatch,
+  getTemplate,
+  hexToBytes,
+  isTwoColor,
+  makeScorer,
+} from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
+import { candidateFromSaltNonce, decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
 const CONFIG = {
   owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
@@ -96,5 +108,43 @@ describe('config deep link', () => {
     const { config, error } = decodeConfigParam(encodeRaw({ ...CONFIG, saltNonce: 1885506 }))
     expect(error).toMatch(/saltNonce/)
     expect(config).toBeUndefined()
+  })
+})
+
+describe('candidateFromSaltNonce', () => {
+  const CONSTANTS = {
+    initializerHash: hexToBytes('0x' + '11'.repeat(32)),
+    factory: hexToBytes('0x' + '22'.repeat(20)),
+    initCodeHash: hexToBytes('0x' + '33'.repeat(32)),
+  }
+  const FACE_SPEC = getTemplate('faces')
+
+  it('derives the same address createAddressDeriver produces for that nonce', async () => {
+    const keccak256 = await createKeccak256()
+    const expected = createAddressDeriver(CONSTANTS, keccak256).deriveBig(1885506n)
+
+    const candidate = await candidateFromSaltNonce(CONSTANTS, '1885506', FACE_SPEC)
+
+    expect(candidate.address).toBe(expected)
+  })
+
+  it('preserves a saltNonce beyond 2^53 exactly, as a string', async () => {
+    const huge = '18446744073709551616'
+    const candidate = await candidateFromSaltNonce(CONSTANTS, huge, FACE_SPEC)
+    expect(candidate.saltNonce).toBe(huge)
+    expect(typeof candidate.saltNonce).toBe('string')
+  })
+
+  it('agrees with recomputing twoColor, contrast and score from bloImage for the same address', async () => {
+    const candidate = await candidateFromSaltNonce(CONSTANTS, '42', FACE_SPEC)
+
+    const { data, colors } = bloImage(candidate.address)
+    const face = compileFace(FACE_SPEC)
+
+    expect(candidate.twoColor).toBe(isTwoColor(data))
+    expect(candidate.contrast).toBe(Math.round(colorContrast(colors[0], colors[1])))
+    expect(candidate.score).toBe(makeScorer(face)(data))
+    expect(candidate.maxScore).toBe(face.maxScore)
+    expect(candidate.regions).toEqual(describeMatch(face, data).regions)
   })
 })

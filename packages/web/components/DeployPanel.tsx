@@ -131,7 +131,7 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
               }
 
               setCompleted(true)
-              setStatus(`Safe deployed at ${deployed}.`)
+              setStatus(`Safe deployed at ${deployed}. Transaction ${hash}.`)
             } catch (thrown) {
               setStatus(undefined)
               const message = thrown instanceof Error ? thrown.message : String(thrown)

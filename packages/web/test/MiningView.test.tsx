@@ -134,6 +134,78 @@ describe('MiningView', () => {
     expect(startSpy).toHaveBeenCalledTimes(1)
   })
 
+  it('does not start mining when rendered paused, even once constants are ready', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('stops a running mine when paused flips true, without unmounting or losing the leaderboard', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(stopSpy).toHaveBeenCalled()
+    expect(startSpy).toHaveBeenCalledTimes(1)
+    // The row is still there — pausing stops mining, it does not hide the leaderboard.
+    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+  })
+
+  it('resumes mining when paused flips back to false', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).not.toHaveBeenCalled()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(startSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('shows an alert and does not start mining when constants fail to load', () => {
     constantsState.current = { loading: false, error: 'RPC blew up' }
 

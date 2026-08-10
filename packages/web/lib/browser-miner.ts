@@ -9,9 +9,10 @@ import {
 } from '@safe-vanity-blockie/core'
 
 /**
- * Nonces per synchronous burst. At roughly 400k nonces/s per core this is ~125ms of work,
- * short enough that a stop message is acted on almost immediately and the worker stays
- * responsive, long enough that the per-slice overhead is negligible.
+ * Nonces per synchronous burst. Measured at roughly 200k nonces/s per worker, this is ~250ms of
+ * work — consistent with the ~184ms stop latency observed in practice — short enough that a
+ * stop message is acted on promptly and the worker stays responsive, long enough that the
+ * per-slice overhead is negligible.
  */
 export const SLICE_SIZE = 50_000
 

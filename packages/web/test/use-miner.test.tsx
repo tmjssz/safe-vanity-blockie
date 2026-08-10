@@ -7,6 +7,8 @@ const instances: FakeWorker[] = []
 
 class FakeWorker {
   onmessage: ((event: MessageEvent<WorkerEvent>) => void) | null = null
+  onerror: ((event: ErrorEvent) => void) | null = null
+  onmessageerror: ((event: MessageEvent) => void) | null = null
   posted: WorkerRequest[] = []
   terminated = false
 
@@ -24,6 +26,14 @@ class FakeWorker {
 
   emit(event: WorkerEvent) {
     this.onmessage?.({ data: event } as MessageEvent<WorkerEvent>)
+  }
+
+  emitError(message: string) {
+    this.onerror?.({ message } as ErrorEvent)
+  }
+
+  emitMessageError() {
+    this.onmessageerror?.({} as MessageEvent)
   }
 }
 
@@ -116,6 +126,41 @@ describe('useMiner', () => {
     act(() => result.current.start(startInput))
     act(() => instances[0].emit({ type: 'error', message: 'wasm failed to load' }))
     await waitFor(() => expect(result.current.state.error).toMatch(/wasm failed to load/))
+  })
+
+  it('surfaces a worker failing to load or run at all, via onerror, rather than hanging forever', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+    act(() => instances[0].emitError('worker chunk failed to load'))
+
+    await waitFor(() => {
+      expect(result.current.state.error).toMatch(/worker chunk failed to load/)
+      expect(result.current.state.running).toBe(false)
+    })
+    // A worker that can no longer be trusted is torn down, not left running in the background.
+    expect(instances.every((worker) => worker.terminated)).toBe(true)
+  })
+
+  it('surfaces an undeserialisable message via onmessageerror, rather than hanging forever', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+    act(() => instances[0].emitMessageError())
+
+    await waitFor(() => {
+      expect(result.current.state.error).toBeDefined()
+      expect(result.current.state.running).toBe(false)
+    })
+  })
+
+  it('ignores an onerror from a superseded run', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+    const staleWorker = instances[0]
+
+    act(() => result.current.start({ ...startInput, workers: 3 } as typeof startInput))
+    act(() => staleWorker.emitError('stale failure'))
+
+    expect(result.current.state.error).toBeUndefined()
   })
 
   it('setFilters re-publishes from the existing leaderboard without restarting workers', async () => {

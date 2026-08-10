@@ -86,6 +86,8 @@ export function useMiner(): {
   const teardown = useCallback(() => {
     for (const worker of workersRef.current) {
       worker.onmessage = null
+      worker.onerror = null
+      worker.onmessageerror = null
       worker.terminate()
     }
     workersRef.current = []
@@ -152,6 +154,32 @@ export function useMiner(): {
             liveRef.current -= 1
             if (liveRef.current <= 0) setState((previous) => ({ ...previous, running: false }))
           }
+        }
+        // Covers a failure to run the worker module at all — a 404 on the worker chunk after a
+        // redeploy, a host CSP blocking worker-src, WASM blocked — none of which reach the
+        // internal try/catch in mine.worker.ts because the handler itself never starts. Without
+        // this, no message ever arrives, `running` stays true forever, and the UI sits at
+        // "0 nonces" with no explanation.
+        worker.onerror = (event: ErrorEvent) => {
+          if (runIdRef.current !== runId) return
+          setState((previous) => ({
+            ...previous,
+            running: false,
+            error: `Worker failed to start: ${event.message || 'unknown error'}. Reload the page — if this persists, your browser or network may be blocking the mining worker or its WASM.`,
+          }))
+          teardown()
+        }
+        // Fires when a posted message cannot be deserialised on the other side — treated the
+        // same way as onerror since either one means this worker can no longer be trusted to
+        // report progress.
+        worker.onmessageerror = () => {
+          if (runIdRef.current !== runId) return
+          setState((previous) => ({
+            ...previous,
+            running: false,
+            error: 'A message from the mining worker could not be read. Reload the page to retry.',
+          }))
+          teardown()
         }
         const request: WorkerRequest = {
           type: 'start',

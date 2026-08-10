@@ -1,3 +1,16 @@
+import {
+  bloImage,
+  colorContrast,
+  compileFace,
+  createAddressDeriver,
+  createKeccak256,
+  describeMatch,
+  isTwoColor,
+  makeScorer,
+  type Candidate,
+  type FaceSpec,
+  type SafeConstants,
+} from '@safe-vanity-blockie/core'
 import { validateMineConfig } from './config'
 
 export interface SharedConfig {
@@ -68,5 +81,38 @@ export function decodeConfigParam(param: string): { config?: SharedConfig; error
       chainId: Number(candidate.chainId),
       ...(candidate.saltNonce === undefined ? {} : { saltNonce: candidate.saltNonce as string }),
     },
+  }
+}
+
+/**
+ * Reconstructs the exact Candidate a decoded share link's saltNonce corresponds to, without
+ * mining: a share link is deterministic (spec §8.2 — {owners, threshold, safeVersion, saltNonce}
+ * predicts exactly one address), so the address, its blockie grid, and its score can all be
+ * recomputed directly instead of re-scanning for it.
+ *
+ * Mirrors createMiner's own buildCandidate() in packages/core/src/miner.ts exactly, so a
+ * reconstructed candidate is indistinguishable from one the miner would have produced. Uses
+ * deriveBig rather than derive() because a shared saltNonce is a decimal string and may exceed
+ * 2^53 (derive()'s safe-integer fast path).
+ */
+export async function candidateFromSaltNonce(
+  constants: SafeConstants,
+  saltNonce: string,
+  faceSpec: FaceSpec,
+): Promise<Candidate> {
+  const keccak256 = await createKeccak256()
+  const address = createAddressDeriver(constants, keccak256).deriveBig(BigInt(saltNonce))
+
+  const face = compileFace(faceSpec)
+  const { data, colors } = bloImage(address)
+
+  return {
+    saltNonce,
+    address,
+    score: makeScorer(face)(data),
+    maxScore: face.maxScore,
+    twoColor: isTwoColor(data),
+    contrast: Math.round(colorContrast(colors[0], colors[1])),
+    regions: describeMatch(face, data).regions,
   }
 }

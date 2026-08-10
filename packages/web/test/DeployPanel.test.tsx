@@ -104,7 +104,10 @@ describe('DeployPanel', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /^deploy this safe/i }))
 
-    expect(await screen.findByRole('alert')).toBeDefined()
+    // A generous timeout: this waits on a dynamic import plus a rejected promise, and the
+    // default 1000ms has been observed to flake under the CPU contention of a full monorepo
+    // `pnpm -r test` run (many suites' worker pools competing for cores at once).
+    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toBeDefined()
     expect(screen.getByRole('alert').textContent).toMatch(/Could not read Safe constants/)
   })
 })
