@@ -18,10 +18,14 @@ export interface MiningViewProps {
 
 export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewProps) {
   const constants = useSafeConstants(config)
-  const { state, start, stop } = useMiner()
+  const { state, start, stop, setFilters } = useMiner()
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
   const { twoColor, minContrast } = filters
 
+  // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast are
+  // deliberately excluded: they're a display filter over already-mined candidates, not
+  // something that requires re-mining, and restarting on every keystroke in the contrast field
+  // would discard all progress found so far (see the effect below, which re-filters instead).
   useEffect(() => {
     if (!constants.data) return
     start({
@@ -33,7 +37,13 @@ export function MiningView({ config, faceSpec, filters, onSelect }: MiningViewPr
       minContrast,
     })
     return stop
-  }, [constants.data, faceSpec, start, stop, workers, twoColor, minContrast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [constants.data, faceSpec, start, stop, workers])
+
+  // Applies a filter change to the already-mined leaderboard without touching the worker pool.
+  useEffect(() => {
+    setFilters({ twoColor, minContrast })
+  }, [twoColor, minContrast, setFilters])
 
   if (constants.loading) return <p>Reading Safe constants…</p>
   if (constants.error) return <p role="alert">Could not read Safe constants: {constants.error}</p>

@@ -118,6 +118,34 @@ describe('useMiner', () => {
     await waitFor(() => expect(result.current.state.error).toMatch(/wasm failed to load/))
   })
 
+  it('setFilters re-publishes from the existing leaderboard without restarting workers', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 125, false), candidate('0xb', 120, true)],
+      }),
+    )
+    await waitFor(() => {
+      expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
+    })
+
+    act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+    expect(result.current.state.candidates.map((entry) => entry.address).sort()).toEqual([
+      '0xa',
+      '0xb',
+    ])
+    // No worker was touched — this is a display-only re-filter of candidates already mined.
+    expect(instances).toHaveLength(2)
+    expect(instances.every((worker) => !worker.terminated)).toBe(true)
+    // Progress is preserved, not reset.
+    expect(result.current.state.scanned).toBe(10)
+  })
+
   it('ignores a message from a superseded run, so a stale worker cannot corrupt the new one', async () => {
     const { result } = renderHook(() => useMiner())
     act(() => result.current.start(startInput))

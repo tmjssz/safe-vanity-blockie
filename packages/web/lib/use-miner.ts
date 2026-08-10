@@ -53,10 +53,16 @@ const IDLE: MinerState = {
   nextStart: 0,
 }
 
+export interface LiveFilters {
+  twoColor: boolean
+  minContrast: number
+}
+
 export function useMiner(): {
   state: MinerState
   start: (input: StartMiningInput) => void
   stop: () => void
+  setFilters: (filters: LiveFilters) => void
 } {
   const [state, setState] = useState<MinerState>(IDLE)
   const workersRef = useRef<Worker[]>([])
@@ -64,6 +70,13 @@ export function useMiner(): {
   const boardRef = useRef<Leaderboard | undefined>(undefined)
   const startedAtRef = useRef(0)
   const liveRef = useRef(0)
+  // Filters are a display concern: retention (RETENTION_MULTIPLIER/MIN_RETENTION above) is
+  // score-ranked and filter-blind, so re-filtering never needs to touch the worker pool or
+  // discard mining progress. `publish` (defined fresh inside every start()) reads this ref
+  // rather than a value captured by the start() closure, so `setFilters` below can change what
+  // gets shown without restarting anything.
+  const filtersRef = useRef<LiveFilters>({ twoColor: true, minContrast: 0 })
+  const publishRef = useRef<() => void>(() => {})
   // Bumped at the top of every start() and captured per-worker below. terminate() does not
   // un-queue a message a worker already dispatched, so a stale message can still arrive after
   // teardown; the handler compares its captured run id against this ref and bails out rather
@@ -95,6 +108,7 @@ export function useMiner(): {
       boardRef.current = new Leaderboard(retain)
       startedAtRef.current = Date.now()
       liveRef.current = input.workers
+      filtersRef.current = { twoColor: input.twoColor, minContrast: input.minContrast }
       setState({ ...IDLE, running: true })
 
       const publish = () => {
@@ -103,8 +117,8 @@ export function useMiner(): {
         const scanned = scannedRef.current.reduce((a, b) => a + b, 0)
         const elapsedMs = Math.max(1, Date.now() - startedAtRef.current)
         const { reported, droppedCount } = selectReported(board.entries(), {
-          twoColor: input.twoColor,
-          minContrast: input.minContrast,
+          twoColor: filtersRef.current.twoColor,
+          minContrast: filtersRef.current.minContrast,
           keep: input.keep,
         })
         setState((previous) => ({
@@ -117,6 +131,7 @@ export function useMiner(): {
           nextStart: nextStartFrom(from, WORKER_BLOCK, scannedRef.current),
         }))
       }
+      publishRef.current = publish
 
       workersRef.current = ranges.map((range, index) => {
         const worker = new Worker(new URL('../workers/mine.worker.ts', import.meta.url), {
@@ -160,5 +175,10 @@ export function useMiner(): {
     for (const worker of workersRef.current) worker.postMessage(request)
   }, [])
 
-  return { state, start, stop }
+  const setFilters = useCallback((filters: LiveFilters) => {
+    filtersRef.current = filters
+    publishRef.current()
+  }, [])
+
+  return { state, start, stop, setFilters }
 }
