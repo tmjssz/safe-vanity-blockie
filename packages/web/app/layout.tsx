@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { ConnectButton } from '../components/ConnectButton'
+import { Providers } from './providers'
 import './globals.css'
 
 export const metadata = {
@@ -10,10 +12,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <header>
-          <h1>Safe Vanity Blockie</h1>
-        </header>
-        <main>{children}</main>
+        <Providers>
+          <header>
+            <h1>Safe Vanity Blockie</h1>
+            <ConnectButton />
+          </header>
+          <main>{children}</main>
+        </Providers>
       </body>
     </html>
   )
