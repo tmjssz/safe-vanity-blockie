@@ -118,5 +118,36 @@ describe('FacePicker', () => {
         '150',
       )
     })
+
+    it('resynchronises the displayed contrast when the filters prop changes externally', async () => {
+      const { rerender } = render(
+        <FacePicker
+          value={['smile']}
+          onChange={vi.fn()}
+          filters={{ twoColor: true, minContrast: 0 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      const input = screen.getByRole('spinbutton', { name: /minimum contrast/i })
+      await userEvent.clear(input)
+      await userEvent.type(input, '42')
+      expect(input).toHaveProperty('value', '42')
+
+      // An external write to `filters` — e.g. a future "Start over" reset or a `?config=` deep
+      // link — must overwrite whatever the input is currently showing, since this section never
+      // locks and the displayed value must not silently diverge from what the miner filters by.
+      rerender(
+        <FacePicker
+          value={['smile']}
+          onChange={vi.fn()}
+          filters={{ twoColor: true, minContrast: 300 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
+        'value',
+        '300',
+      )
+    })
   })
 })

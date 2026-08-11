@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { TargetPreview } from './TargetPreview'
@@ -22,6 +22,12 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
   // sync), which corrupts multi-digit entry. Keeping our own copy — updated on every change and
   // reported upward via onFiltersChange — sidesteps that without weakening the controlled loop.
   const [contrastText, setContrastText] = useState(String(filters.minContrast))
+  // This section never locks (see FaceSection), so `filters` can change from outside this input
+  // at any time — a "Start over" reset, a `?config=` deep link, etc. Resync the echo whenever the
+  // real value changes so the display cannot silently diverge from what the miner filters by.
+  useEffect(() => {
+    setContrastText(String(filters.minContrast))
+  }, [filters.minContrast])
 
   const toggle = (name: string) => {
     if (value.includes(name)) {
