@@ -1,0 +1,77 @@
+'use client'
+
+import { formatScore } from '@safe-vanity-blockie/core'
+import { Pause, Play } from 'lucide-react'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { Progress } from './ui/progress'
+
+export interface MiningStatus {
+  running: boolean
+  paused: boolean
+  scanned: number
+  rate: number
+  workers: number
+  bestScore?: number
+  bestMaxScore?: number
+}
+
+function formatRate(rate: number): string {
+  return rate >= 1e6 ? `${(rate / 1e6).toFixed(2)}M/s` : `${Math.round(rate / 1000)}k/s`
+}
+
+export function MiningStatusBar({
+  status,
+  onPauseToggle,
+}: {
+  status: MiningStatus
+  onPauseToggle: () => void
+}) {
+  const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
+  const percent = hasBest
+    ? Math.min(100, Math.max(0, (status.bestScore! / status.bestMaxScore!) * 100))
+    : 0
+  const started = status.running || status.paused || status.scanned > 0
+
+  return (
+    <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-2 text-sm">
+        {hasBest ? (
+          <>
+            <Badge variant="secondary" className="font-mono">
+              {formatScore(status.bestScore!, status.bestMaxScore!)}
+            </Badge>
+            <Progress value={percent} className="hidden h-2 w-32 sm:block" />
+          </>
+        ) : (
+          <span className="text-muted-foreground">No candidates yet</span>
+        )}
+
+        <span className="text-muted-foreground">
+          {status.scanned.toLocaleString('en-US')} nonces
+        </span>
+        <span className="text-muted-foreground">{formatRate(status.rate)}</span>
+        <span className="text-muted-foreground">{status.workers} workers</span>
+
+        {started && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            onClick={onPauseToggle}
+          >
+            {status.paused ? (
+              <>
+                <Play className="mr-1 h-3 w-3" /> Resume
+              </>
+            ) : (
+              <>
+                <Pause className="mr-1 h-3 w-3" /> Pause
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}

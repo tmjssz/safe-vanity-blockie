@@ -1,6 +1,7 @@
 'use client'
 
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { Button } from './ui/button'
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount()
@@ -9,25 +10,26 @@ export function ConnectButton() {
 
   if (isConnected && address) {
     return (
-      <button type="button" onClick={() => disconnect()}>
+      <Button variant="outline" size="sm" onClick={() => disconnect()}>
         {address.slice(0, 6)}…{address.slice(-4)} — disconnect
-      </button>
+      </Button>
     )
   }
 
   return (
     <>
       {connectors.map((connector) => (
-        <button
+        <Button
           key={connector.uid}
-          type="button"
+          variant="default"
+          size="sm"
           disabled={isPending}
           onClick={() => connect({ connector })}
         >
           Connect {connector.name}
-        </button>
+        </Button>
       ))}
-      {connectors.length === 0 && <p>No browser wallet detected.</p>}
+      {connectors.length === 0 && <p className="text-sm text-muted-foreground">No browser wallet detected.</p>}
     </>
   )
 }
