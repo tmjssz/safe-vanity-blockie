@@ -36,4 +36,16 @@ describe('ConfigForm', () => {
     render(<ConfigForm onSubmit={vi.fn()} />)
     expect(screen.getByText(/changing them re-rolls/i)).toBeDefined()
   })
+
+  it('submits the chain chosen from the Radix select', async () => {
+    const onSubmit = vi.fn()
+    render(<ConfigForm onSubmit={onSubmit} />)
+
+    await userEvent.type(screen.getByLabelText(/owners/i), OWNER)
+    await userEvent.click(screen.getByRole('combobox', { name: /chain/i }))
+    await userEvent.click(await screen.findByRole('option', { name: /sepolia/i }))
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 11155111 }))
+  })
 })
