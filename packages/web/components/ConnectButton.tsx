@@ -10,7 +10,7 @@ export function ConnectButton() {
 
   if (isConnected && address) {
     return (
-      <Button variant="outline" size="sm" onClick={() => disconnect()}>
+      <Button type="button" variant="outline" size="sm" onClick={() => disconnect()}>
         {address.slice(0, 6)}…{address.slice(-4)} — disconnect
       </Button>
     )
@@ -21,6 +21,7 @@ export function ConnectButton() {
       {connectors.map((connector) => (
         <Button
           key={connector.uid}
+          type="button"
           variant="default"
           size="sm"
           disabled={isPending}
