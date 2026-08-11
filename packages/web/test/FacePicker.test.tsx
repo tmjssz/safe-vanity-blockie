@@ -86,10 +86,9 @@ describe('FacePicker', () => {
   describe('two-colour and contrast filters', () => {
     it('defaults to two colours on and zero minimum contrast', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
-      expect(screen.getByRole('checkbox', { name: /two colours only/i })).toHaveProperty(
-        'checked',
-        true,
-      )
+      expect(
+        screen.getByRole('checkbox', { name: /two colours only/i }).getAttribute('aria-checked'),
+      ).toBe('true')
       expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
         'value',
         '0',
@@ -111,10 +110,9 @@ describe('FacePicker', () => {
 
     it('reflects a non-default filters prop', () => {
       renderPicker({ filters: { twoColor: false, minContrast: 150 } })
-      expect(screen.getByRole('checkbox', { name: /two colours only/i })).toHaveProperty(
-        'checked',
-        false,
-      )
+      expect(
+        screen.getByRole('checkbox', { name: /two colours only/i }).getAttribute('aria-checked'),
+      ).toBe('false')
       expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
         'value',
         '150',

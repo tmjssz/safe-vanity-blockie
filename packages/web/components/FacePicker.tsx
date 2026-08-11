@@ -4,6 +4,9 @@ import { useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { TargetPreview } from './TargetPreview'
+import { Checkbox } from './ui/checkbox'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 
 export interface FacePickerProps {
   value: string[]
@@ -14,6 +17,11 @@ export interface FacePickerProps {
 
 export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePickerProps) {
   const [error, setError] = useState<string | undefined>()
+  // Local echo of the contrast text: a fully prop-controlled number input fights React's own
+  // typed-value reset on every keystroke (there is no state update to feed a new `value` back in
+  // sync), which corrupts multi-digit entry. Keeping our own copy — updated on every change and
+  // reported upward via onFiltersChange — sidesteps that without weakening the controlled loop.
+  const [contrastText, setContrastText] = useState(String(filters.minContrast))
 
   const toggle = (name: string) => {
     if (value.includes(name)) {
@@ -30,64 +38,76 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
   }
 
   return (
-    <fieldset>
-      <legend>Accepted expressions</legend>
-      <p className="hint">
+    <fieldset className="space-y-4">
+      <legend className="text-sm font-medium">Accepted expressions</legend>
+      <p className="text-sm text-muted-foreground">
         Each candidate is credited with its best-fitting expression, so accepting more of them finds
         a good face sooner.
       </p>
-      {ALL_MOUTH_NAMES.map((name) => (
-        <label key={name}>
-          <input
-            type="checkbox"
-            checked={value.includes(name)}
-            onChange={() => toggle(name)}
-            aria-label={name}
-          />
-          {name}
-        </label>
-      ))}
-      {error && <p role="alert">{error}</p>}
+      <div className="flex flex-col gap-2">
+        {ALL_MOUTH_NAMES.map((name) => (
+          <div key={name} className="flex items-center gap-2">
+            <Checkbox
+              id={`mouth-${name}`}
+              checked={value.includes(name)}
+              onCheckedChange={() => toggle(name)}
+            />
+            <Label htmlFor={`mouth-${name}`}>{name}</Label>
+          </div>
+        ))}
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-      <label>
-        <input
-          type="checkbox"
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="two-color-only"
           checked={filters.twoColor}
-          onChange={(event) => onFiltersChange({ ...filters, twoColor: event.target.checked })}
+          onCheckedChange={(checked) => onFiltersChange({ ...filters, twoColor: checked === true })}
         />
-        Two colours only
-      </label>
-      <p className="hint">
+        <Label htmlFor="two-color-only">Two colours only</Label>
+      </div>
+      <p className="text-sm text-muted-foreground">
         A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the common case
         to want — turning it off makes more candidates qualify, but some will show a third colour.
       </p>
 
-      <label htmlFor="min-contrast">Minimum contrast</label>
-      <input
-        id="min-contrast"
-        type="number"
-        min={0}
-        max={442}
-        step={1}
-        value={filters.minContrast}
-        onChange={(event) =>
-          onFiltersChange({ ...filters, minContrast: Number(event.target.value) })
-        }
-      />
-      <p className="hint">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="min-contrast">Minimum contrast</Label>
+        <Input
+          id="min-contrast"
+          type="number"
+          min={0}
+          max={442}
+          step={1}
+          value={contrastText}
+          onChange={(event) => {
+            const raw = event.target.value
+            setContrastText(raw)
+            onFiltersChange({ ...filters, minContrast: Number(raw) })
+          }}
+          className="max-w-32"
+        />
+      </div>
+      <p className="text-sm text-muted-foreground">
         The RGB distance required between the two blockie colours — 0 accepts any pair, 442 is black
         against white.
       </p>
 
       <div>
-        <h3>Target patterns</h3>
-        <p className="hint">
+        <h3 className="text-sm font-medium">Target patterns</h3>
+        <p className="text-sm text-muted-foreground">
           The shape the miner is aiming at for each accepted expression — not a blockie of any real
           address, since none exists yet.
         </p>
-        {value.map((name) => (
-          <TargetPreview key={name} mouthName={name} />
-        ))}
+        <div className="mt-2 flex flex-wrap gap-4">
+          {value.map((name) => (
+            <TargetPreview key={name} mouthName={name} />
+          ))}
+        </div>
       </div>
     </fieldset>
   )

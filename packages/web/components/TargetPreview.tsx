@@ -37,14 +37,16 @@ export function TargetPreview({ mouthName, size = 64 }: TargetPreviewProps) {
   }
 
   return (
-    <svg
-      role="img"
-      aria-label={`Target pattern for ${mouthName}`}
-      viewBox={`0 0 ${GRID_SIZE} ${GRID_SIZE}`}
-      width={size}
-      height={size}
-    >
-      {cells}
-    </svg>
+    <div className="inline-flex rounded-md border bg-muted/30 p-2 text-foreground">
+      <svg
+        role="img"
+        aria-label={`Target pattern for ${mouthName}`}
+        viewBox={`0 0 ${GRID_SIZE} ${GRID_SIZE}`}
+        width={size}
+        height={size}
+      >
+        {cells}
+      </svg>
+    </div>
   )
 }
