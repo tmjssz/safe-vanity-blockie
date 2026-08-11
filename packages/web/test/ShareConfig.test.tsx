@@ -1,0 +1,68 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ShareConfig } from '../components/ShareConfig'
+
+// fireEvent, not userEvent: userEvent.setup() unconditionally replaces navigator.clipboard with
+// its own stub (@testing-library/user-event's Clipboard.attachClipboardStubToView), clobbering
+// whatever this file defines below on every call — including a deliberate `undefined`. A plain
+// click event exercises the same onClick handler without that interference.
+
+const config = {
+  owners: ['0x' + '11'.repeat(20)],
+  threshold: 1,
+  safeVersion: '1.4.1',
+  chainId: 1,
+}
+
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+
+afterEach(() => {
+  if (originalClipboard) {
+    Object.defineProperty(navigator, 'clipboard', originalClipboard)
+  } else {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  }
+})
+
+describe('ShareConfig', () => {
+  it('always renders the link in a read-only, selectable input, so a failed copy is never the only path', () => {
+    render(<ShareConfig config={config} />)
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.readOnly).toBe(true)
+    expect(input.value).toContain('/?config=')
+  })
+
+  it('copies the link and flips the button label on success', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    render(<ShareConfig config={config} />)
+    fireEvent.click(screen.getByRole('button', { name: /copy share link/i }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('button', { name: /^copied$/i })).toBeDefined()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('surfaces an actionable message instead of throwing when navigator.clipboard is undefined', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+
+    render(<ShareConfig config={config} />)
+    // Must not throw inside the click handler.
+    fireEvent.click(screen.getByRole('button', { name: /copy share link/i }))
+
+    expect(await screen.findByRole('alert')).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^copied$/i })).toBeNull()
+  })
+
+  it('surfaces an actionable message when the clipboard promise rejects (e.g. denied permission)', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('permission denied'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    render(<ShareConfig config={config} />)
+    fireEvent.click(screen.getByRole('button', { name: /copy share link/i }))
+
+    expect(await screen.findByRole('alert')).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^copied$/i })).toBeNull()
+  })
+})

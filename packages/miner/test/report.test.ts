@@ -1,4 +1,4 @@
-import type { Candidate } from '@safe-vanity-blockie/core'
+import { filterCandidates, formatScore, type Candidate } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
   asciiFor,
@@ -6,9 +6,7 @@ import {
   buildResultStrip,
   resultColumnsForWidth,
   formatDuration,
-  formatScore,
   buildResultsJson,
-  filterCandidates,
   formatLeaderboard,
   renderAscii,
   type ResultConfig,

@@ -20,6 +20,12 @@ export {
   type MineResult,
 } from './miner.js'
 export {
+  filterCandidates,
+  formatScore,
+  selectReported,
+  type SelectReportedResult,
+} from './select.js'
+export {
   apportion,
   colorContrast,
   compileFace,
