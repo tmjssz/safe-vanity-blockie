@@ -661,11 +661,11 @@ describe('ConfigSection', () => {
     const onStartOver = vi.fn()
     render(<ConfigSection config={CONFIG} onSubmit={vi.fn()} onStartOver={onStartOver} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /start over/i }))
+    await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
     expect(screen.getByText(/discard/i)).toBeDefined()
     expect(onStartOver).not.toHaveBeenCalled()
 
-    await userEvent.click(screen.getByRole('button', { name: /^start over$/i, hidden: false }))
+    await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
     expect(onStartOver).toHaveBeenCalledOnce()
   })
 
@@ -676,7 +676,7 @@ describe('ConfigSection', () => {
 })
 ```
 
-The confirmation is a `Dialog`; the second click targets the confirm button inside it. If both buttons resolve to the same accessible name, give the confirm button the name `Start over` and the trigger the name `Start over…` so the queries are unambiguous, and adjust the test's regexes to match.
+The confirmation is a `Dialog`. The trigger is named `Start over…` (with an ellipsis) and the confirm button inside the dialog is named `Start over` — two distinct accessible names, so neither query is ambiguous. The test's first click targets `/start over…/i` and the second targets `/^start over$/i`.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -978,7 +978,7 @@ describe('ResultsGrid', () => {
         onSelect={vi.fn()}
       />,
     )
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
   })
 
   it('explains an empty grid when mining is not running', () => {
@@ -1022,7 +1022,7 @@ describe('ResultsGrid', () => {
 })
 ```
 
-If the generated `Skeleton` does not carry `data-slot="skeleton"`, add that attribute to it — it is our file now — and note the edit in the report.
+`ResultsGrid` renders exactly four placeholder cards while mining with nothing found, each wrapped in an element carrying `data-testid="result-skeleton"`. Put that attribute on our own wrapper, not on the generated `Skeleton` — the test should not depend on shadcn's internals.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1307,14 +1307,30 @@ Suggested commit message: `feat(web): add toasts and a selectable share link`.
 
 Keep every existing assertion in `packages/web/test/page.test.tsx` and add:
 
+The file already mocks `ConfigForm` as a single `submit-config` button, `FacePicker`, `next/navigation`, wagmi and the RPC boundary via `vi.hoisted`. Reuse all of that; add only this test:
+
 ```tsx
-it('locks the config once set and clears results when starting over', async () => {
-  // Renders through to the collapsed Configure summary, clicks "Start over…", confirms,
-  // and asserts the form is back and no result cards remain.
+it('locks the config once submitted and restores the form when starting over', async () => {
+  render(<Page />)
+
+  // Before submitting, the config form is present.
+  expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+
+  await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+
+  // Once submitted the form is replaced by a locked summary.
+  expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+  expect(screen.getByText(/1 owner/i)).toBeDefined()
+
+  // Starting over asks first, and only resets once confirmed.
+  await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
+  expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+
+  await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
+  expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+  expect(screen.queryByText(/1 owner/i)).toBeNull()
 })
 ```
-
-Write that test body out fully against the mocks the file already uses for `MiningView` and `useSafeConstants`; do not leave it as a comment.
 
 - [ ] **Step 2: Compose the page**
 
