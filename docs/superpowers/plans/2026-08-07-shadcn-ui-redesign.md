@@ -49,12 +49,12 @@ The riskiest task, deliberately first: if Tailwind v4 and Turbopack fight, it su
 **Files:**
 - Create: `packages/web/postcss.config.mjs`, `packages/web/components.json`, `packages/web/lib/utils.ts`, `packages/web/components/ThemeToggle.tsx`
 - Create (generated): `packages/web/components/ui/{button,input,label,select,checkbox,card,badge,collapsible,alert,dialog,progress,separator,sonner,skeleton}.tsx`
-- Modify: `packages/web/package.json`, `packages/web/app/globals.css`, `packages/web/app/layout.tsx`, `packages/web/app/providers.tsx`, `packages/web/vitest.setup.ts`, `packages/web/tsconfig.json`
+- Modify: `packages/web/package.json`, `packages/web/app/globals.css`, `packages/web/app/layout.tsx`, `packages/web/app/providers.tsx`, `packages/web/vitest.setup.ts`, `packages/web/tsconfig.json`, `packages/web/vitest.config.ts` (add a `resolve.alias` for `@` — Vite does not read tsconfig `paths`, so without it every test importing a generated `components/ui/*` file fails on `Failed to resolve import "@/lib/utils"`)
 - Test: `packages/web/test/ui-foundation.test.tsx`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `cn(...inputs: ClassValue[]): string` from `lib/utils`; the fifteen `components/ui/*` modules; `<ThemeToggle />`; a `vitest.setup.ts` that polyfills what Radix needs under jsdom.
+- Produces: `cn(...inputs: ClassValue[]): string` from `lib/utils`; the fourteen `components/ui/*` modules; `<ThemeToggle />`; a `vitest.setup.ts` that polyfills what Radix needs under jsdom.
 
 - [ ] **Step 1: Install dependencies**
 
@@ -205,7 +205,7 @@ cd packages/web
 mise exec -- pnpm dlx shadcn@4.16.2 add button input label select checkbox card badge collapsible alert dialog progress separator sonner skeleton --yes
 ```
 
-This writes fifteen files under `components/ui/` and adds the Radix packages it needs to `package.json`. If the CLI cannot resolve the Tailwind config because v4 has none, re-run with `--cwd .` and confirm `components.json` has `"tailwind": { "config": "" }` — an empty string is correct for v4.
+This writes fourteen files under `components/ui/` and adds the Radix packages it needs to `package.json`. If the CLI cannot resolve the Tailwind config because v4 has none, re-run with `--cwd .` and confirm `components.json` has `"tailwind": { "config": "" }` — an empty string is correct for v4.
 
 Read the generated files before proceeding. They are our code now.
 
