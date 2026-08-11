@@ -1,28 +1,46 @@
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
+import { cn } from '../lib/utils'
 import { Blockie } from './Blockie'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from './ui/card'
 
 export interface ResultCardProps {
   candidate: Candidate
+  /** Highlights the card the user has already picked for deployment; see ResultsGrid. */
+  selected?: boolean
   onSelect: (candidate: Candidate) => void
 }
 
-export function ResultCard({ candidate, onSelect }: ResultCardProps) {
+export function ResultCard({ candidate, selected = false, onSelect }: ResultCardProps) {
   const expression = Object.values(candidate.regions).join('/') || '—'
   return (
-    <figure className="card">
-      <Blockie address={candidate.address} size={128} />
-      <figcaption>
-        <strong>{formatScore(candidate.score, candidate.maxScore)}</strong>
-        <span>
-          {expression} · {candidate.twoColor ? 'two colours' : 'three colours'} · contrast{' '}
-          {candidate.contrast}
+    <Card className={cn('gap-3 py-4', selected && 'ring-2 ring-primary')}>
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 px-4">
+        <span className="text-lg font-semibold">
+          {formatScore(candidate.score, candidate.maxScore)}
         </span>
-        <code>{candidate.address}</code>
-        <code>saltNonce {candidate.saltNonce}</code>
-        <button type="button" onClick={() => onSelect(candidate)}>
+        {selected && <Badge>Selected</Badge>}
+      </CardHeader>
+      <CardContent className="flex flex-col items-center gap-3 px-4">
+        <Blockie address={candidate.address} size={128} />
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <Badge variant="secondary">{expression}</Badge>
+          <Badge variant={candidate.twoColor ? 'secondary' : 'outline'}>
+            {candidate.twoColor ? 'two colours' : 'three colours'}
+          </Badge>
+          <Badge variant="outline">contrast {candidate.contrast}</Badge>
+        </div>
+        <code className="w-full break-all text-center text-xs text-muted-foreground">
+          {candidate.address}
+        </code>
+        <code className="text-xs text-muted-foreground">saltNonce {candidate.saltNonce}</code>
+      </CardContent>
+      <CardFooter className="px-4">
+        <Button type="button" className="w-full" onClick={() => onSelect(candidate)}>
           Use this
-        </button>
-      </figcaption>
-    </figure>
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }
