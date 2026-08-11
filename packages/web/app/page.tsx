@@ -31,6 +31,11 @@ function HomeContent() {
   const [mouths, setMouths] = useState<string[]>(ALL_MOUTH_NAMES)
   const [filters, setFilters] = useState<FaceFilters>(DEFAULT_FACE_FILTERS)
   const [selected, setSelected] = useState<Candidate | undefined>()
+  // True only while a deploy transaction is in flight. Selecting a candidate deliberately does
+  // NOT pause mining any more (design spec, behaviour rule 3): the wallet confirmation is the
+  // one moment a user must read an address carefully, so that — not merely looking at a result
+  // — is what stops the machine.
+  const [deploying, setDeploying] = useState(false)
   const [linkCandidateError, setLinkCandidateError] = useState<string | undefined>()
   // Distinct from `selected`: once the reconstruction attempt has settled (either way), the app
   // must never go back to "awaiting" it, even after the user later clears `selected` by clicking
@@ -111,22 +116,37 @@ function HomeContent() {
               This link&rsquo;s saltNonce could not be reconstructed: {linkCandidateError}
             </p>
           )}
-          {/* Mining and the deploy step never run at once: the one screen where a user must
-              read an address carefully should not sit under a grid still re-sorting itself.
-              MiningView stays mounted (paused) rather than disappearing, so its leaderboard —
-              including whichever row is selected — stays visible and a different result can
-              still be picked directly, the same way it could before a candidate was selected. */}
+          {/* Mining and the deploy transaction never run at once: the one screen where a user
+              must read an address carefully should not sit under a grid still re-sorting
+              itself. Inspecting a result is not that moment, so the leaderboard keeps updating
+              until a deploy is actually initiated — and MiningView stays mounted throughout, so
+              a different result can always be picked directly. */}
           <MiningView
             config={config}
             faceSpec={faceSpec}
             filters={filters}
-            paused={Boolean(selected) || awaitingLinkCandidate}
+            paused={deploying || awaitingLinkCandidate}
             onSelect={setSelected}
           />
           {selected && (
             <>
-              <DeployPanel key={selected.address} config={config} candidate={selected} />
-              <button type="button" onClick={() => setSelected(undefined)}>
+              <DeployPanel
+                key={selected.address}
+                config={config}
+                candidate={selected}
+                onDeployStart={() => setDeploying(true)}
+                onDeploySettled={() => setDeploying(false)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(undefined)
+                  // Belt and braces: the deploy sequence's own `finally` clears this, but if the
+                  // panel is dismissed while a wallet prompt is still open, nothing else would
+                  // hand mining back until (or unless) that promise settles.
+                  setDeploying(false)
+                }}
+              >
                 Back to mining
               </button>
             </>

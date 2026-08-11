@@ -16,12 +16,14 @@ export interface MiningViewProps {
   faceSpec: FaceSpec
   filters: FaceFilters
   /**
-   * Stops mining without unmounting: the deploy step is the one screen where a user must read
-   * an address carefully, and the grid above must not keep re-sorting itself underneath it. The
-   * already-mined leaderboard stays visible and selectable — including the row that is
-   * currently selected — so the "Use this" flow that DeployPanel's `key` fix guards against
-   * stays reachable. Toggling back to `false` resumes mining (a fresh run; see start()'s always-
-   * reset leaderboard) rather than permanently disabling it.
+   * Stops mining without unmounting. The trigger is the deploy step — the transaction itself,
+   * not merely selecting a candidate: confirming in the wallet is the one moment a user must
+   * read an address carefully, and the grid above must not keep re-sorting itself underneath
+   * it. Inspecting a result leaves mining running. The already-mined leaderboard stays visible
+   * and selectable — including the row that is currently selected — so the "Use this" flow that
+   * DeployPanel's `key` fix guards against stays reachable. Toggling back to `false` resumes
+   * mining (a fresh run; see start()'s always-reset leaderboard) rather than permanently
+   * disabling it.
    */
   paused?: boolean
   onSelect: (candidate: Candidate) => void

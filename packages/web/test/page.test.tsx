@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Page from '../app/page'
@@ -152,20 +152,60 @@ beforeEach(() => {
   getSafeAddressFromDeploymentTxMock.mockReset()
 })
 
+// The deploy button now lives in a dialog; the panel only carries the trigger that opens it.
+const deployTrigger = () => screen.getByRole('button', { name: /deploy this safe…/i })
+const deployButton = () => screen.getByRole('button', { name: /^deploy this safe$/i })
+
+/**
+ * Makes `buildDeploymentPlan` hang until the returned callback releases it, so the window in
+ * which mining is paused is observable at all — every step of the real sequence is mocked and
+ * would otherwise settle within a tick or two of the click.
+ */
+function pendingDeploy() {
+  let reject: (error: Error) => void = () => {}
+  const promise = new Promise<never>((_, rejectPlan) => {
+    reject = rejectPlan
+  })
+  // The component attaches its own await; this handler only stops an early rejection from being
+  // reported as unhandled.
+  promise.catch(() => {})
+  buildDeploymentPlanMock.mockReturnValue(promise)
+  return async () => {
+    await act(async () => {
+      reject(new Error('wallet rejected the request'))
+    })
+  }
+}
+
 describe('Page', () => {
-  it('pauses mining once a candidate is selected, and resumes it if the user goes back', async () => {
+  it('keeps mining while a result is inspected, and pauses only while a deploy is in flight', async () => {
+    const release = pendingDeploy()
     render(<Page />)
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     expect(screen.getByText('running')).toBeDefined()
 
+    // Selecting a candidate is NOT the trigger any more: the leaderboard keeps updating while
+    // the user reads a result. MiningView is never unmounted either, so its rows stay visible
+    // and clickable (see the next test).
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    expect(screen.getByText('paused')).toBeDefined()
-    // MiningView itself is never unmounted: its leaderboard, including the selected row, stays
-    // visible and its rows stay clickable (see the next test).
+    expect(screen.getByText('running')).toBeDefined()
     expect(screen.getByTestId('mining-view')).toBeDefined()
 
+    // Neither is opening the dialog — only initiating the transaction.
+    await user.click(deployTrigger())
+    expect(screen.getByText('running')).toBeDefined()
+
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    // …and it resumes as soon as the attempt settles, whichever way it settles.
+    await release()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+
+    // Leaving the deploy step keeps mining running rather than stranding it paused.
+    await user.keyboard('{Escape}')
     await user.click(screen.getByRole('button', { name: /back to mining/i }))
     expect(screen.getByText('running')).toBeDefined()
   })
@@ -184,7 +224,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
 
-    const deployButton = () => screen.getByRole('button', { name: /^deploy this safe/i })
+    await user.click(deployTrigger())
     await user.click(deployButton())
 
     expect(
@@ -195,17 +235,24 @@ describe('Page', () => {
     // Picks candidate B directly from the still-visible leaderboard — no deselect step, exactly
     // the sequence the finding describes: "deploy candidate A successfully, then click 'Use
     // this' on candidate B". This only resets state correctly because of `key={selected.address}`.
+    // The dialog has to be dismissed first only because it is modal; the leaderboard underneath
+    // it is unchanged and still carries both rows.
+    await user.keyboard('{Escape}')
     await user.click(screen.getByRole('button', { name: 'select-b' }))
 
-    // The panel now shows candidate B — the old success status naming candidate A's address
-    // must be gone, and the deploy button must not be stuck disabled forever.
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
-    expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
+    // The panel now shows candidate B, and nothing of candidate A's deploy survives.
     expect(screen.getByText(CANDIDATE_B.address)).toBeDefined()
     expect(screen.queryByText(CANDIDATE_A.address)).toBeNull()
+
+    // Reopening the dialog is what proves it: the old success status naming candidate A's
+    // address must be gone, and the deploy button must not be stuck disabled forever.
+    await user.click(deployTrigger())
+    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('NEW-1 regression: a share-link user who clicks "Back to mining" is not stranded paused forever', async () => {
+    const release = pendingDeploy()
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
         owners: CONFIG.owners,
@@ -223,11 +270,20 @@ describe('Page', () => {
     // enough: what matters here is that the URL carried a saltNonce.
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
 
-    // The link candidate reconstructs and gets selected automatically — DeployPanel appears and
-    // mining is paused for it, without ever clicking a "select" button.
-    await screen.findByRole('button', { name: /^deploy this safe/i })
-    expect(screen.getByText('paused')).toBeDefined()
+    // The link candidate reconstructs and gets selected automatically — DeployPanel appears
+    // without ever clicking a "select" button, and mining keeps running while it is inspected.
+    await screen.findByRole('button', { name: /deploy this safe…/i })
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+
+    // Initiating the deploy is what pauses mining, even on this path where the candidate was
+    // never picked by hand — and it resumes once the attempt settles.
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+    await release()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    await user.keyboard('{Escape}')
 
     // Clicking "Back to mining" must leave mining running, not paused — and must not print the
     // reconstruction-failed alert or otherwise re-enter an "awaiting the link candidate" limbo.
@@ -236,7 +292,7 @@ describe('Page', () => {
     expect(screen.getByText('running')).toBeDefined()
     expect(screen.queryByText('paused')).toBeNull()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /^deploy this safe/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {

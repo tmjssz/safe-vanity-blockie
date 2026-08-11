@@ -6,7 +6,8 @@ import { DeployPanel } from '../components/DeployPanel'
 // Hoisted so each test can drive its own wagmi state — a module-scoped factory (the brief's
 // original mock) can only ever return one fixed state, which meant every test rendered the
 // same disconnected component and never exercised the wrong-chain gate, the connected branch,
-// or error rendering.
+// or error rendering. The panel itself no longer touches wagmi, but the dialog it renders
+// does, so the mock stays.
 const { useAccountMock, useSwitchChainMock, useConnectorClientMock } = vi.hoisted(() => ({
   useAccountMock: vi.fn(),
   useSwitchChainMock: vi.fn(() => ({ switchChain: vi.fn() })),
@@ -17,15 +18,12 @@ vi.mock('wagmi', () => ({
   useAccount: useAccountMock,
   useSwitchChain: useSwitchChainMock,
   useConnectorClient: useConnectorClientMock,
-  // The error-rendering test below clicks the deploy button, which dynamically imports
-  // ../lib/wagmi for chainById — that module also imports createConfig/http from 'wagmi' at
-  // its top level, so the mock needs harmless stand-ins for those or the import itself throws.
   createConfig: vi.fn(() => ({})),
   http: vi.fn(() => ({})),
 }))
 
-// Fails fast, before any network or wallet call, so the error-rendering test below never
-// reaches sendTransaction or any real RPC — it only exercises the catch/alert path.
+// Nothing here should ever reach a network or a wallet: the deploy sequence itself is covered
+// in DeployDialog.test.tsx, and this suite only opens the dialog.
 vi.mock('@safe-vanity-blockie/safe-config', () => ({
   loadSafeConstants: vi.fn().mockRejectedValue(new Error('Could not read Safe constants (test).')),
 }))
@@ -45,69 +43,58 @@ const connectedAddress = '0x' + 'aa'.repeat(20)
 
 beforeEach(() => {
   useAccountMock.mockReset()
+  useAccountMock.mockReturnValue({ isConnected: false, address: undefined, chainId: 1 })
   useConnectorClientMock.mockReturnValue({ data: undefined })
 })
 
-describe('DeployPanel', () => {
-  it('asks for a wallet before offering to deploy', () => {
-    useAccountMock.mockReturnValue({ isConnected: false, address: undefined, chainId: 1 })
-    render(<DeployPanel config={config as never} candidate={candidate} />)
-    expect(screen.getByText(/connect a wallet/i)).toBeDefined()
-    expect(screen.queryByRole('button', { name: /^deploy/i })).toBeNull()
-  })
+function renderPanel() {
+  render(
+    <DeployPanel
+      config={config as never}
+      candidate={candidate}
+      onDeployStart={vi.fn()}
+      onDeploySettled={vi.fn()}
+    />,
+  )
+}
 
+describe('DeployPanel', () => {
   it('repeats the phishing caveat where the user is about to spend money', () => {
-    useAccountMock.mockReturnValue({ isConnected: false, address: undefined, chainId: 1 })
-    render(<DeployPanel config={config as never} candidate={candidate} />)
+    renderPanel()
     expect(screen.getByText(/cosmetic/i)).toBeDefined()
   })
 
   it('always shows the counterfactual alternative, so deploying is not the only path', () => {
-    useAccountMock.mockReturnValue({ isConnected: false, address: undefined, chainId: 1 })
-    render(<DeployPanel config={config as never} candidate={candidate} />)
+    renderPanel()
     expect(screen.getByText(/deploy it later/i)).toBeDefined()
   })
 
-  it('shows the switch-network gate and no deploy button when connected on the wrong chain', () => {
-    useAccountMock.mockReturnValue({
-      isConnected: true,
-      address: connectedAddress,
-      chainId: 999,
-    })
-    render(<DeployPanel config={config as never} candidate={candidate} />)
-    expect(screen.getByRole('button', { name: /switch network/i })).toBeDefined()
-    expect(screen.queryByRole('button', { name: /^deploy/i })).toBeNull()
+  it('shows the full address and saltNonce of the chosen candidate', () => {
+    renderPanel()
+    expect(screen.getByText(candidate.address)).toBeDefined()
+    expect(screen.getByText(/1885506/)).toBeDefined()
   })
 
-  it('offers the deploy button when connected on the configured chain', () => {
+  it('keeps the share link reachable without deploying', () => {
+    renderPanel()
+    expect(screen.getByRole('button', { name: /copy share link/i })).toBeDefined()
+  })
+
+  // The deploy button, the wrong-chain gate and the error alert moved to DeployDialog with the
+  // handler; what the panel still owns is opening that dialog.
+  it('opens the deploy dialog, where the confirmation is read', async () => {
     useAccountMock.mockReturnValue({
       isConnected: true,
       address: connectedAddress,
       chainId: config.chainId,
     })
-    render(<DeployPanel config={config as never} candidate={candidate} />)
-    expect(screen.getByRole('button', { name: /^deploy this safe/i })).toBeDefined()
-    expect(screen.queryByRole('button', { name: /switch network/i })).toBeNull()
-  })
+    renderPanel()
 
-  it('renders an error alert when the deploy attempt fails', async () => {
-    useAccountMock.mockReturnValue({
-      isConnected: true,
-      address: connectedAddress,
-      chainId: config.chainId,
-    })
-    useConnectorClientMock.mockReturnValue({
-      data: { transport: {}, account: connectedAddress },
-    } as never)
-    render(<DeployPanel config={config as never} candidate={candidate} />)
+    expect(screen.queryByRole('button', { name: /^deploy this safe$/i })).toBeNull()
 
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /^deploy this safe/i }))
+    await userEvent.click(screen.getByRole('button', { name: /deploy this safe…/i }))
 
-    // A generous timeout: this waits on a dynamic import plus a rejected promise, and the
-    // default 1000ms has been observed to flake under the CPU contention of a full monorepo
-    // `pnpm -r test` run (many suites' worker pools competing for cores at once).
-    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toBeDefined()
-    expect(screen.getByRole('alert').textContent).toMatch(/Could not read Safe constants/)
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('button', { name: /^deploy this safe$/i })).toBeDefined()
   })
 })
