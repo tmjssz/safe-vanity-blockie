@@ -96,5 +96,9 @@ describe('DeployPanel', () => {
 
     expect(screen.getByRole('dialog')).toBeDefined()
     expect(screen.getByRole('button', { name: /^deploy this safe$/i })).toBeDefined()
+    // The other half of the gate: on the configured chain there must be no switch-network
+    // prompt. Without this, loosening the `wrongChain` comparison so that BOTH branches render
+    // would still pass every other assertion in this suite.
+    expect(screen.queryByRole('button', { name: /switch network/i })).toBeNull()
   })
 })

@@ -74,16 +74,23 @@ function HomeContent() {
     let cancelled = false
     candidateFromSaltNonce(constantsForLink.data.constants, linked.saltNonce, faceSpec)
       .then((candidate) => {
-        if (!cancelled) {
-          setSelected(candidate)
-          setLinkCandidateSettled(true)
-        }
+        // `cancelled` guards the RESULT, never the settling. The attempt is one-shot (the ref
+        // above makes sure a cancelled one is never replaced), so once this promise resolves
+        // there is nothing left to wait for, whether or not the inputs moved underneath it —
+        // and `awaitingLinkCandidate` below holds mining paused until something says so. This
+        // used to be inside the guard, so changing the face mid-reconstruction (FacePicker
+        // stays live, and keccak's wasm init takes real time) left mining paused forever with
+        // no candidate, no "Back to mining" button and no way back short of a reload.
+        if (!cancelled) setSelected(candidate)
+        setLinkCandidateSettled(true)
       })
       .catch((error: unknown) => {
+        // Same split: a cancelled attempt's failure is not worth reporting — the user changed
+        // the inputs it was derived from — but it has still stopped being pending.
         if (!cancelled) {
           setLinkCandidateError(error instanceof Error ? error.message : String(error))
-          setLinkCandidateSettled(true)
         }
+        setLinkCandidateSettled(true)
       })
     return () => {
       cancelled = true
@@ -94,8 +101,9 @@ function HomeContent() {
   // never spins up workers just to have them stopped again a moment later once `selected` is
   // set. Falls through to normal mining if reconstruction errors, or the constants fetch itself
   // fails (in which case MiningView's own useSafeConstants call will surface that same error).
-  // Gated on `linkCandidateSettled`, not `!selected`: the attempt resolving (either way) is what
-  // ends the "awaiting" state, permanently — not whatever the user does with `selected` next.
+  // Gated on `linkCandidateSettled`, not `!selected`: the attempt resolving (any way at all,
+  // including one whose result was discarded as stale) is what ends the "awaiting" state,
+  // permanently — not whatever the user does with `selected` next.
   const awaitingLinkCandidate =
     Boolean(linked?.saltNonce) && !linkCandidateSettled && !constantsForLink.error
 

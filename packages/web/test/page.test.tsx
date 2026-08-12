@@ -44,6 +44,7 @@ const {
   getSafeAddressFromDeploymentTxMock,
   facePickerPropsRef,
   searchParamsRef,
+  linkCandidateOverride,
 } = vi.hoisted(() => ({
   useAccountMock: vi.fn(() => ({ isConnected: true, address: '0x' + 'cc'.repeat(20), chainId: 1 })),
   useSwitchChainMock: vi.fn(() => ({ switchChain: vi.fn() })),
@@ -55,8 +56,15 @@ const {
   sendTransactionMock: vi.fn(),
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
-  facePickerPropsRef: { current: undefined as { value: string[] } | undefined },
+  facePickerPropsRef: {
+    current: undefined as
+      | { value: string[]; onChange: (names: string[]) => void }
+      | undefined,
+  },
   searchParamsRef: { current: new URLSearchParams() },
+  // Lets one test replace candidateFromSaltNonce with a promise it controls. Left undefined by
+  // default so every other test — NEW-1 in particular — keeps exercising the real deriver.
+  linkCandidateOverride: { current: undefined as (() => Promise<unknown>) | undefined },
 }))
 
 vi.mock('wagmi', () => ({
@@ -91,6 +99,20 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsRef.current,
 }))
 
+// Partial mock: everything (encodeConfigParam, decodeConfigParam, and candidateFromSaltNonce
+// itself) stays real unless a test installs an override, so the share-link tests keep driving
+// the actual deriver. lib/ is off limits, so the seam has to be here at the module boundary.
+vi.mock('../lib/deep-link', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/deep-link')>()
+  return {
+    ...actual,
+    candidateFromSaltNonce: (...args: Parameters<typeof actual.candidateFromSaltNonce>) =>
+      (linkCandidateOverride.current?.() ?? actual.candidateFromSaltNonce(...args)) as ReturnType<
+        typeof actual.candidateFromSaltNonce
+      >,
+  }
+})
+
 vi.mock('../components/ConfigForm', () => ({
   ConfigForm: ({ onSubmit }: { onSubmit: (config: unknown) => void }) => (
     <button type="button" onClick={() => onSubmit(CONFIG)}>
@@ -100,7 +122,9 @@ vi.mock('../components/ConfigForm', () => ({
 }))
 
 vi.mock('../components/FacePicker', () => ({
-  FacePicker: (props: { value: string[] }) => {
+  // `onChange` is captured as well as `value`: the Face section never locks, so a test needs to
+  // be able to change the expression at an arbitrary moment, exactly as a user can.
+  FacePicker: (props: { value: string[]; onChange: (names: string[]) => void }) => {
     facePickerPropsRef.current = props
     return null
   },
@@ -130,6 +154,7 @@ vi.mock('../components/MiningView', () => ({
 
 beforeEach(() => {
   searchParamsRef.current = new URLSearchParams()
+  linkCandidateOverride.current = undefined
   loadSafeConstantsMock.mockReset().mockResolvedValue({
     chainId: 1n,
     constants: {
@@ -293,6 +318,54 @@ describe('Page', () => {
     expect(screen.queryByText('paused')).toBeNull()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
+  })
+
+  it('NEW-2 regression: changing the face while a link candidate is still reconstructing does not strand mining paused', async () => {
+    const { ALL_MOUTH_NAMES } = await import('../lib/face-selection')
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    // Stands in for the real reconstruction, which awaits keccak's wasm instantiation and so
+    // takes tens to hundreds of ms — long enough for a user to touch the still-live FacePicker.
+    let resolveCandidate: (candidate: unknown) => void = () => {}
+    linkCandidateOverride.current = () =>
+      new Promise((resolve) => {
+        resolveCandidate = resolve
+      })
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    // Mining is deliberately held paused while the saltNonce is re-derived, rather than
+    // spinning up workers just to stop them again a moment later.
+    await waitFor(() => expect(screen.getByText('paused')).toBeDefined())
+
+    // The Face section never locks, so this is a normal thing to do mid-flight. It hands
+    // MiningView a new faceSpec, which re-runs the reconstruction effect: its cleanup cancels
+    // the attempt in flight, and the `linkCandidateAttempted` ref stops a replacement one from
+    // ever being started. Nothing else will ever end the "awaiting" state.
+    act(() => {
+      facePickerPropsRef.current?.onChange(ALL_MOUTH_NAMES.slice(0, 1))
+    })
+
+    await act(async () => {
+      resolveCandidate(CANDIDATE_A)
+    })
+
+    // The cancelled result is correctly discarded — but the attempt has still settled, so
+    // mining must be handed back. Otherwise `paused` is stuck true with no candidate, no "Back
+    // to mining" button and no way to restart short of reloading the page.
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    expect(screen.queryByText('paused')).toBeNull()
+    expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {

@@ -22,8 +22,10 @@ export interface MiningViewProps {
    * it. Inspecting a result leaves mining running. The already-mined leaderboard stays visible
    * and selectable — including the row that is currently selected — so the "Use this" flow that
    * DeployPanel's `key` fix guards against stays reachable. Toggling back to `false` resumes
-   * mining (a fresh run; see start()'s always-reset leaderboard) rather than permanently
-   * disabling it.
+   * the same run rather than permanently disabling mining: the effect below passes
+   * `resume: sameRun`, which continues from `state.nextStart` and keeps both the leaderboard
+   * and the cumulative scanned/elapsed totals (see use-miner's start()). A deploy that fails
+   * therefore costs the user nothing — results found before it are all still there.
    */
   paused?: boolean
   onSelect: (candidate: Candidate) => void
