@@ -19,6 +19,10 @@ const STABLE_CONSTANTS_DATA = {
   constantsHex: { initializerHash: '0x1', factory: '0x2', initCodeHash: '0x3' },
 }
 
+// Each result card is one button, named after the result it opens ("Deploy 90.2% match 0x70e9…").
+const resultCards = () => screen.getAllByRole('button', { name: /deploy .* match/i })
+const noResultCards = () => screen.queryAllByRole('button', { name: /deploy .* match/i })
+
 const CANDIDATE = {
   saltNonce: '1885506',
   address: '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5',
@@ -92,9 +96,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
 
     // Mine some ground and find a candidate.
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
-    // Pause (selecting a result, in the real app) — the worker is told to stop but not
+    // Pause (a deploy in flight, in the real app) — the worker is told to stop but not
     // terminated, and the leaderboard/scanned count must not be touched.
     rerender(
       <MiningView
@@ -107,9 +111,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     )
     expect(instances[0].posted.some((request) => request.type === 'stop')).toBe(true)
     expect(instances[0].terminated).toBe(false)
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
-    // Resume (deselecting, "Back to mining") — same config/faceSpec, so this must continue the
+    // Resume (closing the deploy dialog) — same config/faceSpec, so this must continue the
     // same run: a fresh worker pool (teardown always happens) but picking up from the resume
     // point, not from zero, and keeping what was already found.
     rerender(
@@ -128,7 +132,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(startInputOf(instances[1]).start).toBeGreaterThan(0)
     expect(startInputOf(instances[1]).start).toBe(500)
     // The candidate found before pausing is still there — the board was not thrown away.
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
     // The displayed scanned count also carries over rather than resetting to zero: emitting more
     // progress from the new worker should report a cumulative total, not just the new segment.
@@ -241,7 +245,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
       />,
     )
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
     // A different accepted-expressions selection produces a different FaceSpec object — this is
     // "a changed config or face spec", not a pause/resume of the same run, so it must reset.
@@ -257,7 +261,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
 
     expect(instances).toHaveLength(2)
     expect(startInputOf(instances[1]).start).toBe(0)
-    expect(screen.queryAllByRole('button', { name: /use this/i })).toHaveLength(0)
+    expect(noResultCards()).toHaveLength(0)
     expect(screen.getByText(/^0 nonces/)).toBeDefined()
   })
 
@@ -283,8 +287,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
       />,
     )
 
-    // While paused, the accepted expressions change (FacePicker is still visible/usable next to
-    // a selected result) — a genuinely different run, even though it will only actually start
+    // While paused, the accepted expressions change (FacePicker is still visible/usable while a
+    // deploy is in flight) — a genuinely different run, even though it will only actually start
     // once un-paused.
     rerender(
       <MiningView
@@ -308,6 +312,6 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     const lastWorker = instances.at(-1)
     if (!lastWorker) throw new Error('expected a worker to have started')
     expect(startInputOf(lastWorker).start).toBe(0)
-    expect(screen.queryAllByRole('button', { name: /use this/i })).toHaveLength(0)
+    expect(noResultCards()).toHaveLength(0)
   })
 })

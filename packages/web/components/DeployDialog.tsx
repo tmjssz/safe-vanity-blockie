@@ -1,13 +1,15 @@
 'use client'
 
-import type { Candidate } from '@safe-vanity-blockie/core'
+import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAccount, useConnectorClient, useSwitchChain } from 'wagmi'
 import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
 import { Blockie } from './Blockie'
+import { ShareConfig } from './ShareConfig'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -66,14 +68,16 @@ export function DeployDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
-          inline, and closing it unmounts DeployPanel's whole subtree (page.tsx keys it on the
-          selected address and renders it only while one is selected). So the three *accidental*
-          dismissals — Escape, the overlay, the X — are blocked outright. The deliberate, warned
-          footer button below stays live on purpose: a wallet that never settles its promise (the
-          popup closed without a response) would otherwise trap the user in this dialog forever,
-          and an unclosable dialog is a worse failure than a knowingly abandoned one. */}
+          inline, and closing it unmounts the dialog outright — page.tsx renders it only while a
+          candidate is selected, keyed on that candidate's address, and clears the selection when
+          it closes. So the three *accidental* dismissals — Escape, the overlay, the X — are
+          blocked outright. The deliberate, warned footer button below stays live on purpose: a
+          wallet that never settles its promise (the popup closed without a response) would
+          otherwise trap the user in this dialog forever, and an unclosable dialog is a worse
+          failure than a knowingly abandoned one. The toast mirror below is what carries the
+          outcome once the inline copy has gone with the dialog. */}
       <DialogContent
-        className="sm:max-w-xl"
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
         showCloseButton={!busy}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault()
@@ -103,9 +107,13 @@ export function DeployDialog({
           </AlertDescription>
         </Alert>
 
-        <div className="flex items-center gap-4 rounded-lg border p-4">
-          <Blockie address={candidate.address} size={64} />
-          <div className="flex min-w-0 flex-col gap-1">
+        {/* 128px, as the deleted DeployPanel drew it: this is the only place the identicon can
+            still be compared against the card that was clicked, and a 64px copy is too small to
+            check a look-alike against. */}
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border p-4">
+          <Blockie address={candidate.address} size={128} />
+          <div className="flex min-w-0 flex-col items-start gap-2">
+            <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
             <code className="break-all text-sm">{candidate.address}</code>
             <code className="text-xs text-muted-foreground">saltNonce {candidate.saltNonce}</code>
           </div>
@@ -115,6 +123,13 @@ export function DeployDialog({
           You do not have to deploy now: this address exists whether or not you do, so you can
           copy the share link and deploy it later, on any chain with the canonical Safe contracts.
         </p>
+
+        {/* The saltNonce in the spread is the entire payload: without it the link degrades from
+            "reproduces this exact address" to "prefills four form fields", silently. This moved
+            here from DeployPanel, which was the only place a mined result could be preserved
+            without deploying it — closing this dialog now has to be able to leave with the link,
+            or that escape route disappears with the panel. */}
+        <ShareConfig config={{ ...config, saltNonce: candidate.saltNonce }} />
 
         {!isConnected && <p className="text-sm">Connect a wallet to deploy.</p>}
         {/* Always mounted, even while empty. A live region only announces changes to a container
@@ -218,9 +233,10 @@ export function DeployDialog({
                     // Mirrored into a toast on every terminal branch below, and never *instead*
                     // of the inline message: <Toaster/> is mounted in app/layout.tsx, outside
                     // every subtree that can unmount here, so it is the only channel that
-                    // survives "Start over", "Back to mining" or picking another card while this
-                    // is in flight. The inline copy stays because a toast is on a timer and this
-                    // is something the user has to act on.
+                    // survives "Start over" or closing this dialog while the send is still in
+                    // flight — which now unmounts it, and with it every inline message. The
+                    // inline copy stays because a toast is on a timer and this is something the
+                    // user has to act on.
                     reportError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
                     return
                   }

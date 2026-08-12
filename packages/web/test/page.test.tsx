@@ -1,16 +1,15 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Page from '../app/page'
 import { encodeConfigParam } from '../lib/deep-link'
 
-// CRITICAL regression coverage: page.tsx renders `{selected && <DeployPanel .../>}` with no
-// `key`. Without a key, choosing a second candidate re-renders the SAME DeployPanel instance,
-// so its `status`/`completed` state (from deploying the first candidate) survives underneath a
-// blockie and address for the second one — a success message naming one address rendered under
-// a card showing another. This drives the real Page end to end (mocking only the heavy
-// children and the wallet/RPC boundary) so it fails if the `key={selected.address}` fix is
-// ever reverted.
+// CRITICAL regression coverage: page.tsx renders `{selected && <DeployDialog .../>}` with no
+// `key`. Without a key, handing the dialog a second candidate re-renders the SAME DeployDialog
+// instance, so its `status`/`completed` state (from deploying the first candidate) survives
+// underneath a blockie and address for the second one — a success message naming one address
+// rendered above another. This drives the real Page end to end (mocking only the heavy children
+// and the wallet/RPC boundary) so it fails if the `key={selected.address}` fix is ever reverted.
 
 const CONFIG = { owners: ['0x' + '11'.repeat(20)], threshold: 1, safeVersion: '1.4.1', chainId: 1 }
 
@@ -158,23 +157,18 @@ vi.mock('../components/FacePicker', () => ({
 
 // Mirrors the real MiningView's contract: it stays mounted and its result rows stay visible
 // and clickable regardless of `paused` — pausing stops the workers, it does not hide the
-// leaderboard. That is what keeps "pick a different result while one is already selected"
-// reachable, which is the exact path the DeployPanel `key` fix guards against.
+// leaderboard. That is what puts the user straight back on a live grid when the deploy dialog
+// closes, with every card still openable.
 //
-// `selectedAddress` is exposed as a data attribute rather than as text, for the same reason
-// ConfigForm's `initial` is: the accessible names this file queries by must not change. Without
-// it, deleting `selectedAddress={selected?.address}` in page.tsx leaves every test green while
-// no result card is ever marked on any path.
+// Its two buttons stand in for "the page is handed a candidate". A real card click is one way;
+// the link-candidate reconstruction in page.tsx setting `selected` from an effect is another,
+// and that one can fire while a dialog is already open — the path the `key` guards.
 const miningViewPropsRef = { current: undefined as { paused?: boolean } | undefined }
 vi.mock('../components/MiningView', () => ({
-  MiningView: (props: {
-    paused?: boolean
-    selectedAddress?: string
-    onSelect: (candidate: unknown) => void
-  }) => {
+  MiningView: (props: { paused?: boolean; onSelect: (candidate: unknown) => void }) => {
     miningViewPropsRef.current = props
     return (
-      <div data-testid="mining-view" data-selected-address={props.selectedAddress ?? ''}>
+      <div data-testid="mining-view">
         <p>{props.paused ? 'paused' : 'running'}</p>
         <button type="button" onClick={() => props.onSelect(CANDIDATE_A)}>
           select-a
@@ -214,8 +208,7 @@ beforeEach(() => {
   toastSuccessSpy.mockClear()
 })
 
-// The deploy button now lives in a dialog; the panel only carries the trigger that opens it.
-const deployTrigger = () => screen.getByRole('button', { name: /deploy this safe…/i })
+// Clicking a result opens the dialog directly — there is no intermediate panel or trigger left.
 const deployButton = () => screen.getByRole('button', { name: /^deploy this safe$/i })
 
 /**
@@ -265,6 +258,27 @@ const PLAN_FOR = (address: string) => ({
 })
 
 describe('Page', () => {
+  it('opens the deploy dialog on a result click, in one step, with everything in it', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    // One click, no intermediate panel and no second trigger: the dialog is open and carries the
+    // address, the saltNonce, the share link and the button that spends the gas.
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain(CANDIDATE_A.address)
+    expect(dialog.textContent).toContain(CANDIDATE_A.saltNonce)
+    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(deployButton()).toBeDefined()
+    // The two-step flow's own controls are gone with it.
+    expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /back to mining/i })).toBeNull()
+  })
+
   it('keeps mining while a result is inspected, and pauses only while a deploy is in flight', async () => {
     const release = pendingDeploy()
     render(<Page />)
@@ -273,16 +287,11 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     expect(screen.getByText('running')).toBeDefined()
 
-    // Selecting a candidate is NOT the trigger any more: the leaderboard keeps updating while
-    // the user reads a result. MiningView is never unmounted either, so its rows stay visible
-    // and clickable (see the next test).
+    // Opening the dialog is NOT the trigger: the leaderboard keeps updating while the user reads
+    // a result. MiningView is never unmounted either, so its rows stay live underneath.
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(screen.getByText('running')).toBeDefined()
     expect(screen.getByTestId('mining-view')).toBeDefined()
-
-    // Neither is opening the dialog — only initiating the transaction.
-    await user.click(deployTrigger())
-    expect(screen.getByText('running')).toBeDefined()
 
     await user.click(deployButton())
     expect(screen.getByText('paused')).toBeDefined()
@@ -291,10 +300,37 @@ describe('Page', () => {
     await release()
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
-    // Leaving the deploy step keeps mining running rather than stranding it paused.
-    await user.keyboard('{Escape}')
-    await user.click(screen.getByRole('button', { name: /back to mining/i }))
+    // Closing the dialog leaves mining running rather than stranding it paused, and puts the
+    // grid back in front of the user.
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText('running')).toBeDefined()
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+  })
+
+  // The "Back to mining" button used to carry this belt-and-braces clear; closing the dialog is
+  // the only way out now. Without `setDeploying(false)` in `onOpenChange`, dismissing while the
+  // wallet prompt is still open leaves mining paused by the HOST — which the status bar's own
+  // Resume cannot clear — with nothing left on screen able to hand it back.
+  it('resumes mining when the dialog is dismissed while the wallet prompt is still open', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    // The one dismissal left live while busy — deliberate, and relabelled so it never reads as
+    // "cancel the deployment".
+    await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    expect(screen.queryByText('paused')).toBeNull()
+
+    await release()
   })
 
   it('does not carry a previous deploy status/completed state onto a newly selected candidate (missing `key` regression)', async () => {
@@ -310,8 +346,6 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     expect(
@@ -319,26 +353,53 @@ describe('Page', () => {
     ).toBeDefined()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
 
-    // Picks candidate B directly from the still-visible leaderboard — no deselect step, exactly
-    // the sequence the finding describes: "deploy candidate A successfully, then click 'Use
-    // this' on candidate B". This only resets state correctly because of `key={selected.address}`.
-    // The dialog has to be dismissed first only because it is modal; the leaderboard underneath
-    // it is unchanged and still carries both rows.
-    await user.keyboard('{Escape}')
-    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
+    // the element position and only `key={selected.address}` forces a fresh instance. This is
+    // the page's own `setSelected` path, which the link-candidate effect can take at any moment
+    // (it fires from an effect, and a modal overlay does not stop an effect); driven with
+    // fireEvent because the modal's `pointer-events: none` on the rest of the body is exactly
+    // what a real click would hit, and a real click is not what this test is about.
+    fireEvent.click(screen.getByText('select-b'))
 
-    // The panel now shows candidate B, and nothing of candidate A's deploy survives.
-    expect(screen.getByText(CANDIDATE_B.address)).toBeDefined()
+    // The dialog now shows candidate B, and nothing of candidate A's deploy survives: not the
+    // success status naming A's address, and not the permanently disabled button.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.queryByText(CANDIDATE_A.address)).toBeNull()
-
-    // Reopening the dialog is what proves it: the old success status naming candidate A's
-    // address must be gone, and the deploy button must not be stuck disabled forever.
-    await user.click(deployTrigger())
     expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('NEW-1 regression: a share-link user who clicks "Back to mining" is not stranded paused forever', async () => {
+  it('opens a clean dialog when a second result is clicked after closing the first', async () => {
+    buildDeploymentPlanMock.mockResolvedValue({
+      address: CANDIDATE_A.address,
+      chainId: CONFIG.chainId,
+      transaction: { to: '0x' + '22'.repeat(20), value: '0', data: '0x' },
+    })
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(CANDIDATE_A.address)
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(
+      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
+    ).toBeDefined()
+
+    // Escape is allowed once the sequence has settled — and closing clears the selection, so the
+    // grid underneath is immediately clickable again.
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
+    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('NEW-1 regression: a share-link user who closes the deploy dialog is not stranded paused forever', async () => {
     const release = pendingDeploy()
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
@@ -357,29 +418,27 @@ describe('Page', () => {
     // enough: what matters here is that the URL carried a saltNonce.
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
 
-    // The link candidate reconstructs and gets selected automatically — DeployPanel appears
-    // without ever clicking a "select" button, and mining keeps running while it is inspected.
-    await screen.findByRole('button', { name: /deploy this safe…/i })
+    // The link candidate reconstructs and gets selected automatically — the deploy dialog opens
+    // without ever clicking a result, and mining keeps running while it is inspected.
+    await screen.findByRole('dialog')
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
 
     // Initiating the deploy is what pauses mining, even on this path where the candidate was
     // never picked by hand — and it resumes once the attempt settles.
-    await user.click(deployTrigger())
     await user.click(deployButton())
     expect(screen.getByText('paused')).toBeDefined()
     await release()
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
-    await user.keyboard('{Escape}')
 
-    // Clicking "Back to mining" must leave mining running, not paused — and must not print the
+    // Closing the dialog must leave mining running, not paused — and must not print the
     // reconstruction-failed alert or otherwise re-enter an "awaiting the link candidate" limbo.
-    await user.click(screen.getByRole('button', { name: /back to mining/i }))
+    await user.keyboard('{Escape}')
 
     expect(screen.getByText('running')).toBeDefined()
     expect(screen.queryByText('paused')).toBeNull()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('NEW-2 regression: changing the face while a link candidate is still reconstructing does not strand mining paused', async () => {
@@ -493,7 +552,6 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     await user.keyboard('{Escape}')
@@ -510,10 +568,12 @@ describe('Page', () => {
     await release()
   })
 
-  // S1(b). Every route out of here — "Start over", "Back to mining", selecting another card —
-  // unmounts DeployPanel and with it the inline status/error. Unmounting the page stands in for
-  // all three. The toast is the only channel that outlives them.
-  it('S1: a terminal deploy error still reaches the user after the deploy panel unmounts', async () => {
+  // S1(b). Every route out of here — "Start over", closing the dialog, or the page itself going
+  // away — unmounts DeployDialog and with it the inline status/error. Unmounting the page stands
+  // in for all of them. The toast is the only channel that outlives them, and the dialog now
+  // unmounting on close (rather than being rendered-but-hidden by a panel) is exactly why it has
+  // to be.
+  it('S1: a terminal deploy error still reaches the user after the deploy dialog unmounts', async () => {
     buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
     const releaseReceipt = pendingReceipt()
 
@@ -522,7 +582,6 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     // Gas is now committed: the transaction is broadcast and only the receipt is outstanding.
@@ -607,7 +666,6 @@ describe('Page', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     const message = await screen.findByText(/does not match the selected candidate/i)
@@ -626,7 +684,6 @@ describe('Page', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     const message = await screen.findByText(/Deployment reverted\. Gas was spent\./i)
@@ -643,7 +700,6 @@ describe('Page', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     const message = await screen.findByText(/does not match the predicted/i)
@@ -660,30 +716,12 @@ describe('Page', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    await user.click(deployTrigger())
     await user.click(deployButton())
 
     // `sendDispatched` is set before the await precisely so this branch survives a throw from
     // inside sendTransaction, where gas may already have been committed.
     const message = await screen.findByText(/may already have been broadcast/i)
     expect(message.textContent).toContain('the wallet never answered')
-  })
-
-  // T3. `selectedAddress` is optional, so deleting it in page.tsx typechecks and no test noticed:
-  // the ring and the "Selected" badge are the only things tying the open deploy panel to a row in
-  // a grid that keeps re-sorting itself while a result is inspected.
-  it('T3: tells MiningView which card the deploy panel is showing', async () => {
-    render(<Page />)
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'submit-config' }))
-
-    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe('')
-
-    await user.click(screen.getByRole('button', { name: 'select-a' }))
-    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe(CANDIDATE_A.address)
-
-    await user.click(screen.getByRole('button', { name: 'select-b' }))
-    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe(CANDIDATE_B.address)
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {

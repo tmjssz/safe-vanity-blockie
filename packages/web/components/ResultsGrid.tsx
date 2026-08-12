@@ -7,19 +7,12 @@ const SKELETON_COUNT = 4
 
 export interface ResultsGridProps {
   candidates: Candidate[]
-  selectedAddress: string | undefined
   droppedCount: number
   mining: boolean
   onSelect: (candidate: Candidate) => void
 }
 
-export function ResultsGrid({
-  candidates,
-  selectedAddress,
-  droppedCount,
-  mining,
-  onSelect,
-}: ResultsGridProps) {
+export function ResultsGrid({ candidates, droppedCount, mining, onSelect }: ResultsGridProps) {
   const showSkeletons = mining && candidates.length === 0
 
   return (
@@ -34,12 +27,7 @@ export function ResultsGrid({
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {candidates.map((candidate) => (
-          <ResultCard
-            key={candidate.address}
-            candidate={candidate}
-            selected={candidate.address === selectedAddress}
-            onSelect={onSelect}
-          />
+          <ResultCard key={candidate.address} candidate={candidate} onSelect={onSelect} />
         ))}
         {showSkeletons &&
           Array.from({ length: SKELETON_COUNT }, (_, index) => (

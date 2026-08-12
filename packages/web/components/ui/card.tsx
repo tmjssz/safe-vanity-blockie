@@ -1,10 +1,22 @@
 import * as React from "react"
+import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+// Deviates from the generated source by one prop: `asChild`, exactly as the generated Button and
+// Badge in this directory already do. A result card is itself the control that opens the deploy
+// dialog, so the card surface has to BE the <button> — wrapping a <div> card in a button instead
+// puts flow content inside a button (invalid) and wrapping the button inside the card leaves the
+// hover/focus affordance on something smaller than the thing being clicked.
+function Card({
+  className,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"div"> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "div"
+
   return (
-    <div
+    <Comp
       data-slot="card"
       className={cn(
         "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm",

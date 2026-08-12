@@ -35,6 +35,9 @@ const CANDIDATE = {
   regions: { mouth: 'small' },
 }
 
+// Each result card is one button, named after the result it opens ("Deploy 90.2% match 0x70e9…").
+const resultCards = () => screen.getAllByRole('button', { name: /deploy .* match/i })
+
 const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy } = vi.hoisted(
   () => ({
     constantsState: {
@@ -108,7 +111,7 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
     expect(screen.getByText(/4,200/)).toBeDefined()
   })
 
@@ -198,7 +201,7 @@ describe('MiningView', () => {
     expect(stopSpy).toHaveBeenCalled()
     expect(startSpy).toHaveBeenCalledTimes(1)
     // The row is still there — pausing stops mining, it does not hide the leaderboard.
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
   })
 
   it('resumes mining when paused flips back to false', () => {
@@ -359,27 +362,30 @@ describe('MiningView', () => {
     expect(startSpy).toHaveBeenCalledTimes(2)
   })
 
-  // T3. MiningView.test.tsx never passed `selectedAddress`, so the hop from this component into
-  // ResultsGrid was uncovered — and the ring is the only thing tying the open deploy panel to a
-  // row in a grid that keeps re-sorting itself while a result is inspected.
-  it('marks the row the deploy panel is showing', () => {
+  // Clicking a card is the whole deploy flow now, so the hop from this component's `onSelect`
+  // out to the page is what opens the dialog — a card wired to nothing is a dead page.
+  it('reports the clicked candidate to its host', async () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+    const onSelect = vi.fn()
 
     render(
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
-        selectedAddress={CANDIDATE.address}
-        onSelect={vi.fn()}
+        onSelect={onSelect}
       />,
     )
 
-    expect(screen.getByText(/^selected$/i)).toBeDefined()
+    await userEvent.click(resultCards()[0])
+    expect(onSelect).toHaveBeenCalledWith(CANDIDATE)
   })
 
-  it('marks no row when the selected address is not one of the candidates', () => {
+  // The handoff is an alternative to the search that is running, so it belongs where it can be
+  // read before scrolling through eight results — not stranded under them. Asserted on document
+  // order rather than on markup, so it survives any amount of restyling.
+  it('offers the CLI handoff above the results, not below them', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
 
@@ -388,12 +394,13 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
-        selectedAddress={'0x' + '99'.repeat(20)}
         onSelect={vi.fn()}
       />,
     )
 
-    expect(screen.queryByText(/^selected$/i)).toBeNull()
+    const handoff = screen.getByRole('button', { name: /run this search/i })
+    const position = handoff.compareDocumentPosition(resultCards()[0])
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   // T5. `filters` is optional on CliHandoff and the command builder omits the flags entirely

@@ -4,13 +4,12 @@ import type { Candidate } from '@safe-vanity-blockie/core'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConfigSection } from '../components/ConfigSection'
-import { DeployPanel } from '../components/DeployPanel'
+import { DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { SecurityNotice } from '../components/SecurityNotice'
 import { Alert, AlertDescription } from '../components/ui/alert'
-import { Button } from '../components/ui/button'
 import { DEFAULT_FACE_FILTERS, type FaceFilters, type MineConfig } from '../lib/config'
 import { candidateFromSaltNonce, decodeConfigParam } from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
@@ -33,16 +32,18 @@ function HomeContent() {
   const [config, setConfig] = useState<MineConfig | undefined>()
   const [mouths, setMouths] = useState<string[]>(ALL_MOUTH_NAMES)
   const [filters, setFilters] = useState<FaceFilters>(DEFAULT_FACE_FILTERS)
+  // The candidate whose deploy dialog is open. Clicking any result card sets it; closing the
+  // dialog clears it, which unmounts the dialog entirely.
   const [selected, setSelected] = useState<Candidate | undefined>()
-  // True only while a deploy transaction is in flight. Selecting a candidate deliberately does
-  // NOT pause mining any more (design spec, behaviour rule 3): the wallet confirmation is the
-  // one moment a user must read an address carefully, so that — not merely looking at a result
-  // — is what stops the machine.
+  // True only while a deploy transaction is in flight. Opening a candidate's deploy dialog
+  // deliberately does NOT pause mining (design spec, behaviour rule 3): the wallet confirmation
+  // is the one moment a user must read an address carefully, so that — not merely looking at a
+  // result — is what stops the machine.
   const [deploying, setDeploying] = useState(false)
   const [linkCandidateError, setLinkCandidateError] = useState<string | undefined>()
   // Distinct from `selected`: once the reconstruction attempt has settled (either way), the app
-  // must never go back to "awaiting" it, even after the user later clears `selected` by clicking
-  // "Back to mining" — that used to re-derive `awaitingLinkCandidate` from `!selected` alone,
+  // must never go back to "awaiting" it, even after the user later clears `selected` by closing
+  // the deploy dialog — that used to re-derive `awaitingLinkCandidate` from `!selected` alone,
   // which flipped back to true and left mining paused forever with no candidate and no way out.
   const [linkCandidateSettled, setLinkCandidateSettled] = useState(false)
   // Set by "Start over": from that point the decoded link is gone for good — its owners no
@@ -87,7 +88,7 @@ function HomeContent() {
         // and `awaitingLinkCandidate` below holds mining paused until something says so. This
         // used to be inside the guard, so changing the face mid-reconstruction (the Face section
         // stays live, and keccak's wasm init takes real time) left mining paused forever with
-        // no candidate, no "Back to mining" button and no way back short of a reload.
+        // no candidate, no dialog to close and no way back short of a reload.
         if (!cancelled) setSelected(candidate)
         setLinkCandidateSettled(true)
       })
@@ -183,43 +184,47 @@ function HomeContent() {
 
             {/* Mining and the deploy transaction never run at once: the one screen where a user
                 must read an address carefully should not sit under a grid still re-sorting
-                itself. Inspecting a result is not that moment, so the leaderboard keeps updating
-                until a deploy is actually initiated — and MiningView stays mounted throughout, so
-                a different result can always be picked directly. */}
+                itself. Opening a result's dialog is not that moment, so the leaderboard keeps
+                updating until a deploy is actually initiated — and MiningView stays mounted
+                throughout, so closing the dialog puts a live, clickable grid straight back in
+                front of the user. */}
             <MiningView
               config={config}
               faceSpec={faceSpec}
               filters={filters}
               paused={deploying || awaitingLinkCandidate}
-              selectedAddress={selected?.address}
               onSelect={setSelected}
             />
 
+            {/* Rendered (and so unmounted) with the selection rather than kept mounted and merely
+                hidden: closing while a send is in flight therefore loses the *inline* status, and
+                the toast mirror in DeployDialog — mounted in app/layout.tsx, outside every
+                subtree that can unmount here — is what carries the outcome instead.
+
+                `key` is load-bearing. Nothing else stops a completed deploy of one candidate
+                leaving its "Safe deployed at 0x…" status and permanently disabled button
+                rendered above a different candidate's address, on any path that swaps `selected`
+                without an unmount in between (the link-candidate effect below can do exactly
+                that, from an effect, while a dialog is already open). */}
             {selected && (
-              <>
-                <DeployPanel
-                  key={selected.address}
-                  config={config}
-                  candidate={selected}
-                  onDeployStart={() => setDeploying(true)}
-                  onDeploySettled={() => setDeploying(false)}
-                />
-                <div>
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => {
-                      setSelected(undefined)
-                      // Belt and braces: the deploy sequence's own `finally` clears this, but if
-                      // the panel is dismissed while a wallet prompt is still open, nothing else
-                      // would hand mining back until (or unless) that promise settles.
-                      setDeploying(false)
-                    }}
-                  >
-                    Back to mining
-                  </Button>
-                </div>
-              </>
+              <DeployDialog
+                key={selected.address}
+                open
+                candidate={selected}
+                config={config}
+                onOpenChange={(next) => {
+                  if (next) return
+                  setSelected(undefined)
+                  // Belt and braces, and the only remaining place it can be done: the deploy
+                  // sequence's own `finally` clears this, but if the dialog is dismissed while a
+                  // wallet prompt is still open, nothing else would hand mining back until (or
+                  // unless) that promise settles — and `paused` here is a HOST pause, which the
+                  // status bar's own Resume deliberately cannot clear.
+                  setDeploying(false)
+                }}
+                onDeployStart={() => setDeploying(true)}
+                onDeploySettled={() => setDeploying(false)}
+              />
             )}
           </>
         )}

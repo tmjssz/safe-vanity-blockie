@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { decodeConfigParam } from '../lib/deep-link'
 
 const state = vi.hoisted(() => ({
   account: { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 11155111 },
@@ -22,6 +23,9 @@ vi.mock('wagmi', () => ({
 // and the catch/alert path.
 vi.mock('@safe-vanity-blockie/safe-config', () => ({
   loadSafeConstants: vi.fn().mockRejectedValue(new Error('Could not read Safe constants (test).')),
+  // Read directly by ../lib/config's validateMineConfig, which the share-link round-trip test
+  // below reaches through the real decodeConfigParam. An empty set collides with nothing here.
+  ZKSYNC_CHAIN_IDS: new Set(),
 }))
 
 vi.mock('../lib/deploy', () => ({
@@ -48,124 +52,84 @@ beforeEach(() => {
   state.account = { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 11155111 }
 })
 
+/**
+ * Imported inside the helper rather than at the top of the file: the wagmi/safe-config mocks
+ * above have to be in place before the component module is evaluated.
+ */
+async function renderDialog(
+  props: { onDeployStart?: () => void; onDeploySettled?: () => void; onOpenChange?: () => void } = {},
+) {
+  const { DeployDialog } = await import('../components/DeployDialog')
+  return render(
+    <DeployDialog
+      open
+      candidate={candidate}
+      config={config}
+      onOpenChange={props.onOpenChange ?? vi.fn()}
+      onDeployStart={props.onDeployStart ?? vi.fn()}
+      onDeploySettled={props.onDeploySettled ?? vi.fn()}
+    />,
+  )
+}
+
 describe('DeployDialog', () => {
   it('repeats the phishing caveat where money is spent', async () => {
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={vi.fn()}
-      />,
-    )
+    await renderDialog()
     expect(screen.getByText(/cosmetic/i)).toBeDefined()
   })
 
   it('shows the address and saltNonce being deployed', async () => {
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={vi.fn()}
-      />,
-    )
+    await renderDialog()
     expect(screen.getByText(candidate.address)).toBeDefined()
     expect(screen.getByText(/1885506/)).toBeDefined()
   })
 
   it('pauses mining the moment a deploy is initiated', async () => {
     const onDeployStart = vi.fn()
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={onDeployStart}
-        onDeploySettled={vi.fn()}
-      />,
-    )
-    await userEvent.click(screen.getByRole('button', { name: /deploy this safe/i }))
+    await renderDialog({ onDeployStart })
+    await userEvent.click(screen.getByRole('button', { name: /^deploy this safe$/i }))
     expect(onDeployStart).toHaveBeenCalledOnce()
   })
 
   it('asks for a wallet before offering to deploy', async () => {
     state.account = { isConnected: false, address: undefined as never, chainId: 11155111 }
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={vi.fn()}
-      />,
-    )
+    await renderDialog()
     expect(screen.getByText(/connect a wallet/i)).toBeDefined()
-    expect(screen.queryByRole('button', { name: /deploy this safe/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^deploy this safe$/i })).toBeNull()
   })
 
   it('offers the counterfactual path alongside deploying', async () => {
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={vi.fn()}
-      />,
-    )
+    await renderDialog()
     expect(screen.getByText(/deploy it later/i)).toBeDefined()
   })
 
   // Moved from DeployPanel.test.tsx: the wrong-chain gate now lives here, with the button it
-  // gates. The panel no longer knows anything about the wallet.
+  // gates.
   it('shows the switch-network gate and no deploy button when connected on the wrong chain', async () => {
     state.account = { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 999 }
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={vi.fn()}
-      />,
-    )
+    await renderDialog()
     expect(screen.getByRole('button', { name: /switch network/i })).toBeDefined()
-    expect(screen.queryByRole('button', { name: /deploy this safe/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^deploy this safe$/i })).toBeNull()
+  })
+
+  // The other half of that gate, moved from DeployPanel.test.tsx's "opens the deploy dialog"
+  // test: on the configured chain there must be no switch-network prompt. Without this,
+  // loosening the `wrongChain` comparison so BOTH branches render would still pass every other
+  // assertion in this suite.
+  it('offers only the deploy button when connected on the configured chain', async () => {
+    await renderDialog()
+    expect(screen.getByRole('button', { name: /^deploy this safe$/i })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /switch network/i })).toBeNull()
   })
 
   // Moved from DeployPanel.test.tsx, plus the resume half of the pause contract: a deploy that
   // fails must hand mining back, or the user is left staring at a stopped miner.
   it('renders an error alert when the deploy attempt fails, and resumes mining', async () => {
     const onDeploySettled = vi.fn()
-    const { DeployDialog } = await import('../components/DeployDialog')
-    render(
-      <DeployDialog
-        open
-        candidate={candidate}
-        config={config}
-        onOpenChange={vi.fn()}
-        onDeployStart={vi.fn()}
-        onDeploySettled={onDeploySettled}
-      />,
-    )
+    await renderDialog({ onDeploySettled })
 
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /deploy this safe/i }))
+    await user.click(screen.getByRole('button', { name: /^deploy this safe$/i }))
 
     // A generous timeout: this waits on a dynamic import plus a rejected promise, and the
     // default 1000ms has been observed to flake under the CPU contention of a full monorepo
@@ -175,5 +139,72 @@ describe('DeployDialog', () => {
     const message = await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
     expect(message.closest('[role="alert"]')).not.toBeNull()
     expect(onDeploySettled).toHaveBeenCalledOnce()
+  })
+
+  // Moved from DeployPanel.test.tsx: the panel that used to carry the score, the big blockie and
+  // the share link is gone, and this dialog is now the only place any of them can be read.
+  it('shows the score as a percentage, not a raw fraction', async () => {
+    await renderDialog()
+    expect(screen.getByText('90.2%')).toBeDefined()
+    expect(screen.queryByText(/120\/133/)).toBeNull()
+  })
+
+  // The dialog is where the address is checked character by character, so the identicon has to
+  // be big enough to compare against the card that was clicked — the panel's 128, not the 64
+  // this dialog used when it sat behind one.
+  it('draws the identicon large enough to check against the card that was clicked', async () => {
+    await renderDialog()
+    // Queried through the identicon's own role/label rather than "the first svg in the dialog",
+    // which is the caveat's shield icon.
+    const svg = screen.getByRole('img', { name: /identicon/i }).querySelector('svg')
+    expect(svg).not.toBeNull()
+    expect(svg?.getAttribute('width')).toBe('128')
+  })
+
+  it('keeps the share link reachable without deploying', async () => {
+    await renderDialog()
+    expect(screen.getByRole('button', { name: /copy share link/i })).toBeDefined()
+  })
+
+  // T1. The whole point of a share link is that it reproduces THIS address, and the only thing
+  // that carries the address is the saltNonce. Asserting the button exists, or that the URL
+  // contains "/?config=", leaves the entire encode half of the round trip unpinned: drop the
+  // saltNonce here and every link silently degrades to "prefills four form fields", with the
+  // recipient mining a different face and no error anywhere. So this decodes what the UI
+  // actually produced, with the real decoder, and compares it field for field.
+  it('T1: builds a share link that decodes back to this config, saltNonce included', async () => {
+    await renderDialog()
+
+    const value = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const param = new URL(value).searchParams.get('config')
+    expect(param).not.toBeNull()
+
+    const decoded = decodeConfigParam(param as string)
+    expect(decoded.error).toBeUndefined()
+    expect(decoded.config).toEqual({ ...config, saltNonce: candidate.saltNonce })
+  })
+
+  // S4, second half (moved from DeployPanel.test.tsx; the aria-haspopup half moved to
+  // ResultCard.test.tsx with the trigger). The caveat is static copy that is always on screen,
+  // so as a live region it would compete permanently with the real deploy status/error below it.
+  it('keeps the phishing caveat a note, not a second live region', async () => {
+    await renderDialog()
+    expect(screen.getByRole('note').textContent).toMatch(/cosmetic/i)
+  })
+
+  // Moved from DeployPanel.test.tsx's "titles the panel as a real heading": the deploy step is
+  // still a real heading, it is just the dialog's title now.
+  it('titles itself as a real heading', async () => {
+    await renderDialog()
+    expect(screen.getByRole('heading', { level: 2, name: /^deploy this safe$/i })).toBeDefined()
+  })
+
+  // The panel and the dialog each carried their own copy of the caveat and of the counterfactual
+  // paragraph. Merged into one dialog, saying either twice would be noise on the one screen that
+  // has to be read carefully.
+  it('says the caveat and the counterfactual once each, not twice', async () => {
+    await renderDialog()
+    expect(screen.getAllByText(/cosmetic/i)).toHaveLength(1)
+    expect(screen.getAllByText(/deploy it later/i)).toHaveLength(1)
   })
 })

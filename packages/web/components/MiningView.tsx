@@ -30,19 +30,18 @@ export interface MiningViewProps {
   filters: FaceFilters
   /**
    * Stops mining without unmounting. The trigger is the deploy step — the transaction itself,
-   * not merely selecting a candidate: confirming in the wallet is the one moment a user must
-   * read an address carefully, and the grid above must not keep re-sorting itself underneath
-   * it. Inspecting a result leaves mining running. The already-mined leaderboard stays visible
-   * and selectable — including the row that is currently selected — so the "Use this" flow that
-   * DeployPanel's `key` fix guards against stays reachable. Toggling back to `false` resumes
+   * not merely clicking a card to open its deploy dialog: confirming in the wallet is the one
+   * moment a user must read an address carefully, and the grid above must not keep re-sorting
+   * itself underneath it. Inspecting a result leaves mining running. The already-mined
+   * leaderboard stays visible and clickable, so closing the dialog puts the user straight back
+   * on a live grid with every card still openable. Toggling back to `false` resumes
    * the same run rather than permanently disabling mining: the effect below passes
    * `resume: sameRun`, which continues from `state.nextStart` and keeps both the leaderboard
    * and the cumulative scanned/elapsed totals (see use-miner's start()). A deploy that fails
    * therefore costs the user nothing — results found before it are all still there.
    */
   paused?: boolean
-  /** Highlights the row the deploy panel is currently showing. Purely presentational. */
-  selectedAddress?: string
+  /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
 }
 
@@ -51,7 +50,6 @@ export function MiningView({
   faceSpec,
   filters,
   paused: pausedByHost = false,
-  selectedAddress,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
@@ -172,17 +170,20 @@ export function MiningView({
             <AlertDescription>{state.error}</AlertDescription>
           </Alert>
         )}
-        <ResultsGrid
-          candidates={state.candidates}
-          selectedAddress={selectedAddress}
-          droppedCount={state.droppedCount}
-          mining={state.running}
-          onSelect={onSelect}
-        />
+        {/* Above the grid, not below it: it is an alternative to the search that is running, so
+            it has to be readable before scrolling past eight results — and `filters` goes with it
+            so the copied command enforces the same standard as the screen rather than the CLI's
+            own defaults. */}
         <CliHandoff
           config={config}
           rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
           filters={filters}
+        />
+        <ResultsGrid
+          candidates={state.candidates}
+          droppedCount={state.droppedCount}
+          mining={state.running}
+          onSelect={onSelect}
         />
       </section>
     </>

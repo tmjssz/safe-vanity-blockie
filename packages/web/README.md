@@ -10,9 +10,14 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
 ## Interface
 
 One page, top to bottom: a sticky header carrying the theme toggle and the wallet button, a sticky
-mining bar pinned directly below it, the security caveat, **Configure**, **Face**, **Results**, a
-"Run this search on your machine instead" disclosure below the grid that hands you the equivalent
-`npx` command, and — once a result is picked — **Deploy**.
+mining bar pinned directly below it, the security caveat, **Configure**, **Face**, and **Results** —
+with a "Run this search on your machine instead" disclosure above the grid that hands you the
+equivalent `npx` command.
+
+There is no separate deploy step: **clicking any result card opens its deploy dialog**, carrying
+that candidate's score, a full-size identicon, its address and `saltNonce`, its share link and the
+button that spends the gas. Closing the dialog puts you straight back on a grid that never stopped
+mining.
 
 The bar carries the best score so far, the nonces scanned, the current rate, the worker count and a
 Pause/Resume control. It appears as soon as a config is submitted and the Safe constants resolve —
@@ -44,17 +49,17 @@ Three rules are worth knowing before you meet them:
   leaderboard, because it changes what "a match" means and previously scored candidates are no
   longer comparable. There is no warning and no undo, so decide the expressions early. (Face is a
   collapsible card, open by default; collapsing it keeps the accepted expressions in its header.)
-- **Mining pauses when a deploy starts, not when you select a result.** Inspecting a candidate
-  leaves the search running; confirming the transaction in your wallet is the one moment you must
-  read an address carefully, so that is when the grid stops moving underneath you. It resumes from
-  where it left off — keeping the leaderboard and the cumulative counts — whichever way the deploy
-  attempt settles.
+- **Mining pauses when a deploy starts, not when you open a result.** Reading a candidate in its
+  dialog leaves the search running; confirming the transaction in your wallet is the one moment you
+  must read an address carefully, so that is when the grid stops moving underneath you. It resumes
+  from where it left off — keeping the leaderboard and the cumulative counts — whichever way the
+  deploy attempt settles, and also if you dismiss the dialog while the wallet prompt is still open.
 
-The results grid only ever shows the best candidates found so far, so the card you picked can drop
-out of it as better ones arrive — taking its highlight ring and "Selected" badge with it, which
-looks like the selection was lost. It was not: the Deploy panel below still holds exactly the
-candidate you chose, address and `saltNonce` unchanged, until you pick another or go back to
-mining.
+The results grid only ever shows the best candidates found so far, so the card you opened can drop
+out of it as better ones arrive. That does not affect the open dialog: it holds exactly the
+candidate you clicked, address and `saltNonce` unchanged, until you close it. Closing it while a
+transaction is in flight is allowed — nothing can recall a transaction the wallet already has — and
+the outcome then arrives as a toast, since the dialog that would have shown it inline is gone.
 
 ## ⚠️ Security
 
