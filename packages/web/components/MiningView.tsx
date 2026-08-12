@@ -2,15 +2,27 @@
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
 import { chainById } from '../lib/wagmi'
 import { CliHandoff } from './CliHandoff'
-import { ResultCard } from './ResultCard'
+import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from './MiningStatusBar'
+import { ResultsGrid } from './ResultsGrid'
+import { Alert, AlertDescription } from './ui/alert'
 
 const DISPLAY_COUNT = 8
+
+// The status bar has to sit above the caveat and both sections — it is the one thing that must
+// stay in view during a long search — but the mining state that feeds it is owned here, next to
+// the results. So it is rendered here and portaled into the slot the page mounts at the top
+// (MINING_STATUS_BAR_SLOT_ID). That keeps per-tick progress state out of the page, which would
+// otherwise re-render Configure, Face and Deploy several times a second for nothing.
+//
+// If no such element is mounted (a bare `<MiningView />`, as in its unit tests) the bar renders
+// in place instead.
 
 export interface MiningViewProps {
   config: MineConfig
@@ -29,6 +41,8 @@ export interface MiningViewProps {
    * therefore costs the user nothing — results found before it are all still there.
    */
   paused?: boolean
+  /** Highlights the row the deploy panel is currently showing. Purely presentational. */
+  selectedAddress?: string
   onSelect: (candidate: Candidate) => void
 }
 
@@ -36,13 +50,30 @@ export function MiningView({
   config,
   faceSpec,
   filters,
-  paused = false,
+  paused: pausedByHost = false,
+  selectedAddress,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
   const { state, start, stop, setFilters } = useMiner()
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
   const { twoColor, minContrast } = filters
+  // The status bar's Pause control. Kept here rather than in the page because it is a mining
+  // concern, and because it must combine with the host's own reasons to pause (a deploy in
+  // flight, a share link still being reconstructed) rather than fight them.
+  const [pausedByUser, setPausedByUser] = useState(false)
+  const paused = pausedByHost || pausedByUser
+
+  // Resolved during the first render in the browser: the page commits the slot element before
+  // this component ever mounts (it only appears once a config is submitted), so there is no
+  // frame in which the bar renders in the wrong place. The effect is the fallback for any order
+  // of mounting that first render cannot see.
+  const [statusBarSlot, setStatusBarSlot] = useState<HTMLElement | null>(() =>
+    typeof document === 'undefined' ? null : document.getElementById(MINING_STATUS_BAR_SLOT_ID),
+  )
+  useEffect(() => {
+    setStatusBarSlot(document.getElementById(MINING_STATUS_BAR_SLOT_ID))
+  }, [])
 
   // Identifies "the same run" across a pause/resume cycle: constants/faceSpec/workers are
   // exactly the inputs that genuinely invalidate a run in progress (see below), so if none of
@@ -101,30 +132,53 @@ export function MiningView({
     if (state.error) toast.error(state.error)
   }, [state.error])
 
-  if (constants.loading) return <p>Reading Safe constants…</p>
-  if (constants.error) return <p role="alert">Could not read Safe constants: {constants.error}</p>
+  if (constants.loading)
+    return <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
+  if (constants.error)
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>Could not read Safe constants: {constants.error}</AlertDescription>
+      </Alert>
+    )
+
+  // The board is score-ranked, so the head of it is the best candidate found so far.
+  const best = state.candidates[0]
+  const status: MiningStatus = {
+    running: state.running,
+    paused,
+    scanned: state.scanned,
+    rate: state.rate,
+    workers,
+    bestScore: best?.score,
+    bestMaxScore: best?.maxScore,
+  }
+  const statusBar = (
+    <MiningStatusBar status={status} onPauseToggle={() => setPausedByUser((value) => !value)} />
+  )
 
   return (
-    <section>
-      <p>
-        {state.scanned.toLocaleString('en-US')} nonces · {Math.round(state.rate / 1000)}k/s ·{' '}
-        {workers} workers
-        {state.droppedCount > 0 && ` · ${state.droppedCount} filtered out`}
-      </p>
-      <CliHandoff
-        config={config}
-        rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
-        filters={filters}
-      />
-      <button type="button" onClick={state.running ? stop : () => undefined}>
-        {state.running ? 'Stop' : 'Stopped'}
-      </button>
-      {state.error && <p role="alert">{state.error}</p>}
-      <div className="grid">
-        {state.candidates.map((candidate) => (
-          <ResultCard key={candidate.address} candidate={candidate} onSelect={onSelect} />
-        ))}
-      </div>
-    </section>
+    <>
+      {statusBarSlot ? createPortal(statusBar, statusBarSlot) : statusBar}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-semibold">Results</h2>
+        {state.error && (
+          <Alert variant="destructive">
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        )}
+        <ResultsGrid
+          candidates={state.candidates}
+          selectedAddress={selectedAddress}
+          droppedCount={state.droppedCount}
+          mining={state.running}
+          onSelect={onSelect}
+        />
+        <CliHandoff
+          config={config}
+          rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
+          filters={filters}
+        />
+      </section>
+    </>
   )
 }

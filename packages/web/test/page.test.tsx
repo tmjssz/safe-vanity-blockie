@@ -368,6 +368,27 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
+  it('locks the config once submitted and restores the form when starting over', async () => {
+    render(<Page />)
+
+    // Before submitting, the config form is present.
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    // Once submitted the form is replaced by a locked summary.
+    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+    expect(screen.getByText(/1 owner/i)).toBeDefined()
+
+    // Starting over asks first, and only resets once confirmed.
+    await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
+    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByText(/1 owner/i)).toBeNull()
+  })
+
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {
     const { ALL_MOUTH_NAMES } = await import('../lib/face-selection')
 

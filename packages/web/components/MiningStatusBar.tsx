@@ -6,6 +6,14 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Progress } from './ui/progress'
 
+/**
+ * The page renders an empty element with this id at the very top of the layout, and MiningView —
+ * which owns the mining state this bar displays, and belongs down with the results — portals the
+ * bar into it. Declared here, next to the bar itself, so the page can render the slot without
+ * importing MiningView's module.
+ */
+export const MINING_STATUS_BAR_SLOT_ID = 'mining-status-bar-slot'
+
 export interface MiningStatus {
   running: boolean
   paused: boolean

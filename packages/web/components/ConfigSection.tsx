@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
-import { ConfigForm } from './ConfigForm'
+import { ConfigForm, type ConfigFormProps } from './ConfigForm'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import {
@@ -24,10 +24,13 @@ function summarise(config: MineConfig): string {
 
 export function ConfigSection({
   config,
+  initial,
   onSubmit,
   onStartOver,
 }: {
   config: MineConfig | undefined
+  /** Prefill for the form, used by `?config=…` share links. Passed straight to ConfigForm. */
+  initial?: ConfigFormProps['initial']
   onSubmit: (config: MineConfig) => void
   onStartOver: () => void
 }) {
@@ -40,7 +43,7 @@ export function ConfigSection({
           <CardTitle>Configure</CardTitle>
         </CardHeader>
         <CardContent>
-          <ConfigForm onSubmit={onSubmit} />
+          <ConfigForm initial={initial} onSubmit={onSubmit} />
         </CardContent>
       </Card>
     )

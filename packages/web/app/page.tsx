@@ -2,12 +2,15 @@
 
 import type { Candidate } from '@safe-vanity-blockie/core'
 import { useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { ConfigForm } from '../components/ConfigForm'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConfigSection } from '../components/ConfigSection'
 import { DeployPanel } from '../components/DeployPanel'
-import { FacePicker } from '../components/FacePicker'
+import { FaceSection } from '../components/FaceSection'
+import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { SecurityNotice } from '../components/SecurityNotice'
+import { Alert, AlertDescription } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
 import { DEFAULT_FACE_FILTERS, type FaceFilters, type MineConfig } from '../lib/config'
 import { candidateFromSaltNonce, decodeConfigParam } from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
@@ -42,13 +45,17 @@ function HomeContent() {
   // "Back to mining" — that used to re-derive `awaitingLinkCandidate` from `!selected` alone,
   // which flipped back to true and left mining paused forever with no candidate and no way out.
   const [linkCandidateSettled, setLinkCandidateSettled] = useState(false)
+  // Set by "Start over": from that point the decoded link is gone for good — its owners no
+  // longer prefill the form, its saltNonce is no longer waited on, and its error is no longer
+  // reported. Anything less would leave the reconstruction that belongs to the *previous*
+  // config able to reach the new one.
+  const [linkDismissed, setLinkDismissed] = useState(false)
 
-  // Memoised so a re-render (e.g. from mining progress updates) does not hand MiningView a new
-  // FaceSpec object and restart the run — only an actual change to the accepted expressions
-  // should do that.
+  // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
+  // only an actual change to the accepted expressions should do that.
   const faceSpec = useMemo(() => faceSpecFromSelection(mouths), [mouths])
 
-  const linked = linkResult?.config
+  const linked = linkDismissed ? undefined : linkResult?.config
   const initial = linked
     ? {
         owners: linked.owners.join(', '),
@@ -78,7 +85,7 @@ function HomeContent() {
         // above makes sure a cancelled one is never replaced), so once this promise resolves
         // there is nothing left to wait for, whether or not the inputs moved underneath it —
         // and `awaitingLinkCandidate` below holds mining paused until something says so. This
-        // used to be inside the guard, so changing the face mid-reconstruction (FacePicker
+        // used to be inside the guard, so changing the face mid-reconstruction (the Face section
         // stays live, and keccak's wasm init takes real time) left mining paused forever with
         // no candidate, no "Back to mining" button and no way back short of a reload.
         if (!cancelled) setSelected(candidate)
@@ -107,67 +114,103 @@ function HomeContent() {
   const awaitingLinkCandidate =
     Boolean(linked?.saltNonce) && !linkCandidateSettled && !constantsForLink.error
 
+  // Configure is locked once submitted because owners, threshold, Safe version and chain are
+  // exactly the inputs the address is derived from: editing one silently invalidates every
+  // result on screen. So the only way back is this — an explicit, confirmed reset that throws
+  // the run away rather than pretending it survived.
+  const startOver = useCallback(() => {
+    setConfig(undefined)
+    setSelected(undefined)
+    // The deploy dialog's own `finally` normally clears this, but a reset must never be able to
+    // leave a dismissed deploy holding mining paused.
+    setDeploying(false)
+    setLinkCandidateError(undefined)
+    setLinkDismissed(true)
+  }, [])
+
   return (
     <>
-      <SecurityNotice />
-      {config ? (
-        <>
-          <pre>{JSON.stringify(config, null, 2)}</pre>
-          <FacePicker
-            value={mouths}
-            onChange={setMouths}
-            filters={filters}
-            onFiltersChange={setFilters}
-          />
-          {linkCandidateError && (
-            <p role="alert">
-              This link&rsquo;s saltNonce could not be reconstructed: {linkCandidateError}
-            </p>
-          )}
-          {/* Mining and the deploy transaction never run at once: the one screen where a user
-              must read an address carefully should not sit under a grid still re-sorting
-              itself. Inspecting a result is not that moment, so the leaderboard keeps updating
-              until a deploy is actually initiated — and MiningView stays mounted throughout, so
-              a different result can always be picked directly. */}
-          <MiningView
-            config={config}
-            faceSpec={faceSpec}
-            filters={filters}
-            paused={deploying || awaitingLinkCandidate}
-            onSelect={setSelected}
-          />
-          {selected && (
-            <>
-              <DeployPanel
-                key={selected.address}
-                config={config}
-                candidate={selected}
-                onDeployStart={() => setDeploying(true)}
-                onDeploySettled={() => setDeploying(false)}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setSelected(undefined)
-                  // Belt and braces: the deploy sequence's own `finally` clears this, but if the
-                  // panel is dismissed while a wallet prompt is still open, nothing else would
-                  // hand mining back until (or unless) that promise settles.
-                  setDeploying(false)
-                }}
-              >
-                Back to mining
-              </button>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          {linkResult?.error && (
-            <p role="alert">This share link could not be used: {linkResult.error}</p>
-          )}
-          <ConfigForm initial={initial} onSubmit={setConfig} />
-        </>
-      )}
+      {/* `contents` keeps this wrapper out of the layout entirely, so the sticky bar MiningView
+          portals in here sticks to the top of the page rather than to a one-bar-tall box. */}
+      <div id={MINING_STATUS_BAR_SLOT_ID} className="contents" />
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+        <SecurityNotice />
+
+        {!config && !linkDismissed && linkResult?.error && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              This share link could not be used: {linkResult.error}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <ConfigSection
+          config={config}
+          initial={initial}
+          onSubmit={setConfig}
+          onStartOver={startOver}
+        />
+
+        {config && (
+          <>
+            <FaceSection
+              mouths={mouths}
+              filters={filters}
+              onMouthsChange={setMouths}
+              onFiltersChange={setFilters}
+            />
+
+            {linkCandidateError && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  This link&rsquo;s saltNonce could not be reconstructed: {linkCandidateError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Mining and the deploy transaction never run at once: the one screen where a user
+                must read an address carefully should not sit under a grid still re-sorting
+                itself. Inspecting a result is not that moment, so the leaderboard keeps updating
+                until a deploy is actually initiated — and MiningView stays mounted throughout, so
+                a different result can always be picked directly. */}
+            <MiningView
+              config={config}
+              faceSpec={faceSpec}
+              filters={filters}
+              paused={deploying || awaitingLinkCandidate}
+              selectedAddress={selected?.address}
+              onSelect={setSelected}
+            />
+
+            {selected && (
+              <>
+                <DeployPanel
+                  key={selected.address}
+                  config={config}
+                  candidate={selected}
+                  onDeployStart={() => setDeploying(true)}
+                  onDeploySettled={() => setDeploying(false)}
+                />
+                <div>
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={() => {
+                      setSelected(undefined)
+                      // Belt and braces: the deploy sequence's own `finally` clears this, but if
+                      // the panel is dismissed while a wallet prompt is still open, nothing else
+                      // would hand mining back until (or unless) that promise settles.
+                      setDeploying(false)
+                    }}
+                  >
+                    Back to mining
+                  </Button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </>
   )
 }

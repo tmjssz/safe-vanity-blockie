@@ -7,6 +7,39 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
     mise exec -- pnpm -r build      # the app consumes core's compiled dist
     mise exec -- pnpm --filter @safe-vanity-blockie/web dev
 
+## Interface
+
+One page, top to bottom: a sticky mining bar, the security caveat, **Configure**, **Face**,
+**Results**, and — once a result is picked — **Deploy**.
+
+The bar is pinned to the top of the viewport for the whole run and carries the best score so far,
+the nonces scanned, the current rate, the worker count and a Pause/Resume control. It only exists
+once mining has started, and it is fed by the mining state itself, so it keeps reporting while you
+scroll through results far below it.
+
+Light and dark themes both ship; the toggle sits in the header next to the wallet button and
+follows the system setting until you choose one.
+
+Two rules are worth knowing before you meet them:
+
+- **Configure locks once you submit it, and the only way back is "Start over".** Owners,
+  threshold, Safe version and chain are the inputs the Safe address is derived from, so editing
+  one would silently invalidate every result on screen. "Start over" says so and asks for
+  confirmation, then clears the config, the results and anything a `?config=…` link brought with
+  it.
+- **Face does not lock, and changing it does not throw away the run.** Expressions and the
+  two-colour/contrast filters are scoring and display concerns, so they apply live: the filters
+  re-select from candidates already found without restarting anything, and changing the accepted
+  expressions starts a new search only because it changes what "a match" means.
+- **Mining pauses when a deploy starts, not when you select a result.** Inspecting a candidate
+  leaves the search running; confirming the transaction in your wallet is the one moment you must
+  read an address carefully, so that is when the grid stops moving underneath you. It resumes from
+  where it left off — keeping the leaderboard and the cumulative counts — whichever way the deploy
+  attempt settles.
+
+The results grid keeps showing the best candidates found so far, so a selected card can drop out
+of it as better ones arrive. The Deploy panel holds the candidate you picked regardless.
+
 ## ⚠️ Security
 
 A matching identicon is cosmetic and must never be trusted as proof of an address. Blockie
@@ -21,12 +54,13 @@ in ~50,000-nonce slices and awaits a macrotask between them. A stop is acted on 
 slice boundary, within a few hundred milliseconds.
 
 Each worker gets a disjoint block of nonces. Measured aggregate throughput across 5 workers on a
-6-core sandbox VM has ranged ~810,000–1,100,000 nonces/s between separate runs — i.e. well under
-one full core's worth per worker, consistent with a shared/contended CPU whose availability
-varies run to run, rather than a dedicated desktop. The CLI's measured rate is ~470k nonces/s per
-worker core. Treat both as a starting point for your own hardware, not a guarantee: a real
-focused desktop tab with dedicated cores should do at least as well as the sandbox figures above,
-and a background or mobile tab will do considerably worse.
+6-core sandbox VM has ranged ~810,000–2,200,000 nonces/s between separate runs and separate
+sandbox hosts — the spread is the machine, not the code: a shared CPU whose availability varies
+run to run. The 2.2M/s figure is from a production build (`next build && next start`), the lower
+ones from earlier runs on a different host. The CLI's measured rate is ~470k nonces/s per worker
+core. Treat all of them as a starting point for your own hardware, not a guarantee: a real focused
+desktop tab with dedicated cores should do at least as well, and a background or mobile tab will
+do considerably worse.
 
 ## Wallets
 
