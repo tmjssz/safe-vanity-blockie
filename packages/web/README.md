@@ -20,7 +20,7 @@ scroll through results far below it.
 Light and dark themes both ship; the toggle sits in the header next to the wallet button and
 follows the system setting until you choose one.
 
-Two rules are worth knowing before you meet them:
+Three rules are worth knowing before you meet them:
 
 - **Configure locks once you submit it, and the only way back is "Start over".** Owners,
   threshold, Safe version and chain are the inputs the Safe address is derived from, so editing
@@ -37,8 +37,11 @@ Two rules are worth knowing before you meet them:
   where it left off — keeping the leaderboard and the cumulative counts — whichever way the deploy
   attempt settles.
 
-The results grid keeps showing the best candidates found so far, so a selected card can drop out
-of it as better ones arrive. The Deploy panel holds the candidate you picked regardless.
+The results grid only ever shows the best candidates found so far, so the card you picked can drop
+out of it as better ones arrive — taking its highlight ring and "Selected" badge with it, which
+looks like the selection was lost. It was not: the Deploy panel below still holds exactly the
+candidate you chose, address and `saltNonce` unchanged, until you pick another or go back to
+mining.
 
 ## ⚠️ Security
 
@@ -56,8 +59,9 @@ slice boundary, within a few hundred milliseconds.
 Each worker gets a disjoint block of nonces. Measured aggregate throughput across 5 workers on a
 6-core sandbox VM has ranged ~810,000–2,200,000 nonces/s between separate runs and separate
 sandbox hosts — the spread is the machine, not the code: a shared CPU whose availability varies
-run to run. The 2.2M/s figure is from a production build (`next build && next start`), the lower
-ones from earlier runs on a different host. The CLI's measured rate is ~470k nonces/s per worker
+run to run. The top of that range is from production builds (`next build && next start`), where
+two runs minutes apart measured 1.78M/s and 2.20M/s; the lower figures are from earlier runs on a
+different host. The CLI's measured rate is ~470k nonces/s per worker
 core. Treat all of them as a starting point for your own hardware, not a guarantee: a real focused
 desktop tab with dedicated cores should do at least as well, and a background or mobile tab will
 do considerably worse.

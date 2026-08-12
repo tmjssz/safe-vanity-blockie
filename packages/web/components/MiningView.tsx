@@ -63,6 +63,13 @@ export function MiningView({
   // flight, a share link still being reconstructed) rather than fight them.
   const [pausedByUser, setPausedByUser] = useState(false)
   const paused = pausedByHost || pausedByUser
+  // While the host is the one pausing, the bar necessarily reads "Resume" — and the only honest
+  // meaning a click can have then is "run as soon as you are allowed to", never "and also pause
+  // again on my behalf". Treating it as a plain toggle would set `pausedByUser` from a click that
+  // changed nothing on screen, so mining would stay stopped once the host's reason cleared and
+  // the user would have to press Resume a second time with no explanation. Disabling the control
+  // instead would be honest but dead; this way the click always moves toward running.
+  const togglePause = () => setPausedByUser(pausedByHost ? false : !pausedByUser)
 
   // Resolved during the first render in the browser: the page commits the slot element before
   // this component ever mounts (it only appears once a config is submitted), so there is no
@@ -152,9 +159,7 @@ export function MiningView({
     bestScore: best?.score,
     bestMaxScore: best?.maxScore,
   }
-  const statusBar = (
-    <MiningStatusBar status={status} onPauseToggle={() => setPausedByUser((value) => !value)} />
-  )
+  const statusBar = <MiningStatusBar status={status} onPauseToggle={togglePause} />
 
   return (
     <>

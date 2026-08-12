@@ -48,6 +48,29 @@ describe('ConfigSection', () => {
     expect(onStartOver).toHaveBeenCalledOnce()
   })
 
+  // A `?config=…` share link exists to reproduce one exact Safe address, and all four of these
+  // fields go into deriving it. If the prefill is dropped anywhere between the decoded link and
+  // the form, the user retypes owners by hand — and one typo yields a different address, silently,
+  // under the same blockie the link promised. So this asserts the seeding of every field, not
+  // just that some prop was forwarded.
+  it('seeds the form from a decoded share link, field for field', () => {
+    const owners = `${CONFIG.owners[0]}, 0x${'22'.repeat(20)}`
+    render(
+      <ConfigSection
+        config={undefined}
+        initial={{ owners, threshold: 2, safeVersion: '1.3.0', chainId: 11155111 }}
+        onSubmit={vi.fn()}
+        onStartOver={vi.fn()}
+      />,
+    )
+
+    expect((screen.getByLabelText(/owners/i) as HTMLInputElement).value).toBe(owners)
+    expect((screen.getByLabelText(/threshold/i) as HTMLInputElement).value).toBe('2')
+    // Radix renders each Select as a combobox, so this reads the trigger's displayed value.
+    expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toContain('1.3.0')
+    expect(screen.getByRole('combobox', { name: /chain/i }).textContent).toContain('Sepolia')
+  })
+
   it('explains why the config is locked, since owners determine the address', () => {
     render(<ConfigSection config={CONFIG} onSubmit={vi.fn()} onStartOver={vi.fn()} />)
     expect(screen.getByText(/determine the safe address/i)).toBeDefined()

@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 
@@ -72,6 +74,11 @@ beforeEach(() => {
   toastErrorSpy.mockClear()
   stopSpy.mockClear()
   setFiltersSpy.mockClear()
+})
+
+// RTL's cleanup only unmounts what it rendered; the portal slot is appended to the body by hand.
+afterEach(() => {
+  document.getElementById(MINING_STATUS_BAR_SLOT_ID)?.remove()
 })
 
 describe('MiningView', () => {
@@ -253,6 +260,103 @@ describe('MiningView', () => {
     // The toast is additive: the alert this same error produces (MiningView.tsx) must still be
     // on screen, since a toast alone would disappear before the user can act on it.
     expect(screen.getByRole('alert').textContent).toMatch(/worker failed to start: boom/i)
+  })
+
+  it('portals the status bar into the page slot when one is mounted', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+    // The page renders this element at the very top of the layout; the bar has to end up inside
+    // it, not inline in the middle of the results section, or it stops being the thing that stays
+    // in view during a long search.
+    const slot = document.createElement('div')
+    slot.id = MINING_STATUS_BAR_SLOT_ID
+    document.body.append(slot)
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const scanned = screen.getByText(/4,200/)
+    expect(slot.contains(scanned)).toBe(true)
+    // The bar's own root is a direct child of the slot — nothing of MiningView's own markup is
+    // hoisted along with it.
+    expect(slot.children).toHaveLength(1)
+  })
+
+  it('renders the status bar in place when no slot is mounted', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.contains(screen.getByText(/4,200/))).toBe(true)
+  })
+
+  it('resumes when the host stops pausing, even if Resume was pressed while it was', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, scanned: 4200 }
+
+    // Mining is held paused by the host — a deploy in flight, or a share link's saltNonce still
+    // being reconstructed. The bar can only read "Resume" here, so pressing it is the obvious
+    // thing to do, and it must not silently arm a *second* pause that outlives the host's one.
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /resume/i }))
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(startSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('still pauses and resumes on demand when the host is not pausing', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(screen.getByRole('button', { name: /pause/i }))
+    expect(stopSpy).toHaveBeenCalled()
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(screen.getByRole('button', { name: /resume/i }))
+    expect(startSpy).toHaveBeenCalledTimes(2)
   })
 
   it('does not toast when there is no worker error', () => {

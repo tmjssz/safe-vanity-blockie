@@ -113,9 +113,24 @@ vi.mock('../lib/deep-link', async (importOriginal) => {
   }
 })
 
+// `initial` is exposed as a data attribute rather than as text: the accessible name every other
+// test queries by ("submit-config") must not change. It is here because the page's share-link
+// prefill is otherwise invisible to this suite — dropping `initial` on the way to ConfigSection
+// would leave the whole file green while every `?config=` link silently stopped reproducing the
+// address it was made for.
 vi.mock('../components/ConfigForm', () => ({
-  ConfigForm: ({ onSubmit }: { onSubmit: (config: unknown) => void }) => (
-    <button type="button" onClick={() => onSubmit(CONFIG)}>
+  ConfigForm: ({
+    initial,
+    onSubmit,
+  }: {
+    initial?: { owners?: string; threshold?: number; safeVersion?: string; chainId?: number }
+    onSubmit: (config: unknown) => void
+  }) => (
+    <button
+      type="button"
+      data-initial={initial ? JSON.stringify(initial) : ''}
+      onClick={() => onSubmit(CONFIG)}
+    >
       submit-config
     </button>
   ),
@@ -366,6 +381,38 @@ describe('Page', () => {
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
     expect(screen.queryByText('paused')).toBeNull()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+  })
+
+  it('prefills the config form from a ?config= link, and drops that prefill on "Start over"', async () => {
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+      }),
+    })
+
+    render(<Page />)
+
+    // Every field the Safe address is derived from reaches the form, or the link cannot
+    // reproduce the address it was created for.
+    expect(
+      JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
+    ).toEqual({
+      owners: CONFIG.owners.join(', '),
+      threshold: CONFIG.threshold,
+      safeVersion: CONFIG.safeVersion,
+      chainId: CONFIG.chainId,
+    })
+
+    // "Start over" is a deliberate break with whatever the link asked for, so the form comes
+    // back empty rather than re-seeded from it.
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+    await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
+
+    expect(screen.getByRole('button', { name: 'submit-config' }).dataset.initial).toBe('')
   })
 
   it('locks the config once submitted and restores the form when starting over', async () => {
