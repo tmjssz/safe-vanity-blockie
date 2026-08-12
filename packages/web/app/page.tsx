@@ -1,6 +1,7 @@
 'use client'
 
 import type { Candidate } from '@safe-vanity-blockie/core'
+import { Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConfigSection } from '../components/ConfigSection'
@@ -208,6 +209,48 @@ function HomeContent() {
 
   return (
     <>
+      {/* The whole wait a link recipient sits through — the constants RPC round trip, then
+          keccak's wasm init and the derivation — happens with nothing else on the page but a
+          prefilled form, so without this the app looks like it did nothing with the link at all.
+
+          Driven by `awaitingLinkCandidate` itself rather than a second flag: that is already
+          exactly "a link named a saltNonce and its reconstruction has not settled", it is true
+          from the first paint (before the constants read has even been dispatched), and it is the
+          same value that holds mining over the same window — one source of truth, so the overlay
+          cannot outlive what it describes. It yields to both failures for free, which is the
+          property that matters most: `linkCandidateError` is only ever set together with
+          `linkCandidateSettled`, and a constants failure is the `!constantsForLink.error` term, so
+          this and either alert below are mutually exclusive by construction rather than by
+          sequencing. Both those alerts therefore render underneath a cleared overlay, never behind
+          a live one. On the ordinary no-link path `linkSaltNonce` is undefined and this never
+          mounts at all.
+
+          `z-60` because it has to cover the sticky header (z-50 in app/layout.tsx) and the mining
+          status bar (z-40 in MiningStatusBar) rather than slide under them. It also swallows
+          pointer events over the whole viewport, which is the point of an overlay rather than an
+          inline spinner: submitting the form halfway through resolving a link is not something to
+          invite. It deliberately does NOT trap focus or mark anything inert — a keyboard user can
+          still reach the form behind it, and that state is safe on its own terms (the candidate
+          and the config it was derived from are paired, see `selection` above), so paying for a
+          focus trap and its escape hatches to prevent it would be the wrong trade.
+
+          No visible caption, by request. The name is `sr-only`: a bare spinning box announces
+          nothing at all to a screen reader, and `role="status"` takes its name from the author
+          rather than from its contents, so `aria-labelledby` points at that hidden span — one
+          string, doing both jobs. */}
+      {awaitingLinkCandidate && (
+        <div
+          role="status"
+          aria-labelledby="link-candidate-status"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+        >
+          <Loader2 className="size-10 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span id="link-candidate-status" className="sr-only">
+            Resolving this share link…
+          </span>
+        </div>
+      )}
+
       {/* `contents` keeps this wrapper out of the layout entirely, so the sticky bar MiningView
           portals in here sticks to the top of the page rather than to a one-bar-tall box. */}
       <div id={MINING_STATUS_BAR_SLOT_ID} className="contents" />

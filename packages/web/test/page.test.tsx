@@ -431,11 +431,16 @@ describe('Page', () => {
       '12345',
       faceSpecFromSelection(ALL_MOUTH_NAMES),
     )
+    // Deliberately NOT the owners the mocked ConfigForm submits: every constants read below can
+    // therefore be attributed to one config or the other.
+    const LINK_OWNERS = ['0x' + '33'.repeat(20)]
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(expected.address))
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(expected.address)
 
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
-        owners: CONFIG.owners,
-        threshold: CONFIG.threshold,
+        owners: LINK_OWNERS,
+        threshold: 1,
         safeVersion: CONFIG.safeVersion,
         chainId: CONFIG.chainId,
         saltNonce: '12345',
@@ -443,6 +448,7 @@ describe('Page', () => {
     })
 
     render(<Page />)
+    const user = userEvent.setup()
 
     // No submit anywhere above this line.
     const dialog = await screen.findByRole('dialog')
@@ -463,12 +469,146 @@ describe('Page', () => {
     // …and not the locked "1 owner · threshold 1 · …" summary, which would mean it had been
     // submitted and a search started on the recipient's behalf.
     expect(screen.queryByText(/1 owner/i)).toBeNull()
+
+    // Deploying from here has to work, and has to work with the LINK's config — this is the one
+    // path on which the dialog's config did not come from the page's submitted state, and it is
+    // the path nothing else in this suite drives. A refactor that reached for the page's `config`
+    // anywhere in the deploy branch would leave every rendered detail above correct and build the
+    // plan from something else entirely.
+    await user.click(deployButton())
+
+    expect(
+      await screen.findByText(new RegExp(`Safe deployed at ${expected.address}`, 'i')),
+    ).toBeDefined()
+    // The dialog's own independent constants re-read asked about the link's Safe, not the
+    // recipient's — `toHaveBeenLastCalledWith`, so this is the deploy path's read and not the
+    // page's earlier one.
+    expect(loadSafeConstantsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        owners: LINK_OWNERS,
+        threshold: 1,
+        safeVersion: CONFIG.safeVersion,
+      }),
+    )
+    expect(buildDeploymentPlanMock).toHaveBeenCalledWith(
+      expect.objectContaining({ saltNonce: '12345', chainId: CONFIG.chainId }),
+    )
+    // And the last-resort guard never had anything to catch.
+    expect(screen.queryByText(/does not match the selected candidate/i)).toBeNull()
+  })
+
+  // Resolving a link is a real wait — an RPC round trip for the constants, then keccak's wasm
+  // init — and until it finishes the page has nothing on it but a prefilled form. These three pin
+  // the whole window and all three of its exits: it is `awaitingLinkCandidate` that is on screen,
+  // which is the same flag that holds mining, so there is no second source of truth to drift.
+  const linkParams = () =>
+    new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+  const spinner = () => screen.queryByRole('status', { name: /share link/i })
+
+  it('shows a spinner naming what it is waiting for while a share link resolves, until the dialog is up', async () => {
+    let started = 0
+    let resolveCandidate: (candidate: unknown) => void = () => {}
+    linkCandidateOverride.current = () => {
+      started++
+      return new Promise((resolve) => {
+        resolveCandidate = resolve
+      })
+    }
+    searchParamsRef.current = linkParams()
+
+    render(<Page />)
+
+    // Present from the first paint — before the constants read has even been dispatched — and it
+    // says what is being waited on rather than spinning anonymously.
+    expect(spinner()).not.toBeNull()
+    expect(spinner()?.textContent).toMatch(/share link/i)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // Still there once the constants have landed and the derivation itself is running: the wait
+    // this covers is both halves, not just the RPC.
+    await waitFor(() => expect(started).toBe(1))
+    expect(spinner()).not.toBeNull()
+
+    await act(async () => {
+      resolveCandidate(CANDIDATE_A)
+    })
+
+    // It hands over to the dialog, and does not linger behind it.
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    expect(spinner()).toBeNull()
+  })
+
+  it('replaces the share-link spinner with the failure when the reconstruction rejects', async () => {
+    let started = 0
+    let rejectCandidate: (error: Error) => void = () => {}
+    linkCandidateOverride.current = () => {
+      started++
+      return new Promise((_, reject) => {
+        rejectCandidate = reject
+      })
+    }
+    searchParamsRef.current = linkParams()
+
+    render(<Page />)
+    expect(spinner()).not.toBeNull()
+    await waitFor(() => expect(started).toBe(1))
+
+    await act(async () => {
+      rejectCandidate(new Error('keccak refused to load'))
+    })
+
+    // A spinner that outlives the failure is worse than no spinner: it promises a result that is
+    // never coming, next to the alert saying so.
+    expect(await screen.findByText(/could not be reconstructed/i)).toBeDefined()
+    expect(spinner()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('replaces the share-link spinner with the failure when the constants read fails', async () => {
+    let rejectConstants: (error: Error) => void = () => {}
+    loadSafeConstantsMock.mockReset().mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectConstants = reject
+        }),
+    )
+    searchParamsRef.current = linkParams()
+
+    render(<Page />)
+    expect(spinner()).not.toBeNull()
+
+    await act(async () => {
+      rejectConstants(new Error('rate limited by the public RPC'))
+    })
+
+    expect(await screen.findByText(/rate limited by the public RPC/)).toBeDefined()
+    expect(spinner()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('shows no share-link spinner on the ordinary no-link path', async () => {
+    render(<Page />)
+    expect(spinner()).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(spinner()).toBeNull()
   })
 
   // The recipient can submit the prefilled form (or an edited one) while the reconstruction is
-  // still in flight — the constants read is a real network round trip. Whatever they submit, the
-  // candidate on screen has to stay the one the LINK names: it is the link's saltNonce, and only
-  // the link's own owners/threshold/version/chain reproduce the address it was mined for.
+  // still in flight — the constants read is a real network round trip. The resolving overlay
+  // swallows pointer events for that window, but it deliberately traps no focus and marks nothing
+  // inert, so a keyboard submit still lands; this stays a reachable sequence, not a hypothetical.
+  // Whatever they submit, the candidate on screen has to stay the one the LINK names: it is the
+  // link's saltNonce, and only the link's own owners/threshold/version/chain reproduce the address
+  // it was mined for.
   it("derives the link candidate from the link's own config, never from one submitted underneath it", async () => {
     const LINK_OWNERS = ['0x' + '33'.repeat(20)]
     const LINK_SETUP = {
@@ -530,13 +670,18 @@ describe('Page', () => {
   })
 
   // The config the dialog deploys with and the config the address on it was derived from are the
-  // same object, by construction. This is the only sequence that can put them in tension: a link
-  // candidate is on screen, and a *different* config is submitted underneath it. A real user
-  // cannot do this — the dialog is modal, and the form behind it takes no clicks (userEvent
-  // refuses one outright, which is why fireEvent is used here, as in the `key` test above) — but
-  // "the modal is in the way" is not a property the deploy path should depend on. DeployDialog's
-  // `plan.address !== candidate.address` refusal would catch the drift after the fact; nothing
-  // should ever get that far.
+  // same object, by construction. This is the state that puts the two in tension: a link candidate
+  // on screen, a DIFFERENT config submitted and mining underneath it.
+  //
+  // That state is reachable by a real user — the test above walks straight into it by submitting
+  // *during* the reconstruction (by keyboard: the overlay takes the pointer route but not focus),
+  // before any dialog exists. Only this particular ORDERING (submit after the dialog is already
+  // up) is out of reach, because the dialog is modal
+  // and the form behind it takes no clicks; userEvent refuses one outright, which is why fireEvent
+  // is used here, as in the `key` test above. So the modal is not what makes any of this safe, and
+  // nothing here may rest on it: the pairing of candidate and config is the whole guarantee.
+  // DeployDialog's `plan.address !== candidate.address` refusal would catch a drift after the
+  // fact, at the wallet step; nothing should ever get that far.
   it('keeps the deploy dialog on the config its address came from when a different one is submitted underneath it', async () => {
     const LINK_OWNERS = ['0x' + '33'.repeat(20)]
     searchParamsRef.current = new URLSearchParams({
@@ -570,6 +715,23 @@ describe('Page', () => {
     expect(sharedConfig()?.owners).toEqual(LINK_OWNERS)
     expect(sharedConfig()?.owners).not.toEqual(CONFIG.owners)
     expect(sharedConfig()?.saltNonce).toBe('12345')
+
+    // And a deploy started from this mixed state acts on the link's config too — the rendered
+    // link and the config the plan is built from are the same thing, which is exactly what a
+    // "read `config` instead of `selection.config` at deploy time" refactor would separate:
+    // everything asserted above would still pass while this read used the recipient's owners.
+    const shownAddress = (address ?? '').match(/0x[0-9a-fA-F]{40}/)?.[0]
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(shownAddress ?? ''))
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(shownAddress)
+    fireEvent.click(deployButton())
+
+    expect(
+      await screen.findByText(new RegExp(`Safe deployed at ${shownAddress}`, 'i')),
+    ).toBeDefined()
+    expect(loadSafeConstantsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owners: LINK_OWNERS }),
+    )
+    expect(screen.queryByText(/does not match the selected candidate/i)).toBeNull()
   })
 
   it('NEW-1 regression: a share-link user who closes the deploy dialog is not stranded paused forever', async () => {
@@ -602,8 +764,10 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
-    // Initiating the deploy is what pauses mining, even on this path where the candidate was
-    // never picked by hand — and it resumes once the attempt settles.
+    // Initiating the deploy — here on a hand-picked card from the recipient's own search, since
+    // that is what exists after the link dialog has been closed — is what pauses mining, and it
+    // resumes once the attempt settles. (Deploying the LINK's candidate is covered by the headline
+    // test above, which does it on the dialog the link itself opened.)
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(screen.getByText('running')).toBeDefined()
     await user.click(deployButton())
