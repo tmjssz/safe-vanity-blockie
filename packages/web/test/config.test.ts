@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FACE_FILTERS, validateMineConfig } from '../lib/config.js'
+import { DEFAULT_FACE_FILTERS, validateMineConfig } from '../lib/config'
 
 const OWNER_A = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 const OWNER_B = '0x' + '22'.repeat(20)

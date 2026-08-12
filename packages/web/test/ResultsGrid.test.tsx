@@ -65,11 +65,18 @@ describe('ResultsGrid', () => {
       />,
     )
 
-    const names = resultCards().map((card) => card.getAttribute('aria-label'))
+    const cards = resultCards()
+    const names = cards.map((card) => card.getAttribute('aria-label'))
     expect(names).toEqual([
       expect.stringContaining('0xa'),
       expect.stringContaining('0xb'),
     ])
     expect(new Set(names).size).toBe(2)
+
+    // Same for the badge row each card is described by: a shared id would point every card's
+    // description at the first card's badges, silently describing the wrong result.
+    const described = cards.map((card) => card.getAttribute('aria-describedby'))
+    expect(described.every(Boolean)).toBe(true)
+    expect(new Set(described).size).toBe(2)
   })
 })

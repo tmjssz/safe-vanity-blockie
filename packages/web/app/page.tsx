@@ -201,11 +201,24 @@ function HomeContent() {
                 the toast mirror in DeployDialog — mounted in app/layout.tsx, outside every
                 subtree that can unmount here — is what carries the outcome instead.
 
-                `key` is load-bearing. Nothing else stops a completed deploy of one candidate
-                leaving its "Safe deployed at 0x…" status and permanently disabled button
-                rendered above a different candidate's address, on any path that swaps `selected`
-                without an unmount in between (the link-candidate effect below can do exactly
-                that, from an effect, while a dialog is already open). */}
+                `key` guards a path that does not currently exist, and is kept deliberately as
+                defence-in-depth. What it prevents is a completed deploy of one candidate leaving
+                its "Safe deployed at 0x…" status and permanently disabled button rendered above a
+                DIFFERENT candidate's address — which needs `selected` to change from one
+                candidate to another with no unmount in between, and nothing can do that today:
+
+                  - every user route out of the dialog runs `onOpenChange(false)` below, which
+                    clears `selected` and unmounts it; a modal overlay is what stops a second card
+                    from being clicked while one is open;
+                  - the link-candidate effect above is the only other `setSelected` caller, and it
+                    cannot land on an open dialog: `awaitingLinkCandidate` holds MiningView paused
+                    for precisely the window in which that effect can resolve, so the grid has no
+                    candidates and there is no card to click, hence nothing for `selected` to be
+                    already set to. `linkCandidateAttempted` then makes it one-shot.
+
+                So this is one `setSelected` caller away from mattering, and it costs nothing.
+                Deleting it does not fail anything a user can currently do — see the regression
+                test in test/page.test.tsx, which drives the swap through a mocked MiningView. */}
             {selected && (
               <DeployDialog
                 key={selected.address}

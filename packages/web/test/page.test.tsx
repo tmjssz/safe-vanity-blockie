@@ -4,12 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Page from '../app/page'
 import { encodeConfigParam } from '../lib/deep-link'
 
-// CRITICAL regression coverage: page.tsx renders `{selected && <DeployDialog .../>}` with no
-// `key`. Without a key, handing the dialog a second candidate re-renders the SAME DeployDialog
-// instance, so its `status`/`completed` state (from deploying the first candidate) survives
-// underneath a blockie and address for the second one — a success message naming one address
-// rendered above another. This drives the real Page end to end (mocking only the heavy children
-// and the wallet/RPC boundary) so it fails if the `key={selected.address}` fix is ever reverted.
+// Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
+//
+// One thing to know before reading the `key` regression test below: it is deliberately NOT a
+// reproduction of anything a user can currently do. Handing the dialog a second candidate with no
+// unmount in between would leave the first candidate's `status`/`completed` state rendered above
+// the second one's address, and `key={selected.address}` is what prevents that — but see the
+// comment in page.tsx: no code path reaches that state today. The test exists so the guard cannot
+// be deleted as dead weight, and it drives the swap through the mocked MiningView, which is
+// exactly why it can reach a state the real one cannot.
 
 const CONFIG = { owners: ['0x' + '11'.repeat(20)], threshold: 1, safeVersion: '1.4.1', chainId: 1 }
 
@@ -354,11 +357,15 @@ describe('Page', () => {
     expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
 
     // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
-    // the element position and only `key={selected.address}` forces a fresh instance. This is
-    // the page's own `setSelected` path, which the link-candidate effect can take at any moment
-    // (it fires from an effect, and a modal overlay does not stop an effect); driven with
-    // fireEvent because the modal's `pointer-events: none` on the rest of the body is exactly
-    // what a real click would hit, and a real click is not what this test is about.
+    // the element position and only `key={selected.address}` forces a fresh instance.
+    //
+    // NOT a reachable sequence: the real MiningView cannot call `onSelect` from behind a modal
+    // overlay, and the only other `setSelected` caller (the link-candidate effect) runs in a
+    // window where `awaitingLinkCandidate` has left the grid empty, so no dialog can be open to
+    // swap underneath. The mock can make the call the real component cannot, which is the whole
+    // point: it pins the guard so nobody deletes it as redundant, without pretending the hole is
+    // currently open. fireEvent rather than userEvent because the modal sets `pointer-events:
+    // none` on the rest of the body — a real click is precisely what this is not.
     fireEvent.click(screen.getByText('select-b'))
 
     // The dialog now shows candidate B, and nothing of candidate A's deploy survives: not the

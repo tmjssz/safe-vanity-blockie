@@ -70,6 +70,22 @@ describe('ResultCard', () => {
     expect(name).toContain(candidate.address)
   })
 
+  // The aria-label above overrides the card's contents as the accessible name, which would
+  // otherwise leave the expression, colour-count and contrast badges announced nowhere at all —
+  // they were plain text beside a separate "Use this" button before. Described-by keeps them.
+  it('still announces the expression, colour and contrast badges the label does not name', () => {
+    render(<ResultCard candidate={candidate} onSelect={vi.fn()} />)
+
+    const describedBy = screen.getByRole('button').getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+
+    const description = document.getElementById(describedBy as string)
+    expect(description).not.toBeNull()
+    expect(description?.textContent).toContain('small')
+    expect(description?.textContent).toContain('two colours')
+    expect(description?.textContent).toContain('157')
+  })
+
   // The card is a plain button rather than a DialogTrigger (the dialog is rendered by the page,
   // not by this component), so the attribute DialogTrigger would have supplied is set by hand.
   it('announces that activating it opens a dialog', () => {

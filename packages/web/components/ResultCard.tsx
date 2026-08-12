@@ -12,6 +12,9 @@ export interface ResultCardProps {
 export function ResultCard({ candidate, onSelect }: ResultCardProps) {
   const expression = Object.values(candidate.regions).join('/') || '—'
   const score = formatScore(candidate.score, candidate.maxScore)
+  // Unique per grid without useId: ResultsGrid already keys these cards by address, so two cards
+  // with the same address cannot be on screen at once.
+  const traitsId = `result-traits-${candidate.address}`
 
   return (
     // The whole card is the control: there is nothing else on it to click, so a real <button>
@@ -30,6 +33,12 @@ export function ResultCard({ candidate, onSelect }: ResultCardProps) {
         // Falling back to the card's own contents would name it after the identicon's alt text
         // and read the address out twice.
         aria-label={`Deploy ${score} match ${candidate.address}`}
+        // An explicit aria-label overrides the card's contents, which would otherwise silence the
+        // three badges below — a screen-reader user could no longer tell a two-colour result from
+        // a three-colour one, or compare contrast, without opening the deploy dialog. They were
+        // plain text next to a separate button before; this keeps them announced, as the
+        // description rather than as part of the name.
+        aria-describedby={traitsId}
         // Set by hand for the same reason DeployPanel's trigger used to: the dialog is rendered
         // by the page, not as a child of this component, so there is no DialogTrigger to supply
         // it. There is deliberately no aria-expanded — this control has no expanded state of its
@@ -42,7 +51,7 @@ export function ResultCard({ candidate, onSelect }: ResultCardProps) {
         <span className="px-4 text-lg font-semibold">{score}</span>
         <span className="flex flex-col items-center gap-3 px-4">
           <Blockie address={candidate.address} size={128} />
-          <span className="flex flex-wrap items-center justify-center gap-1.5">
+          <span id={traitsId} className="flex flex-wrap items-center justify-center gap-1.5">
             <Badge variant="secondary">{expression}</Badge>
             <Badge variant={candidate.twoColor ? 'secondary' : 'outline'}>
               {candidate.twoColor ? 'two colours' : 'three colours'}
