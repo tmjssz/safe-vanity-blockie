@@ -3,7 +3,7 @@ import { cn } from '../lib/utils'
 import { Blockie } from './Blockie'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from './ui/card'
+import { Card, CardAction, CardContent, CardFooter, CardHeader } from './ui/card'
 
 export interface ResultCardProps {
   candidate: Candidate
@@ -16,11 +16,15 @@ export function ResultCard({ candidate, selected = false, onSelect }: ResultCard
   const expression = Object.values(candidate.regions).join('/') || '—'
   return (
     <Card className={cn('gap-3 py-4', selected && 'ring-2 ring-primary')}>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 px-4">
+      <CardHeader className="px-4">
         <span className="text-lg font-semibold">
           {formatScore(candidate.score, candidate.maxScore)}
         </span>
-        {selected && <Badge>Selected</Badge>}
+        {selected && (
+          <CardAction>
+            <Badge>Selected</Badge>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-3 px-4">
         <Blockie address={candidate.address} size={128} />

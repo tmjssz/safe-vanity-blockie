@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DeployPanel } from '../components/DeployPanel'
+import { decodeConfigParam } from '../lib/deep-link'
 
 // Hoisted so each test can drive its own wagmi state — a module-scoped factory (the brief's
 // original mock) can only ever return one fixed state, which meant every test rendered the
@@ -26,6 +27,9 @@ vi.mock('wagmi', () => ({
 // in DeployDialog.test.tsx, and this suite only opens the dialog.
 vi.mock('@safe-vanity-blockie/safe-config', () => ({
   loadSafeConstants: vi.fn().mockRejectedValue(new Error('Could not read Safe constants (test).')),
+  // Read directly by ../lib/config's validateMineConfig, which the share-link round-trip test
+  // below reaches through the real decodeConfigParam. An empty set collides with nothing here.
+  ZKSYNC_CHAIN_IDS: new Set(),
 }))
 
 const candidate = {
@@ -78,6 +82,49 @@ describe('DeployPanel', () => {
   it('keeps the share link reachable without deploying', () => {
     renderPanel()
     expect(screen.getByRole('button', { name: /copy share link/i })).toBeDefined()
+  })
+
+  // T1. The whole point of a share link is that it reproduces THIS address, and the only thing
+  // that carries the address is the saltNonce. Asserting the button exists, or that the URL
+  // contains "/?config=", leaves the entire encode half of the round trip unpinned: drop the
+  // saltNonce here and every link silently degrades to "prefills four form fields", with the
+  // recipient mining a different face and no error anywhere. So this decodes what the UI
+  // actually produced, with the real decoder, and compares it field for field.
+  it('T1: builds a share link that decodes back to this config, saltNonce included', () => {
+    renderPanel()
+
+    const value = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const param = new URL(value).searchParams.get('config')
+    expect(param).not.toBeNull()
+
+    const decoded = decodeConfigParam(param as string)
+    expect(decoded.error).toBeUndefined()
+    expect(decoded.config).toEqual({ ...config, saltNonce: candidate.saltNonce })
+  })
+
+  // S4. The trigger is a plain Button rather than a DialogTrigger, so without these a screen
+  // reader is never told that activating it opens a dialog. The caveat beside it is static copy
+  // and must not be a live region competing with the real deploy error.
+  it('announces that its trigger opens a dialog, and keeps the caveat a note', async () => {
+    useAccountMock.mockReturnValue({
+      isConnected: true,
+      address: connectedAddress,
+      chainId: config.chainId,
+    })
+    renderPanel()
+
+    const trigger = screen.getByRole('button', { name: /deploy this safe…/i })
+    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('note').textContent).toMatch(/cosmetic/i)
+
+    await userEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('titles the panel as a real heading', () => {
+    renderPanel()
+    expect(screen.getByRole('heading', { level: 2, name: /^deploy$/i })).toBeDefined()
   })
 
   // The deploy button, the wrong-chain gate and the error alert moved to DeployDialog with the

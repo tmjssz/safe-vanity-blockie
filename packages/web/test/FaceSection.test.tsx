@@ -28,6 +28,21 @@ describe('FaceSection', () => {
     expect(props.onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
   })
 
+  // S4/S6. The section is a Collapsible now, but it starts open — the picker has to stay
+  // discoverable — and its title is a real h2, which also repairs the FacePicker h3 underneath it
+  // that previously hung off a non-heading.
+  it('starts open, with its title as a real heading, and collapses on demand', async () => {
+    renderSection()
+    expect(screen.getByRole('heading', { level: 2, name: /^face$/i })).toBeDefined()
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('button', { name: /show or hide the face options/i }))
+
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    // The one-line summary survives the collapse, as Configure's does.
+    expect(screen.getByText(/smile, frown/i)).toBeDefined()
+  })
+
   it('renders one target preview per accepted expression', () => {
     renderSection({ mouths: ['smile', 'frown', 'open'] })
     expect(screen.getAllByRole('img', { name: /target pattern/i })).toHaveLength(3)

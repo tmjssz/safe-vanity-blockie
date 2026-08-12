@@ -50,6 +50,9 @@ export function CliHandoff({
 
   const copy = () => {
     setCopyError(undefined)
+    // Same reasoning as ShareConfig's: a latched "Copied" label beside a "could not copy" alert
+    // tells the user two contradictory things about the same click.
+    setCopied(false)
     try {
       // Same reasoning as ShareConfig's copy handler: `.clipboard` can be undefined (throws
       // synchronously if read off `navigator` and called) or present and reject (async), so both

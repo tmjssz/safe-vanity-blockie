@@ -38,6 +38,22 @@ describe('FacePicker', () => {
     expect(onChange).toHaveBeenCalledWith(['smile', 'frown'])
   })
 
+  // T7. The tests below count the checkboxes and drive onCheckedChange, which fires regardless of
+  // checked state — so `checked={value.includes(name)}` → `checked={false}` survived all of them.
+  // The panel would show every expression unticked while the miner happily accepts all five.
+  it('ticks exactly the accepted expressions', () => {
+    renderPicker({ value: ['smile', 'frown'] })
+    expect(screen.getByRole('checkbox', { name: /^smile$/i }).getAttribute('aria-checked')).toBe(
+      'true',
+    )
+    expect(screen.getByRole('checkbox', { name: /^frown$/i }).getAttribute('aria-checked')).toBe(
+      'true',
+    )
+    expect(screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked')).toBe(
+      'false',
+    )
+  })
+
   it('refuses to remove the last expression, since a face needs a mouth', async () => {
     const { onChange } = renderPicker({ value: ['smile'] })
     await userEvent.click(screen.getByRole('checkbox', { name: /smile/i }))

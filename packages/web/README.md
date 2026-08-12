@@ -9,16 +9,26 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
 
 ## Interface
 
-One page, top to bottom: a sticky mining bar, the security caveat, **Configure**, **Face**,
-**Results**, and — once a result is picked — **Deploy**.
+One page, top to bottom: a sticky header carrying the theme toggle and the wallet button, a sticky
+mining bar pinned directly below it, the security caveat, **Configure**, **Face**, **Results**, a
+"Run this search on your machine instead" disclosure below the grid that hands you the equivalent
+`npx` command, and — once a result is picked — **Deploy**.
 
-The bar is pinned to the top of the viewport for the whole run and carries the best score so far,
-the nonces scanned, the current rate, the worker count and a Pause/Resume control. It only exists
-once mining has started, and it is fed by the mining state itself, so it keeps reporting while you
-scroll through results far below it.
+The bar carries the best score so far, the nonces scanned, the current rate, the worker count and a
+Pause/Resume control. It appears as soon as a config is submitted and the Safe constants resolve —
+which is not the same as "once mining has started": on a `?config=…` link that carries a saltNonce
+it shows up already paused, offering Resume, before a single nonce has been scanned, because the
+link's address is being re-derived first. It is fed by the mining state itself, so it keeps
+reporting while you scroll through results far below it.
+
+Pause is not one flag. What the bar shows is your own pause combined with the app's: a deploy in
+flight and a share link still being reconstructed both hold mining stopped on their own account. So
+a Resume click during either can look like it did nothing — it means "run as soon as you are
+allowed to", and mining starts the moment the other reason clears, without a second click.
 
 Light and dark themes both ship; the toggle sits in the header next to the wallet button and
-follows the system setting until you choose one.
+follows the system setting until you choose one. The header stays in view, so you can connect a
+wallet without scrolling back to the top after a long search.
 
 Three rules are worth knowing before you meet them:
 
@@ -27,10 +37,13 @@ Three rules are worth knowing before you meet them:
   one would silently invalidate every result on screen. "Start over" says so and asks for
   confirmation, then clears the config, the results and anything a `?config=…` link brought with
   it.
-- **Face does not lock, and changing it does not throw away the run.** Expressions and the
-  two-colour/contrast filters are scoring and display concerns, so they apply live: the filters
-  re-select from candidates already found without restarting anything, and changing the accepted
-  expressions starts a new search only because it changes what "a match" means.
+- **Face does not lock, but only the filters are free.** Expressions and the two-colour/contrast
+  filters are both scoring and display concerns, so neither is ever locked — but they cost
+  different things. The filters re-select from candidates already found, without restarting
+  anything. Changing the accepted expressions restarts the search from nonce 0 and discards the
+  leaderboard, because it changes what "a match" means and previously scored candidates are no
+  longer comparable. There is no warning and no undo, so decide the expressions early. (Face is a
+  collapsible card, open by default; collapsing it keeps the accepted expressions in its header.)
 - **Mining pauses when a deploy starts, not when you select a result.** Inspecting a candidate
   leaves the search running; confirming the transaction in your wallet is the one moment you must
   read an address carefully, so that is when the grid stops moving underneath you. It resumes from

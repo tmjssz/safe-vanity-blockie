@@ -10,7 +10,7 @@ import { ShareConfig } from './ShareConfig'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
 
 export interface DeployPanelProps {
   config: MineConfig
@@ -34,9 +34,11 @@ export function DeployPanel({
   return (
     <>
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle>Deploy</CardTitle>
-          <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
+        <CardHeader>
+          <CardTitle as="h2">Deploy</CardTitle>
+          <CardAction>
+            <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
+          </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-4">
@@ -46,7 +48,10 @@ export function DeployPanel({
               <code className="text-xs text-muted-foreground">saltNonce {candidate.saltNonce}</code>
             </div>
           </div>
-          <Alert>
+          {/* role="note", not the Alert default role="alert": this caveat is always on screen
+              and static, so leaving it as a live region makes it compete permanently with the
+              real deploy error rendered in the dialog. `main`'s SecurityNotice was a note too. */}
+          <Alert role="note">
             <ShieldAlert className="h-4 w-4" />
             <AlertTitle>A matching identicon is cosmetic.</AlertTitle>
             <AlertDescription>
@@ -62,8 +67,15 @@ export function DeployPanel({
         </CardContent>
         <CardFooter>
           {/* Opens the dialog only — every wallet interaction, every address guard and the
-              pause/resume of mining live in DeployDialog. */}
-          <Button type="button" onClick={() => setOpen(true)}>
+              pause/resume of mining live in DeployDialog. It is a plain Button rather than a
+              DialogTrigger (the dialog is rendered as a sibling, not a child), so the two ARIA
+              attributes DialogTrigger would have supplied are set by hand. */}
+          <Button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            onClick={() => setOpen(true)}
+          >
             Deploy this Safe…
           </Button>
         </CardFooter>

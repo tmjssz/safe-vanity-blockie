@@ -107,12 +107,16 @@ function HomeContent() {
   // Kept paused (not unmounted) while a link candidate is still being reconstructed, so it
   // never spins up workers just to have them stopped again a moment later once `selected` is
   // set. Falls through to normal mining if reconstruction errors, or the constants fetch itself
-  // fails (in which case MiningView's own useSafeConstants call will surface that same error).
+  // fails — the latter is reported by `linkConstantsError` below, NOT left to MiningView. Both
+  // components run their own uncached useSafeConstants, so they can disagree: if this one is
+  // rate-limited while MiningView's succeeds, mining starts perfectly normally and the shared
+  // saltNonce — the entire payload of the link — is dropped with nothing on screen to say so.
   // Gated on `linkCandidateSettled`, not `!selected`: the attempt resolving (any way at all,
   // including one whose result was discarded as stale) is what ends the "awaiting" state,
   // permanently — not whatever the user does with `selected` next.
   const awaitingLinkCandidate =
     Boolean(linked?.saltNonce) && !linkCandidateSettled && !constantsForLink.error
+  const linkConstantsError = linked?.saltNonce ? constantsForLink.error : undefined
 
   // Configure is locked once submitted because owners, threshold, Safe version and chain are
   // exactly the inputs the address is derived from: editing one silently invalidates every
@@ -164,6 +168,15 @@ function HomeContent() {
               <Alert variant="destructive">
                 <AlertDescription>
                   This link&rsquo;s saltNonce could not be reconstructed: {linkCandidateError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {linkConstantsError && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  This link&rsquo;s saltNonce could not be reconstructed — Safe constants could
+                  not be read: {linkConstantsError}
                 </AlertDescription>
               </Alert>
             )}

@@ -359,6 +359,68 @@ describe('MiningView', () => {
     expect(startSpy).toHaveBeenCalledTimes(2)
   })
 
+  // T3. MiningView.test.tsx never passed `selectedAddress`, so the hop from this component into
+  // ResultsGrid was uncovered — and the ring is the only thing tying the open deploy panel to a
+  // row in a grid that keeps re-sorting itself while a result is inspected.
+  it('marks the row the deploy panel is showing', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        selectedAddress={CANDIDATE.address}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/^selected$/i)).toBeDefined()
+  })
+
+  it('marks no row when the selected address is not one of the candidates', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        selectedAddress={'0x' + '99'.repeat(20)}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/^selected$/i)).toBeNull()
+  })
+
+  // T5. `filters` is optional on CliHandoff and the command builder omits the flags entirely
+  // without it, so deleting the prop here typechecks and every test stays green — while the
+  // copied `npx` command silently reverts to CLI defaults and the native run enforces a different
+  // standard from the one on screen. CliHandoff.test.tsx covers the component in isolation; this
+  // covers the wiring hop.
+  it('hands the live filters to the CLI command, not the CLI defaults', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: false, minContrast: 300 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    expect(command.textContent).toContain('--no-two-color')
+    expect(command.textContent).toContain('--min-contrast 300')
+  })
+
   it('does not toast when there is no worker error', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = IDLE_STATE

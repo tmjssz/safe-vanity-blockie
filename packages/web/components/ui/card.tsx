@@ -28,9 +28,16 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+// Deviates from the generated source by one prop: `as`. The card titles on this page are the
+// page's real section headings ("Configure", "Face", "Deploy"), and a <div> leaves them invisible
+// to heading navigation on a screen whose entire premise is "read this address carefully".
+function CardTitle({
+  as: Component = "div",
+  className,
+  ...props
+}: React.ComponentProps<"div"> & { as?: React.ElementType }) {
   return (
-    <div
+    <Component
       data-slot="card-title"
       className={cn("leading-none font-semibold", className)}
       {...props}

@@ -71,6 +71,19 @@ describe('ConfigSection', () => {
     expect(screen.getByRole('combobox', { name: /chain/i }).textContent).toContain('Sepolia')
   })
 
+  // S4. CardTitle renders a <div> by default, so Configure, Face and Deploy were invisible to
+  // heading navigation on a page whose whole premise is reading an address carefully.
+  it('exposes its title as a real heading, in both the form and the locked state', () => {
+    const { unmount } = render(
+      <ConfigSection config={undefined} onSubmit={vi.fn()} onStartOver={vi.fn()} />,
+    )
+    expect(screen.getByRole('heading', { level: 2, name: /^configure$/i })).toBeDefined()
+    unmount()
+
+    render(<ConfigSection config={CONFIG} onSubmit={vi.fn()} onStartOver={vi.fn()} />)
+    expect(screen.getByRole('heading', { level: 2, name: /^configure$/i })).toBeDefined()
+  })
+
   it('explains why the config is locked, since owners determine the address', () => {
     render(<ConfigSection config={CONFIG} onSubmit={vi.fn()} onStartOver={vi.fn()} />)
     expect(screen.getByText(/determine the safe address/i)).toBeDefined()

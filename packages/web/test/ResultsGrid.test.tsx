@@ -66,7 +66,11 @@ describe('ResultsGrid', () => {
     expect(screen.getByText(/162/)).toBeDefined()
   })
 
-  it('marks the selected card', () => {
+  // T3. "Some card is marked" is satisfied by marking the WRONG card: flipping the address
+  // comparison to `!==` still leaves exactly one badge on screen with two candidates, while the
+  // ring and badge land on a different blockie and address than the deploy panel is showing. So
+  // the assertion is scoped to the card the badge is actually inside.
+  it('marks the card whose address matches, and marks no other', () => {
     render(
       <ResultsGrid
         candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
@@ -76,6 +80,26 @@ describe('ResultsGrid', () => {
         onSelect={vi.fn()}
       />,
     )
-    expect(screen.getByText(/selected/i)).toBeDefined()
+
+    const marked = screen
+      .getAllByText(/^selected$/i)
+      .map((badge) => badge.closest('[data-slot="card"]'))
+    expect(marked).toHaveLength(1)
+    expect(marked[0]).not.toBeNull()
+    expect(marked[0]?.textContent).toContain('0xa')
+    expect(marked[0]?.textContent).not.toContain('0xb')
+  })
+
+  it('marks nothing when no candidate matches the selected address', () => {
+    render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
+        selectedAddress="0xzzz"
+        droppedCount={0}
+        mining
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/^selected$/i)).toBeNull()
   })
 })

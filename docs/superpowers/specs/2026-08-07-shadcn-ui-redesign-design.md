@@ -17,7 +17,7 @@ This redesign gives it a real front end without touching the logic underneath.
 - `lucide-react` — icons.
 - `next-themes` — dark mode.
 
-Components generated: `Button`, `Input`, `Label`, `Select`, `Checkbox`, `Card`, `Badge`, `Collapsible`, `Alert`, `Dialog`, `Progress`, `Separator`, `Sonner`, `Skeleton`.
+Components generated: `Button`, `Input`, `Label`, `Select`, `Checkbox`, `Card`, `Badge`, `Collapsible`, `Alert`, `Dialog`, `Progress`, `Sonner`, `Skeleton`. (`Separator` was generated too, and removed again — nothing ever imported it.)
 
 `app/globals.css` is replaced by Tailwind's layer setup plus shadcn's design-token block for light and dark.
 
@@ -45,7 +45,7 @@ One scrolling page.
 └────────────────────────────────────────────────┘
 ```
 
-- The **sticky bar** carries best score, scanned count, rate, worker count, a Pause/Resume control and the wallet button. It is the one thing always in view during a long search.
+- The **sticky bar** carries best score, scanned count, rate, worker count and a Pause/Resume control. The wallet button and the theme toggle live in the page header, which is sticky too and sits directly above it — so both are in view for the whole run, which is what this rule is for. The bar pins below the header rather than under it.
 - **Configure** and **Face** are `Collapsible` cards that collapse to a one-line summary once set.
 - The **phishing caveat** is an `Alert` that never collapses. It is the one piece of copy that must not become scenery.
 - **Results** are `Card`s in a responsive grid, each with the real `blo` SVG, the percentage score, expression, two-colour and contrast badges, address and saltNonce.
@@ -55,7 +55,7 @@ One scrolling page.
 
 Three deliberate rules, each following from the fact that owners, threshold, version and chain determine the Safe address:
 
-1. **Face stays live-editable.** Expression and filter changes already apply without restarting the search — `setFilters` re-publishes from the existing leaderboard. That keeps working.
+1. **Face stays live-editable.** *Filter* changes apply without restarting the search — `setFilters` re-publishes from the existing leaderboard. That keeps working. Changing the accepted **expressions** is different: it produces a new `FaceSpec`, which fails MiningView's `sameRun` check and restarts the search from nonce 0, discarding the leaderboard, with no warning and no undo. That is correct — a new set of expressions changes what "a match" means, so previously scored candidates are not comparable — but it is a restart, not a live re-filter, and this rule previously claimed otherwise. `packages/web/README.md` describes it accurately.
 
 2. **Configure requires an explicit "Start over".** Editing any address-determining field clears the results and the selected candidate. A result card must never outlive the config that produced it; the alternative is a card showing an address that the current config no longer predicts, which is the exact mismatch every guard on the deploy path exists to prevent.
 

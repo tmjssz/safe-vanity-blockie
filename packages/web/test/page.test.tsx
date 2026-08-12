@@ -45,6 +45,8 @@ const {
   facePickerPropsRef,
   searchParamsRef,
   linkCandidateOverride,
+  toastErrorSpy,
+  toastSuccessSpy,
 } = vi.hoisted(() => ({
   useAccountMock: vi.fn(() => ({ isConnected: true, address: '0x' + 'cc'.repeat(20), chainId: 1 })),
   useSwitchChainMock: vi.fn(() => ({ switchChain: vi.fn() })),
@@ -65,6 +67,15 @@ const {
   // Lets one test replace candidateFromSaltNonce with a promise it controls. Left undefined by
   // default so every other test — NEW-1 in particular — keeps exercising the real deriver.
   linkCandidateOverride: { current: undefined as (() => Promise<unknown>) | undefined },
+  toastErrorSpy: vi.fn(),
+  toastSuccessSpy: vi.fn(),
+}))
+
+// The deploy dialog's terminal branches mirror themselves into a toast precisely because the
+// inline message dies with the component: `<Toaster />` lives in app/layout.tsx, outside every
+// subtree that can unmount here. Mocked so those calls are observable.
+vi.mock('sonner', () => ({
+  toast: { error: toastErrorSpy, success: toastSuccessSpy },
 }))
 
 vi.mock('wagmi', () => ({
@@ -149,12 +160,21 @@ vi.mock('../components/FacePicker', () => ({
 // and clickable regardless of `paused` — pausing stops the workers, it does not hide the
 // leaderboard. That is what keeps "pick a different result while one is already selected"
 // reachable, which is the exact path the DeployPanel `key` fix guards against.
+//
+// `selectedAddress` is exposed as a data attribute rather than as text, for the same reason
+// ConfigForm's `initial` is: the accessible names this file queries by must not change. Without
+// it, deleting `selectedAddress={selected?.address}` in page.tsx leaves every test green while
+// no result card is ever marked on any path.
 const miningViewPropsRef = { current: undefined as { paused?: boolean } | undefined }
 vi.mock('../components/MiningView', () => ({
-  MiningView: (props: { paused?: boolean; onSelect: (candidate: unknown) => void }) => {
+  MiningView: (props: {
+    paused?: boolean
+    selectedAddress?: string
+    onSelect: (candidate: unknown) => void
+  }) => {
     miningViewPropsRef.current = props
     return (
-      <div data-testid="mining-view">
+      <div data-testid="mining-view" data-selected-address={props.selectedAddress ?? ''}>
         <p>{props.paused ? 'paused' : 'running'}</p>
         <button type="button" onClick={() => props.onSelect(CANDIDATE_A)}>
           select-a
@@ -190,6 +210,8 @@ beforeEach(() => {
   sendTransactionMock.mockReset().mockResolvedValue('0xhash')
   waitForTransactionReceiptMock.mockReset().mockResolvedValue({ status: 'success' })
   getSafeAddressFromDeploymentTxMock.mockReset()
+  toastErrorSpy.mockClear()
+  toastSuccessSpy.mockClear()
 })
 
 // The deploy button now lives in a dialog; the panel only carries the trigger that opens it.
@@ -216,6 +238,31 @@ function pendingDeploy() {
     })
   }
 }
+
+/**
+ * Holds the sequence open at the point where the transaction has already been broadcast and only
+ * the receipt is outstanding — the window in which gas is spent but nothing is known yet, and so
+ * the one where losing the terminal message costs the user the most.
+ */
+function pendingReceipt() {
+  let reject: (error: Error) => void = () => {}
+  const promise = new Promise<never>((_, rejectReceipt) => {
+    reject = rejectReceipt
+  })
+  promise.catch(() => {})
+  waitForTransactionReceiptMock.mockReturnValue(promise)
+  return async (error: Error) => {
+    await act(async () => {
+      reject(error)
+    })
+  }
+}
+
+const PLAN_FOR = (address: string) => ({
+  address,
+  chainId: CONFIG.chainId,
+  transaction: { to: '0x' + '22'.repeat(20), value: '0', data: '0x' },
+})
 
 describe('Page', () => {
   it('keeps mining while a result is inspected, and pauses only while a deploy is in flight', async () => {
@@ -434,6 +481,209 @@ describe('Page', () => {
     await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
     expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
     expect(screen.queryByText(/1 owner/i)).toBeNull()
+  })
+
+  // S1(a). Escape, the X and an overlay click all unmount DialogContent, and every terminal
+  // branch of the deploy sequence then writes to a dead component. The accidental dismissals are
+  // blocked outright while the sequence is in flight; only the relabelled footer button remains.
+  it('S1: does not let Escape dismiss the deploy dialog while the sequence is in flight', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    await user.keyboard('{Escape}')
+
+    // Still open: the send may already have reached the wallet, and closing here is what strands
+    // the deploy with nowhere to report a hash.
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    // …and the way out that is left does not read as "cancel the deployment", because nothing
+    // here can recall a transaction the wallet already has.
+    expect(screen.queryByRole('button', { name: /^cancel$/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /close and keep waiting/i })).toBeDefined()
+
+    await release()
+  })
+
+  // S1(b). Every route out of here — "Start over", "Back to mining", selecting another card —
+  // unmounts DeployPanel and with it the inline status/error. Unmounting the page stands in for
+  // all three. The toast is the only channel that outlives them.
+  it('S1: a terminal deploy error still reaches the user after the deploy panel unmounts', async () => {
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+    const releaseReceipt = pendingReceipt()
+
+    const { unmount } = render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    // Gas is now committed: the transaction is broadcast and only the receipt is outstanding.
+    await screen.findByText(/Sent 0xhash/i)
+
+    unmount()
+
+    await releaseReceipt(new Error('the RPC connection dropped'))
+
+    expect(toastErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Transaction 0xhash was already sent'),
+    )
+  })
+
+  // S3. The page and MiningView each run their own uncached useSafeConstants, and nothing makes
+  // them fail together. When only the page's fetch fails, `awaitingLinkCandidate` is false, the
+  // reconstruction never runs, `linkCandidateError` is never set — and the whole payload of the
+  // link, the mined saltNonce, is dropped with no message at all.
+  it('S3: says so when a link carried a saltNonce and the constants read failed', async () => {
+    loadSafeConstantsMock.mockReset().mockRejectedValue(new Error('rate limited by the public RPC'))
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    expect(await screen.findByText(/rate limited by the public RPC/)).toBeDefined()
+    // …and it falls through to a normal search rather than sitting paused forever.
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+  })
+
+  // T4. Both share-link alerts were only ever asserted *absent*, which a deleted element also
+  // satisfies. These two are the only tests that make either of them render.
+  it('T4: explains a `?config=` link it could not decode', () => {
+    searchParamsRef.current = new URLSearchParams({ config: 'not-base64' })
+
+    render(<Page />)
+
+    expect(screen.getByText(/this share link could not be used/i)).toBeDefined()
+  })
+
+  it('T4: explains a saltNonce that failed to reconstruct, and still starts mining', async () => {
+    linkCandidateOverride.current = () => Promise.reject(new Error('keccak refused to load'))
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    const alert = await screen.findByText(/could not be reconstructed/i)
+    expect(alert.textContent).toMatch(/keccak refused to load/)
+    // Falling through to a normal search is the intended behaviour — but silently is not.
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+  })
+
+  // T2. DeployDialog.test.tsx makes loadSafeConstants reject immediately, so every one of its
+  // tests bails out at the first await and none of these guards is ever reached. This suite has
+  // the full mock chain, so it is the cheapest place to drive the sequence into each of them.
+
+  it('T2: refuses to send when the deployment plan does not name the selected candidate', async () => {
+    // The plan is built from an INDEPENDENT loadSafeConstants re-read inside the dialog; the
+    // candidate's address came from the page's own read. Disagreeing constants is exactly what
+    // this guard exists to catch, and the consequence of losing it is a transaction deploying a
+    // Safe at an address that is not the one on the card the user picked.
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_B.address))
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    const message = await screen.findByText(/does not match the selected candidate/i)
+    expect(message.textContent).toContain(CANDIDATE_A.address)
+    expect(message.textContent).toContain(CANDIDATE_B.address)
+    // Nothing is spent: the refusal happens before the send, not after it.
+    expect(sendTransactionMock).not.toHaveBeenCalled()
+  })
+
+  it('T2: reports a reverted deployment as a gas-spent failure, never as a success', async () => {
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+    waitForTransactionReceiptMock.mockResolvedValue({ status: 'reverted' })
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(CANDIDATE_A.address)
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    const message = await screen.findByText(/Deployment reverted\. Gas was spent\./i)
+    expect(message.textContent).toContain('0xhash')
+    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+  })
+
+  it('T2: cross-checks the receipt logs against the predicted address before claiming success', async () => {
+    const THIRD = '0x' + 'dd'.repeat(20)
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(THIRD)
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    const message = await screen.findByText(/does not match the predicted/i)
+    expect(message.textContent).toContain(THIRD)
+    expect(message.textContent).toContain(CANDIDATE_A.address)
+    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+  })
+
+  it('T2: warns that the transaction may already be broadcast when the send itself fails', async () => {
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+    sendTransactionMock.mockRejectedValue(new Error('the wallet never answered'))
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployTrigger())
+    await user.click(deployButton())
+
+    // `sendDispatched` is set before the await precisely so this branch survives a throw from
+    // inside sendTransaction, where gas may already have been committed.
+    const message = await screen.findByText(/may already have been broadcast/i)
+    expect(message.textContent).toContain('the wallet never answered')
+  })
+
+  // T3. `selectedAddress` is optional, so deleting it in page.tsx typechecks and no test noticed:
+  // the ring and the "Selected" badge are the only things tying the open deploy panel to a row in
+  // a grid that keeps re-sorting itself while a result is inspected.
+  it('T3: tells MiningView which card the deploy panel is showing', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe('')
+
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe(CANDIDATE_A.address)
+
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    expect(screen.getByTestId('mining-view').dataset.selectedAddress).toBe(CANDIDATE_B.address)
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {

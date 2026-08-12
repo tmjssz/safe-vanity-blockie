@@ -15,8 +15,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <body>
         <Providers>
-          <header className="border-b">
-            <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+          {/* Sticky, and a fixed height so the mining bar has something exact to pin below (see
+              MiningStatusBar's `top-14`). The spec puts the wallet button in the always-in-view
+              bar; keeping it here and making the header itself stay is the same guarantee — a
+              user who decides to connect after a long search does not have to scroll back up.
+              `bg-background` is required: without it the page scrolls visibly underneath. */}
+          <header className="sticky top-0 z-50 h-14 border-b bg-background">
+            <div className="mx-auto flex h-full max-w-6xl items-center gap-4 px-4">
               <h1 className="text-lg font-semibold">Safe Vanity Blockie</h1>
               <div className="ml-auto flex items-center gap-2">
                 <ThemeToggle />

@@ -3,6 +3,7 @@
 import type { Candidate } from '@safe-vanity-blockie/core'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useAccount, useConnectorClient, useSwitchChain } from 'wagmi'
 import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
 import { Blockie } from './Blockie'
@@ -52,9 +53,35 @@ export function DeployDialog({
   const wrongChain = isConnected && chainId !== config.chainId
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
 
+  /**
+   * Writes a terminal failure to both channels at once. The inline Alert is the one the user acts
+   * on — it stays until they do — and the toast is its copy in a renderer mounted outside every
+   * subtree that can unmount underneath a deploy in flight.
+   */
+  const reportError = (message: string) => {
+    setError(message)
+    toast.error(message)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
+          inline, and closing it unmounts DeployPanel's whole subtree (page.tsx keys it on the
+          selected address and renders it only while one is selected). So the three *accidental*
+          dismissals — Escape, the overlay, the X — are blocked outright. The deliberate, warned
+          footer button below stays live on purpose: a wallet that never settles its promise (the
+          popup closed without a response) would otherwise trap the user in this dialog forever,
+          and an unclosable dialog is a worse failure than a knowingly abandoned one. */}
+      <DialogContent
+        className="sm:max-w-xl"
+        showCloseButton={!busy}
+        onEscapeKeyDown={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onInteractOutside={(event) => {
+          if (busy) event.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Deploy this Safe</DialogTitle>
           <DialogDescription>
@@ -64,8 +91,10 @@ export function DeployDialog({
         </DialogHeader>
 
         {/* The caveat is repeated here on purpose: this is the screen where money is actually
-            spent, and it is the last place it can still do any good. */}
-        <Alert>
+            spent, and it is the last place it can still do any good. role="note" rather than the
+            Alert default, though — it is static copy that is always here, so as a live region it
+            would compete permanently with the real status/error below. */}
+        <Alert role="note">
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>A matching identicon is cosmetic.</AlertTitle>
           <AlertDescription>
@@ -88,7 +117,13 @@ export function DeployDialog({
         </p>
 
         {!isConnected && <p className="text-sm">Connect a wallet to deploy.</p>}
-        {status && <p className="text-sm break-all">{status}</p>}
+        {/* Always mounted, even while empty. A live region only announces changes to a container
+            that was already there when the text arrived — mounting the <p> together with its
+            first message (which is what `{status && …}` did) announces nothing at all, and this
+            is where the transaction hash and "Safe deployed at 0x…" appear. */}
+        <div aria-live="polite">
+          {status && <p className="text-sm break-all">{status}</p>}
+        </div>
         {error && (
           <Alert variant="destructive">
             <AlertDescription className="break-all">{error}</AlertDescription>
@@ -98,8 +133,10 @@ export function DeployDialog({
 
         <DialogFooter>
           <DialogClose asChild>
+            {/* Never reads as "cancel the deployment" while one is running: nothing here can
+                recall a transaction the wallet has been handed. */}
             <Button type="button" variant="ghost">
-              Cancel
+              {busy ? 'Close and keep waiting' : 'Cancel'}
             </Button>
           </DialogClose>
           {wrongChain && (
@@ -178,7 +215,13 @@ export function DeployDialog({
                   const receipt = await publicClient.waitForTransactionReceipt({ hash })
                   if (receipt.status !== 'success') {
                     setStatus(undefined)
-                    setError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
+                    // Mirrored into a toast on every terminal branch below, and never *instead*
+                    // of the inline message: <Toaster/> is mounted in app/layout.tsx, outside
+                    // every subtree that can unmount here, so it is the only channel that
+                    // survives "Start over", "Back to mining" or picking another card while this
+                    // is in flight. The inline copy stays because a toast is on a timer and this
+                    // is something the user has to act on.
+                    reportError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
                     return
                   }
 
@@ -193,7 +236,7 @@ export function DeployDialog({
                   const deployed = getSafeAddressFromDeploymentTx(receipt, config.safeVersion)
                   if (deployed.toLowerCase() !== plan.address.toLowerCase()) {
                     setStatus(undefined)
-                    setError(
+                    reportError(
                       `Deployed address ${deployed} does not match the predicted ${plan.address}. ` +
                         `Transaction ${hash}.`,
                     )
@@ -201,21 +244,23 @@ export function DeployDialog({
                   }
 
                   setCompleted(true)
-                  setStatus(`Safe deployed at ${deployed}. Transaction ${hash}.`)
+                  const success = `Safe deployed at ${deployed}. Transaction ${hash}.`
+                  setStatus(success)
+                  toast.success(success)
                 } catch (thrown) {
                   setStatus(undefined)
                   const message = thrown instanceof Error ? thrown.message : String(thrown)
                   if (hash) {
-                    setError(
+                    reportError(
                       `${message} Transaction ${hash} was already sent — check its status before retrying.`,
                     )
                   } else if (sendDispatched) {
-                    setError(
+                    reportError(
                       `${message} The transaction may already have been broadcast — check your ` +
                         "wallet's activity list before retrying.",
                     )
                   } else {
-                    setError(message)
+                    reportError(message)
                   }
                 } finally {
                   setBusy(false)

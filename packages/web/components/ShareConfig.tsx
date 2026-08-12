@@ -18,6 +18,10 @@ export function ShareConfig({ config }: { config: SharedConfig }) {
 
   const copy = () => {
     setCopyError(undefined)
+    // Reset before every attempt, not just on success: otherwise one success latches the label
+    // forever, and a later failure shows a "Copied" button beside a destructive "could not copy"
+    // alert saying the opposite.
+    setCopied(false)
     try {
       // Undefined on any non-secure origin (plain http:// on a LAN IP is a normal way to try
       // this app) — reading `.writeText` off it would throw synchronously inside the click

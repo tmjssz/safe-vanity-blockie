@@ -42,7 +42,9 @@ export function MiningStatusBar({
   const started = status.running || status.paused || status.scanned > 0
 
   return (
-    <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    // `top-14` matches the sticky header's `h-14` in app/layout.tsx: with `top-0` the bar would
+    // pin underneath it and be invisible for the whole run. z-40 keeps it below the header.
+    <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-2 text-sm">
         {hasBest ? (
           <>
@@ -70,11 +72,11 @@ export function MiningStatusBar({
           >
             {status.paused ? (
               <>
-                <Play className="mr-1 h-3 w-3" /> Resume
+                <Play className="mr-1 size-3" /> Resume
               </>
             ) : (
               <>
-                <Pause className="mr-1 h-3 w-3" /> Pause
+                <Pause className="mr-1 size-3" /> Pause
               </>
             )}
           </Button>
