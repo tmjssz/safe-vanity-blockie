@@ -13,7 +13,14 @@ import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from '.
 import { ResultsGrid } from './ResultsGrid'
 import { Alert, AlertDescription } from './ui/alert'
 
-const DISPLAY_COUNT = 8
+/**
+ * How many candidates the leaderboard keeps. Every one of them that survives the two-colour and
+ * contrast filters is shown — the grid scrolls rather than truncating — so this is a retention
+ * size only, not a display cap. It has to be far deeper than anyone would scroll because
+ * retention is score-ranked and filter-blind: a strict contrast floor needs a deep pool to find
+ * anything in at all. 200 is what this screen has effectively retained all along.
+ */
+const RETAINED_COUNT = 200
 
 // The status bar has to sit above the caveat and both sections — it is the one thing that must
 // stay in view during a long search — but the mining state that feeds it is owned here, next to
@@ -115,7 +122,7 @@ export function MiningView({
       constantsHex: constants.data.constantsHex,
       faceSpec,
       workers,
-      keep: DISPLAY_COUNT,
+      retain: RETAINED_COUNT,
       twoColor,
       minContrast,
       resume: sameRun,
@@ -171,9 +178,9 @@ export function MiningView({
           </Alert>
         )}
         {/* Above the grid, not below it: it is an alternative to the search that is running, so
-            it has to be readable before scrolling past eight results — and `filters` goes with it
-            so the copied command enforces the same standard as the screen rather than the CLI's
-            own defaults. */}
+            it has to be readable before scrolling past the whole leaderboard — and `filters`
+            goes with it so the copied command enforces the same standard as the screen rather
+            than the CLI's own defaults. */}
         <CliHandoff
           config={config}
           rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
@@ -183,6 +190,8 @@ export function MiningView({
           candidates={state.candidates}
           droppedCount={state.droppedCount}
           mining={state.running}
+          filters={filters}
+          bestContrast={state.bestContrast}
           onSelect={onSelect}
         />
       </section>

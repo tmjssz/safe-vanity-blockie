@@ -15,18 +15,19 @@ import {
   type WorkerRequest,
 } from './worker-protocol'
 
-/**
- * Retention is score-ranked and blind to the two-colour and contrast filters, which are
- * applied for display — so retain far more than we show, or filtering has nothing left.
- */
-const RETENTION_MULTIPLIER = 20
-const MIN_RETENTION = 200
-
 export interface StartMiningInput {
   constantsHex: { initializerHash: string; factory: string; initCodeHash: string }
   faceSpec: FaceSpec
   workers: number
-  keep: number
+  /**
+   * How many candidates the leaderboard keeps, and the only size this hook has: everything
+   * retained that survives the filters is reported, so there is no display cap riding on this
+   * number. Retention is score-ranked and blind to the two-colour and contrast filters, which are
+   * applied afterwards, so it has to be far deeper than a user would ever look at — otherwise a
+   * strict filter has nothing left to choose from. It is also what `keep` means to a worker (see
+   * the start request below): the worker's own retention, never a display count.
+   */
+  retain: number
   twoColor: boolean
   minContrast: number
   start?: number
@@ -47,6 +48,13 @@ export interface MinerState {
   rate: number
   candidates: Candidate[]
   droppedCount: number
+  /**
+   * The highest contrast among retained candidates that pass every filter *except* the contrast
+   * floor — i.e. how close the search has come to satisfying it. Reported only when nothing is
+   * being shown, since that is the only time it says anything the grid does not already show, and
+   * undefined when not even the two-colour filter leaves a candidate to measure.
+   */
+  bestContrast?: number
   error?: string
   nextStart: number
 }
@@ -80,6 +88,21 @@ export interface LiveFilters {
   minContrast: number
 }
 
+/**
+ * How close the retained pool came to clearing the contrast floor. Measured over the candidates
+ * the *other* filters accept — a three-colour result with enormous contrast would otherwise
+ * advertise a floor that still matches nothing once two-colour is on. Undefined when no candidate
+ * survives those other filters at all, because then contrast is not what is excluding things.
+ */
+function bestContrastOf(candidates: Candidate[], filters: LiveFilters): number | undefined {
+  let best: number | undefined
+  for (const candidate of candidates) {
+    if (filters.twoColor && !candidate.twoColor) continue
+    if (best === undefined || candidate.contrast > best) best = candidate.contrast
+  }
+  return best
+}
+
 export function useMiner(): {
   state: MinerState
   start: (input: StartMiningInput) => void
@@ -103,7 +126,7 @@ export function useMiner(): {
   // a genuinely fresh start.
   const priorScannedRef = useRef(0)
   const priorElapsedRef = useRef(0)
-  // Filters are a display concern: retention (RETENTION_MULTIPLIER/MIN_RETENTION above) is
+  // Filters are a display concern: retention (StartMiningInput.retain above) is
   // score-ranked and filter-blind, so re-filtering never needs to touch the worker pool or
   // discard mining progress. `publish` (defined fresh inside every start()) reads this ref
   // rather than a value captured by the start() closure, so `setFilters` below can change what
@@ -153,7 +176,7 @@ export function useMiner(): {
       runIdRef.current += 1
       const runId = runIdRef.current
 
-      const retain = Math.max(input.keep * RETENTION_MULTIPLIER, MIN_RETENTION)
+      const retain = input.retain
       const from = input.start ?? 0
       const ranges = planWorkerRanges(from, input.workers, WORKER_BLOCK)
 
@@ -188,10 +211,16 @@ export function useMiner(): {
           priorElapsedRef.current +
             (activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current),
         )
-        const { reported, droppedCount } = selectReported(board.entries(), {
+        const entries = board.entries()
+        const { reported, droppedCount } = selectReported(entries, {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,
-          keep: input.keep,
+          // The board holds at most `retain`, so this cap never binds: everything kept that
+          // survives the filters is shown, and the grid scrolls.
+          keep: retain,
+          // The grid says "nothing matches these filters" for itself. Core's default — show the
+          // unfiltered list rather than nothing — would make the filter look ignored instead.
+          fallbackWhenEmpty: false,
         })
         setState((previous) => ({
           ...previous,
@@ -200,6 +229,11 @@ export function useMiner(): {
           rate: (scanned / elapsedMs) * 1000,
           candidates: reported,
           droppedCount,
+          // Only worth computing when there is nothing to show — it exists to turn "no matches"
+          // into "no matches; the best contrast found so far is 143", and it is the one number
+          // that tells the user where to put the slider.
+          bestContrast:
+            reported.length === 0 ? bestContrastOf(entries, filtersRef.current) : undefined,
           nextStart: nextStartFrom(from, WORKER_BLOCK, scannedRef.current),
         }))
       }

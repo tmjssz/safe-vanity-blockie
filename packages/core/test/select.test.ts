@@ -55,6 +55,20 @@ describe('selectReported', () => {
     expect(result.droppedCount).toBe(0)
   })
 
+  // The CLI wants the fallback (it prints a notice saying so); a UI that can render an explicit
+  // "nothing matches these filters" state wants the truth instead, or its filter control looks
+  // broken. Opting out must also stop droppedCount pretending nothing was dropped.
+  it('reports nothing, and the real drop count, when the caller opts out of the fallback', () => {
+    const entries = [
+      candidate({ address: '0xa', twoColor: false }),
+      candidate({ address: '0xb', twoColor: false }),
+    ]
+    const result = selectReported(entries, { ...options, fallbackWhenEmpty: false })
+    expect(result.reported).toEqual([])
+    expect(result.usedFallback).toBe(false)
+    expect(result.droppedCount).toBe(2)
+  })
+
   it('is empty for an empty input', () => {
     expect(selectReported([], options)).toEqual({
       reported: [],

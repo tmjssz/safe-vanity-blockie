@@ -37,13 +37,13 @@ class FakeWorker {
   }
 }
 
-const candidate = (address: string, score: number, twoColor = true) => ({
+const candidate = (address: string, score: number, twoColor = true, contrast = 150) => ({
   saltNonce: '1',
   address,
   score,
   maxScore: 133,
   twoColor,
-  contrast: 150,
+  contrast,
   regions: { mouth: 'smile' },
 })
 
@@ -55,7 +55,7 @@ const startInput = {
   },
   faceSpec: { name: 'x', fixed: [], regions: [] },
   workers: 2,
-  keep: 4,
+  retain: 40,
   twoColor: true,
   minContrast: 0,
 } as unknown as Parameters<ReturnType<typeof useMiner>['start']>[0]
@@ -110,6 +110,92 @@ describe('useMiner', () => {
       expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
       expect(result.current.state.droppedCount).toBe(1)
     })
+  })
+
+  // The web can render "nothing matches these filters"; core's fallback (show everything rather
+  // than nothing) would instead hand back the full unfiltered list, which reads as a filter that
+  // was ignored. The count of what the filters removed has to survive too — with the fallback on,
+  // core reports droppedCount 0 in exactly this case.
+  it('reports no candidates at all, and the real drop count, when the filters exclude everything', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 125, false), candidate('0xb', 120, false)],
+      }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.state.candidates).toEqual([])
+      expect(result.current.state.droppedCount).toBe(2)
+    })
+  })
+
+  // "No matches" is far more useful as "no matches — the best contrast found so far is 143", since
+  // the contrast floor is the control the user is about to move. It has to be measured over the
+  // candidates the *other* filters accept, or a three-colour result with huge contrast would
+  // advertise a floor that still matches nothing.
+  it('reports the best contrast among candidates the other filters accept', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [
+          candidate('0xa', 125, false, 400),
+          candidate('0xb', 120, true, 143),
+          candidate('0xc', 119, true, 120),
+        ],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+
+    expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestContrast).toBe(143)
+  })
+
+  it('leaves the best contrast unreported while results are still matching', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xb', 120, true, 143)],
+      }),
+    )
+
+    await waitFor(() => expect(result.current.state.candidates).toHaveLength(1))
+    expect(result.current.state.bestContrast).toBeUndefined()
+  })
+
+  // Retention and display used to be the same number times twenty: `keep` was the display slice,
+  // and the pool retained 20x it. They are separate concerns — retention has to be deep because it
+  // is score-ranked and filter-blind, while the grid simply shows everything that survives the
+  // filters — so the hook takes retention and nothing else.
+  it('retains what it is told to and displays every survivor, with no display slice of its own', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start({ ...startInput, retain: 50 }))
+
+    const found = Array.from({ length: 30 }, (_, index) => candidate(`0x${index}`, 200 - index))
+    act(() => instances[0].emit({ type: 'progress', scanned: 10, candidates: found }))
+
+    await waitFor(() => expect(result.current.state.candidates).toHaveLength(30))
+  })
+
+  it('gives each worker the retention size, which is what keep means across that boundary', () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start({ ...startInput, retain: 250 }))
+
+    const request = instances[0].posted[0]
+    if (request.type !== 'start') throw new Error('expected a start request')
+    expect(request.input.keep).toBe(250)
   })
 
   it('stops every worker and clears running when asked', async () => {

@@ -115,6 +115,76 @@ describe('MiningView', () => {
     expect(screen.getByText(/4,200/)).toBeDefined()
   })
 
+  // The grid shows everything retained and scrolls, so the number handed to the miner is a
+  // retention size only. A display count riding on it would multiply into the leaderboard's size
+  // (it used to be keep x 20) the moment anyone asked to see more results.
+  it('asks the miner to retain a deep pool, with no display count riding on it', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(startSpy).toHaveBeenCalledWith(expect.objectContaining({ retain: 200 }))
+    expect(startSpy.mock.calls[0][0]).not.toHaveProperty('keep')
+  })
+
+  it('shows every result it is given rather than a top-eight slice', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: Array.from({ length: 24 }, (_, index) => ({
+        ...CANDIDATE,
+        address: `0x${index.toString(16).padStart(40, '0')}`,
+      })),
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(resultCards()).toHaveLength(24)
+  })
+
+  // The wiring hop the grid cannot test for itself: without `filters` and `bestContrast` reaching
+  // it, the empty state cannot name what is excluding things or how close the search came.
+  it('hands the grid what its empty state needs to explain itself', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      bestContrast: 143,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const message = screen.getByRole('status').textContent ?? ''
+    expect(message).toMatch(/no result matches/i)
+    expect(message).toMatch(/162/)
+    expect(message).toMatch(/300/)
+    expect(message).toMatch(/143/)
+  })
+
   it('calls start with the twoColor and minContrast values from the filters prop, not hardcoded ones', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
 

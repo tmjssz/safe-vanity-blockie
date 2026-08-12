@@ -1,4 +1,5 @@
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
+import { memo } from 'react'
 import { Blockie } from './Blockie'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
@@ -9,7 +10,15 @@ export interface ResultCardProps {
   onSelect: (candidate: Candidate) => void
 }
 
-export function ResultCard({ candidate, onSelect }: ResultCardProps) {
+/**
+ * Memoised because the grid holds every retained candidate — up to 200 cards, each an inline blo
+ * SVG of ~64 <rect>s — and re-renders on every worker progress message, many times a second. The
+ * leaderboard hands back its stored candidate objects, so a card whose candidate did not change
+ * gets the identical object and skips the redraw entirely. That only holds while `onSelect` is
+ * stable too: ResultsGrid passes the callback straight through and the page holds it in a state
+ * setter, so a per-card arrow function anywhere along that path would quietly undo this.
+ */
+export const ResultCard = memo(function ResultCard({ candidate, onSelect }: ResultCardProps) {
   const expression = Object.values(candidate.regions).join('/') || '—'
   const score = formatScore(candidate.score, candidate.maxScore)
   // Unique per grid without useId: ResultsGrid already keys these cards by address, so two cards
@@ -28,8 +37,8 @@ export function ResultCard({ candidate, onSelect }: ResultCardProps) {
     >
       <button
         type="button"
-        // Eight cards on screen at once, so "which result is this?" has to be in the name
-        // itself: the score identifies it at a glance and the address identifies it exactly.
+        // Up to two hundred cards on screen at once, so "which result is this?" has to be in the
+        // name itself: the score identifies it at a glance and the address identifies it exactly.
         // Falling back to the card's own contents would name it after the identicon's alt text
         // and read the address out twice.
         aria-label={`Deploy ${score} match ${candidate.address}`}
@@ -66,4 +75,4 @@ export function ResultCard({ candidate, onSelect }: ResultCardProps) {
       </button>
     </Card>
   )
-}
+})
