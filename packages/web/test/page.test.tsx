@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Page from '../app/page'
-import { encodeConfigParam } from '../lib/deep-link'
+import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
 // Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
 //
@@ -188,25 +188,30 @@ vi.mock('../components/MiningView', () => ({
   },
 }))
 
+// The one SafeSetup every loadSafeConstants call in this suite resolves to. Hoisted out of
+// beforeEach so a test can derive the same candidate the page will, from the same constants,
+// instead of hardcoding an address the deriver would have to be trusted to reproduce.
+const SAFE_SETUP = {
+  chainId: 1n,
+  constants: {
+    initializerHash: new Uint8Array(32),
+    factory: new Uint8Array(20),
+    initCodeHash: new Uint8Array(32),
+  },
+  constantsHex: {
+    initializerHash: '0x' + '00'.repeat(32),
+    factory: '0x' + '00'.repeat(20),
+    initCodeHash: '0x' + '00'.repeat(32),
+  },
+  safeProvider: {},
+  safeAccountConfig: { owners: CONFIG.owners, threshold: CONFIG.threshold },
+  safeVersion: CONFIG.safeVersion,
+}
+
 beforeEach(() => {
   searchParamsRef.current = new URLSearchParams()
   linkCandidateOverride.current = undefined
-  loadSafeConstantsMock.mockReset().mockResolvedValue({
-    chainId: 1n,
-    constants: {
-      initializerHash: new Uint8Array(32),
-      factory: new Uint8Array(20),
-      initCodeHash: new Uint8Array(32),
-    },
-    constantsHex: {
-      initializerHash: '0x' + '00'.repeat(32),
-      factory: '0x' + '00'.repeat(20),
-      initCodeHash: '0x' + '00'.repeat(32),
-    },
-    safeProvider: {},
-    safeAccountConfig: { owners: CONFIG.owners, threshold: CONFIG.threshold },
-    safeVersion: CONFIG.safeVersion,
-  })
+  loadSafeConstantsMock.mockReset().mockResolvedValue(SAFE_SETUP)
   buildDeploymentPlanMock.mockReset()
   sendTransactionMock.mockReset().mockResolvedValue('0xhash')
   waitForTransactionReceiptMock.mockReset().mockResolvedValue({ status: 'success' })
@@ -410,6 +415,163 @@ describe('Page', () => {
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
+  // The headline behaviour: a link is an invitation to look at ONE specific Safe. Opening it used
+  // to land on the ordinary starting screen — form prefilled, no result, no dialog — because the
+  // candidate was derived from the *submitted* config, which does not exist until the recipient
+  // submits. It now derives from the link's own config, which carries everything the address needs.
+  // And it does that without mining: clicking someone's link must not spin up five to eight
+  // workers at full CPU unasked.
+  it('opens the deploy dialog on the candidate a link names, with no submit and no mining', async () => {
+    const { candidateFromSaltNonce } = await vi.importActual<typeof import('../lib/deep-link')>(
+      '../lib/deep-link',
+    )
+    const { ALL_MOUTH_NAMES, faceSpecFromSelection } = await import('../lib/face-selection')
+    const expected = await candidateFromSaltNonce(
+      SAFE_SETUP.constants,
+      '12345',
+      faceSpecFromSelection(ALL_MOUTH_NAMES),
+    )
+
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+
+    // No submit anywhere above this line.
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain(expected.address)
+    expect(dialog.textContent).toContain('12345')
+    // Everything the dialog carries for a mined result carries here too, including a link that
+    // reproduces this same address.
+    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(deployButton()).toBeDefined()
+    expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+
+    // Nothing is mining: MiningView is not mounted at all, and the Configure form is still
+    // sitting there unsubmitted for a recipient who wants to start their own search. `hidden`
+    // because the dialog is modal and Radix aria-hides the page behind it — the form is there,
+    // and is what the recipient meets when they close the dialog.
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+    expect(screen.getByRole('button', { name: 'submit-config', hidden: true })).toBeDefined()
+    // …and not the locked "1 owner · threshold 1 · …" summary, which would mean it had been
+    // submitted and a search started on the recipient's behalf.
+    expect(screen.queryByText(/1 owner/i)).toBeNull()
+  })
+
+  // The recipient can submit the prefilled form (or an edited one) while the reconstruction is
+  // still in flight — the constants read is a real network round trip. Whatever they submit, the
+  // candidate on screen has to stay the one the LINK names: it is the link's saltNonce, and only
+  // the link's own owners/threshold/version/chain reproduce the address it was mined for.
+  it("derives the link candidate from the link's own config, never from one submitted underneath it", async () => {
+    const LINK_OWNERS = ['0x' + '33'.repeat(20)]
+    const LINK_SETUP = {
+      ...SAFE_SETUP,
+      constants: {
+        initializerHash: new Uint8Array(32).fill(7),
+        factory: new Uint8Array(20).fill(7),
+        initCodeHash: new Uint8Array(32).fill(7),
+      },
+    }
+    const { candidateFromSaltNonce } = await vi.importActual<typeof import('../lib/deep-link')>(
+      '../lib/deep-link',
+    )
+    const { ALL_MOUTH_NAMES, faceSpecFromSelection } = await import('../lib/face-selection')
+    const faceSpec = faceSpecFromSelection(ALL_MOUTH_NAMES)
+    const fromLink = await candidateFromSaltNonce(LINK_SETUP.constants, '12345', faceSpec)
+    const fromSubmitted = await candidateFromSaltNonce(SAFE_SETUP.constants, '12345', faceSpec)
+    // Different constants, different address — otherwise this test could not tell them apart.
+    expect(fromLink.address).not.toBe(fromSubmitted.address)
+
+    // Held open so the submit below lands *during* the reconstruction, which is the ordering that
+    // used to be able to feed it the wrong config's constants.
+    let releaseLinkConstants: (setup: unknown) => void = () => {}
+    loadSafeConstantsMock.mockReset().mockImplementation(({ owners }: { owners: string[] }) =>
+      owners[0] === LINK_OWNERS[0]
+        ? new Promise((resolve) => {
+            releaseLinkConstants = resolve
+          })
+        : Promise.resolve(SAFE_SETUP),
+    )
+
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: LINK_OWNERS,
+        threshold: 1,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    // The mocked ConfigForm submits CONFIG — a different set of owners from the link's, exactly
+    // as a recipient who edits the prefilled form would.
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await waitFor(() => expect(screen.getByText('paused')).toBeDefined())
+
+    await act(async () => {
+      releaseLinkConstants(LINK_SETUP)
+    })
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain(fromLink.address)
+    expect(dialog.textContent).not.toContain(fromSubmitted.address)
+    // And the recipient's own search is handed back the moment the reconstruction settles.
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+  })
+
+  // The config the dialog deploys with and the config the address on it was derived from are the
+  // same object, by construction. This is the only sequence that can put them in tension: a link
+  // candidate is on screen, and a *different* config is submitted underneath it. A real user
+  // cannot do this — the dialog is modal, and the form behind it takes no clicks (userEvent
+  // refuses one outright, which is why fireEvent is used here, as in the `key` test above) — but
+  // "the modal is in the way" is not a property the deploy path should depend on. DeployDialog's
+  // `plan.address !== candidate.address` refusal would catch the drift after the fact; nothing
+  // should ever get that far.
+  it('keeps the deploy dialog on the config its address came from when a different one is submitted underneath it', async () => {
+    const LINK_OWNERS = ['0x' + '33'.repeat(20)]
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: LINK_OWNERS,
+        threshold: 1,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const dialog = await screen.findByRole('dialog')
+    const address = dialog.textContent
+
+    const sharedConfig = () => {
+      const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+      return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
+        .config
+    }
+    expect(sharedConfig()?.owners).toEqual(LINK_OWNERS)
+
+    fireEvent.click(screen.getByText('submit-config'))
+
+    // The recipient's own search is now running on THEIR config…
+    await waitFor(() => expect(screen.getByTestId('mining-view')).toBeDefined())
+    // …and the dialog has not moved: same address, and a share link that still names the link's
+    // config — the one that produced that address, and the one a deploy from here would use.
+    expect(screen.getByRole('dialog').textContent).toBe(address)
+    expect(sharedConfig()?.owners).toEqual(LINK_OWNERS)
+    expect(sharedConfig()?.owners).not.toEqual(CONFIG.owners)
+    expect(sharedConfig()?.saltNonce).toBe('12345')
+  })
+
   it('NEW-1 regression: a share-link user who closes the deploy dialog is not stranded paused forever', async () => {
     const release = pendingDeploy()
     searchParamsRef.current = new URLSearchParams({
@@ -425,18 +587,25 @@ describe('Page', () => {
     render(<Page />)
     const user = userEvent.setup()
 
-    // The mocked ConfigForm ignores `initial` and always submits the same CONFIG, but that's
-    // enough: what matters here is that the URL carried a saltNonce.
-    await user.click(screen.getByRole('button', { name: 'submit-config' }))
-
-    // The link candidate reconstructs and gets selected automatically — the deploy dialog opens
-    // without ever clicking a result, and mining keeps running while it is inspected.
+    // The link candidate reconstructs and gets selected automatically, with no submit at all —
+    // the reconstruction now runs off the link's own config, so the dialog is already open.
     await screen.findByRole('dialog')
-    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
+
+    // Closing it is the moment this test exists for: `awaitingLinkCandidate` used to be derived
+    // from `!selected`, so clearing the selection here flipped it back to true — and every search
+    // the recipient started afterwards was paused before it began, with no candidate and no way
+    // out. The mocked ConfigForm ignores `initial` and always submits the same CONFIG, but that's
+    // enough: what matters is that the URL carried a saltNonce.
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
     // Initiating the deploy is what pauses mining, even on this path where the candidate was
     // never picked by hand — and it resumes once the attempt settles.
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByText('running')).toBeDefined()
     await user.click(deployButton())
     expect(screen.getByText('paused')).toBeDefined()
     await release()
