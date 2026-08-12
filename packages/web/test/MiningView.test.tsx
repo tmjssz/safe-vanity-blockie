@@ -22,7 +22,6 @@ const IDLE_STATE = {
   rate: 0,
   candidates: [],
   droppedCount: 0,
-  retainedCount: 0,
   nextStart: 0,
 }
 
@@ -217,7 +216,6 @@ describe('MiningView', () => {
       running: true,
       candidates: [],
       droppedCount: 162,
-      retainedCount: 162,
       bestOverall: CANDIDATE,
       bestContrast: 143,
     }
@@ -234,35 +232,11 @@ describe('MiningView', () => {
     expect(screen.getByText('90.2%')).toBeDefined()
     expect(screen.getByText(/best result/i)).toBeDefined()
     expect(screen.queryByText(/no candidates yet/i)).toBeNull()
-    // …and the empty state is on screen at the same time, saying the compatible thing.
-    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
-  })
-
-  it('shows how many candidates the board is holding, which is not the number of cards', () => {
-    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
-    minerState.current = {
-      ...IDLE_STATE,
-      running: true,
-      candidates: [CANDIDATE],
-      droppedCount: 199,
-      retainedCount: 200,
-      bestOverall: CANDIDATE,
-    }
-
-    render(
-      <MiningView
-        config={CONFIG as never}
-        faceSpec={FACE_SPEC as never}
-        filters={DEFAULT_FACE_FILTERS}
-        onSelect={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByText(/200 candidates kept/i)).toBeDefined()
   })
 
   // The filtered-out count is gone from above the grid; what replaces it is a count of what is
-  // actually on screen, next to the heading, so it can be checked against the cards by eye.
+  // actually on screen, next to the heading, so it can be checked against the cards by eye. Just
+  // the number — the heading it sits on already says what is being counted.
   it('badges the Results heading with the number of cards shown, and drops the filtered-out line', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = {
@@ -273,7 +247,6 @@ describe('MiningView', () => {
         address: `0x${index.toString(16).padStart(40, '0')}`,
       })),
       droppedCount: 197,
-      retainedCount: 200,
       bestOverall: CANDIDATE,
     }
 
@@ -287,15 +260,15 @@ describe('MiningView', () => {
     )
 
     const heading = screen.getByRole('heading', { name: /^results$/i })
-    const badge = screen.getByText(/^3 shown$/i)
+    const badge = screen.getByTestId('results-count')
     // On the heading, not floating somewhere above the grid.
     expect(heading.parentElement?.contains(badge)).toBe(true)
-    expect(badge.textContent).toMatch(String(resultCards().length))
+    expect(badge.textContent).toBe(`${resultCards().length} results shown`)
     expect(screen.queryByText(/filtered out/i)).toBeNull()
   })
 
   // The badge's whole claim is that it counts what is on screen. In the opening seconds of a run
-  // the grid holds four skeleton placeholders, so "0 shown" is the one moment that claim is false —
+  // the grid holds four skeleton placeholders, so a bare "0" is the one moment that claim is false —
   // and counting the placeholders instead would be worse, since they are not results. There is
   // simply nothing to count yet, so the badge waits.
   it('does not count placeholders: no badge until there is something real to count', () => {
@@ -312,11 +285,11 @@ describe('MiningView', () => {
     )
 
     expect(container.querySelectorAll('[data-testid="result-skeleton"]').length).toBeGreaterThan(0)
-    expect(screen.queryByText(/shown$/i)).toBeNull()
+    expect(screen.queryByTestId('results-count')).toBeNull()
   })
 
   // The exception: nothing found *yet* is not the same as nothing surviving the filters. There the
-  // grid has no cards on purpose, "0 shown" is the point, and it agrees with the empty state.
+  // grid has no cards on purpose, the zero is the point, and it agrees with the empty state.
   it('keeps the badge at zero when the filters exclude everything, agreeing with the empty state', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = {
@@ -324,7 +297,6 @@ describe('MiningView', () => {
       running: true,
       candidates: [],
       droppedCount: 162,
-      retainedCount: 162,
       bestOverall: CANDIDATE,
     }
 
@@ -337,7 +309,7 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(screen.getByText(/^0 shown$/i)).toBeDefined()
+    expect(screen.getByTestId('results-count').textContent).toBe('0 results shown')
     expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
     expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
   })
@@ -348,7 +320,7 @@ describe('MiningView', () => {
   // leave every test green while turning the memo into 200 wasted comparisons per publish.
   it('hands the grid a callback that survives a publish, which is what the card memo rides on', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
-    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE], retainedCount: 1 }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
     const onSelect = vi.fn()
 
     const { rerender } = render(
@@ -369,7 +341,6 @@ describe('MiningView', () => {
       running: true,
       scanned: 5_000,
       candidates: [CANDIDATE],
-      retainedCount: 1,
     }
     rerender(
       <MiningView

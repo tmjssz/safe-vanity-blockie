@@ -270,9 +270,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(screen.getByText('90.2%')).toBeDefined()
     expect(screen.getByText(/best result/i)).toBeDefined()
     expect(screen.queryByText(/no candidates yet/i)).toBeNull()
-    // The bar counts the board, which the filters do not touch; the heading counts the cards.
-    expect(screen.getByText(/1 candidate kept/i)).toBeDefined()
-    expect(screen.getByText(/^0 shown$/i)).toBeDefined()
+    // The heading's badge counts the cards, so it empties with the grid — while the bar above,
+    // reading the untouched board, goes on reporting the best result the run has found.
+    expect(screen.getByTestId('results-count').textContent).toBe('0 results shown')
   })
 
   it('starts a genuinely new run from zero, without carrying over the previous board, when the face spec changes', () => {

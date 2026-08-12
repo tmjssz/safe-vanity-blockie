@@ -10,7 +10,6 @@ const status = {
   rate: 1_030_000,
   workers: 5,
   elapsedMs: 125_000,
-  retainedCount: 200,
   bestScore: 120,
   bestMaxScore: 133,
 }
@@ -34,22 +33,6 @@ describe('MiningStatusBar', () => {
   it('draws no progress bar', () => {
     render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
     expect(screen.queryByRole('progressbar')).toBeNull()
-  })
-
-  // Deliberately the retained leaderboard's size, not the number of cards on screen: the grid's
-  // own badge counts what survives the filters, and two counts of the same population that
-  // disagree read as a bug. "kept" rather than "found" because the board holds the best N and
-  // then plateaus — "200 found" after an hour of mining would be a lie.
-  it('shows how many candidates the run is keeping', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
-    expect(screen.getByText(/200 candidates kept/i)).toBeDefined()
-  })
-
-  it('says one candidate, not one candidates', () => {
-    render(
-      <MiningStatusBar status={{ ...status, retainedCount: 1 }} onPauseToggle={vi.fn()} />,
-    )
-    expect(screen.getByText(/1 candidate kept/i)).toBeDefined()
   })
 
   it('shows scanned count, rate and worker count', () => {
@@ -88,19 +71,23 @@ describe('MiningStatusBar', () => {
     expect(screen.getByRole('button', { name: /resume/i })).toBeDefined()
   })
 
-  // …and says it once. "No candidates yet · 0 candidates kept · 0 nonces · 0k/s" restates the same
-  // nothing in two ways at the moment the bar has least to say. The count appears with the first
-  // result, in lockstep with the best score — both read the same board, so neither can arrive
-  // without the other.
-  it('says so plainly before any candidate exists, and does not also count to zero', () => {
+  it('says so plainly before any candidate exists', () => {
     render(
       <MiningStatusBar
-        status={{ ...status, retainedCount: 0, bestScore: undefined, bestMaxScore: undefined }}
+        status={{ ...status, bestScore: undefined, bestMaxScore: undefined }}
         onPauseToggle={vi.fn()}
       />,
     )
     expect(screen.getByText(/no candidates yet/i)).toBeDefined()
-    expect(screen.queryByText(/candidates? kept/i)).toBeNull()
+  })
+
+  // The bar carried a "N candidates kept" count until it was removed as noise: it duplicated the
+  // Results badge's population without being the number anyone wanted, and it plateaued at the
+  // retention cap so it stopped moving seconds into a run. What the run has *scored* is the nonce
+  // count; what survives the filters is the grid's badge.
+  it('does not count the retained leaderboard', () => {
+    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
+    expect(screen.queryByText(/kept/i)).toBeNull()
   })
 
   it('hides the pause control entirely when mining has not started', () => {

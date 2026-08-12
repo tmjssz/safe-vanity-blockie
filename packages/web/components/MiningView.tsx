@@ -154,11 +154,11 @@ export function MiningView({
       </Alert>
     )
 
-  // `bestOverall` and `retainedCount`, never `state.candidates`: the bar reports the run, and
-  // `candidates` is the filtered view. Reading the head of that list made the bar say "No
-  // candidates yet" the moment a contrast floor excluded everything — directly above an empty
-  // state explaining that hundreds had been found and excluded — and threw away the only live
-  // signal of search quality exactly when the user needs it to decide where to put the slider.
+  // `bestOverall`, never `state.candidates[0]`: the bar reports the run, and `candidates` is the
+  // filtered view. Reading the head of that list made the bar say "No candidates yet" the moment a
+  // contrast floor excluded everything — directly above an empty state explaining that hundreds
+  // had been found and excluded — and threw away the only live signal of search quality exactly
+  // when the user needs it to decide where to put the slider.
   const status: MiningStatus = {
     running: state.running,
     paused,
@@ -166,7 +166,6 @@ export function MiningView({
     rate: state.rate,
     workers,
     elapsedMs: state.elapsedMs,
-    retainedCount: state.retainedCount,
     bestScore: state.bestOverall?.score,
     bestMaxScore: state.bestOverall?.maxScore,
   }
@@ -177,23 +176,26 @@ export function MiningView({
       {statusBarSlot ? createPortal(statusBar, statusBarSlot) : statusBar}
       <section className="flex flex-col gap-4">
         {/* The badge counts the cards below it — what the eye can check — and replaces the muted
-            "N filtered out" line that used to sit above the grid. It is not the bar's count: that
-            one is the retained board, which the filters never touch, so the two never contradict
-            each other. This heading is a bare <h2>, not a CardHeader, so a flex row is the right
-            way to put something beside it; CardAction is for the grid-based CardHeader.
+            "N filtered out" line that used to sit above the grid. This heading is a bare <h2>, not
+            a CardHeader, so a flex row is the right way to put something beside it; CardAction is
+            for the grid-based CardHeader.
 
             Shown only once there is something real to count. While the grid is still looking it
-            holds four skeleton placeholders, and a badge reading "0 shown" over four visible boxes
-            is the one state in which its claim to count what is on screen would be false —
-            counting the placeholders would be worse, since they are not results. `droppedCount`
-            is what distinguishes "nothing found yet" from "nothing survived the filters": in the
-            second case there are deliberately no cards, "0 shown" is the point, and it says the
-            same thing as the empty state directly below it. */}
+            holds four skeleton placeholders, and a badge reading "0" over four visible boxes is
+            the one state in which its claim to count what is on screen would be false — counting
+            the placeholders would be worse, since they are not results. `droppedCount` is what
+            distinguishes "nothing found yet" from "nothing survived the filters": in the second
+            case there are deliberately no cards, the zero is the point, and it says the same thing
+            as the empty state directly below it. */}
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">Results</h2>
           {(state.candidates.length > 0 || state.droppedCount > 0) && (
-            <Badge variant="secondary">
-              {state.candidates.length.toLocaleString('en-US')} shown
+            <Badge variant="secondary" data-testid="results-count">
+              {state.candidates.length.toLocaleString('en-US')}
+              {/* Sighted readers get the number from the heading it sits against. A screen reader
+                  meets it as a bare figure, so the unit rides along visually hidden — not as an
+                  aria-label, which a <span> in the generic role is not guaranteed to expose. */}
+              <span className="sr-only"> results shown</span>
             </Badge>
           )}
         </div>

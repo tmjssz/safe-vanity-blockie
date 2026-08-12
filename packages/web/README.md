@@ -27,12 +27,11 @@ it shows up already paused, offering Resume, before a single nonce has been scan
 link's address is being re-derived first. It is fed by the mining state itself, so it keeps
 reporting while you scroll through results far below it.
 
-Two counts are on screen at once and they count different things. The bar's "N candidates kept" is
-the leaderboard: the best 200 the run has found, scored and ranked without regard to the filters,
-so it climbs to 200 and then stays there however long you mine — that is why it says *kept* and not
-*found*. The badge on the **Results** heading is the number of cards below it, after the filters.
-Raise the contrast floor past everything and the badge goes to 0 while the bar keeps reporting the
-best result found, because the search has not got worse — only the filter has got stricter.
+The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
+contrast floor past everything and it goes to 0 while the bar keeps reporting the best result
+found — the bar reads the leaderboard, which the filters never touch, so it goes on answering "how
+well is this search going" while the grid answers "what currently qualifies". The search has not
+got worse; only the filter has got stricter.
 
 Pause is not one flag. What the bar shows is your own pause combined with the app's: a deploy in
 flight and a share link still being reconstructed both hold mining stopped on their own account. So

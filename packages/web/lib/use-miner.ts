@@ -58,13 +58,6 @@ export interface MinerState {
    */
   bestOverall?: Candidate
   /**
-   * How many candidates the leaderboard is holding: what the run has found, ignoring the filters
-   * entirely, and never the number of cards on screen. Capped at the retention size, so it
-   * plateaus rather than growing forever — whatever displays it has to say so (the status bar
-   * calls them "kept" for exactly that reason).
-   */
-  retainedCount: number
-  /**
    * The highest contrast among retained candidates that pass every filter *except* the contrast
    * floor — i.e. how close the search has come to satisfying it. Reported only when nothing is
    * being shown, since that is the only time it says anything the grid does not already show, and
@@ -82,7 +75,6 @@ const IDLE: MinerState = {
   rate: 0,
   candidates: [],
   droppedCount: 0,
-  retainedCount: 0,
   nextStart: 0,
 }
 
@@ -249,7 +241,6 @@ export function useMiner(): {
           // Both read off `entries`, not off `reported`: the board is score-ranked and the
           // filters never touch it, so these two stay true and steady while the grid empties.
           bestOverall: entries[0],
-          retainedCount: entries.length,
           // Only worth computing when there is nothing to show — it exists to turn "no matches"
           // into "no matches; the best contrast found so far is 143", and it is the one number
           // that tells the user where to put the slider.

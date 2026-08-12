@@ -154,7 +154,6 @@ describe('useMiner', () => {
 
     expect(result.current.state.candidates).toEqual([])
     expect(result.current.state.bestOverall?.address).toBe('0xa')
-    expect(result.current.state.retainedCount).toBe(2)
   })
 
   // A three-colour result can outscore every two-colour one; the board keeps it either way, so

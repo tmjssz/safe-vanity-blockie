@@ -23,13 +23,6 @@ export interface MiningStatus {
   /** Active mining time — see use-miner: time spent paused is not counted. */
   elapsedMs: number
   /**
-   * How many candidates the leaderboard is holding (MinerState.retainedCount) — deliberately not
-   * the number of cards in the grid, which the filters decide and the Results heading counts.
-   * Two counts of the same population that disagree read as a bug; these count different things
-   * and are labelled accordingly.
-   */
-  retainedCount: number
-  /**
    * The best candidate found, from the unfiltered board. Undefined only when nothing has been
    * found at all — never merely because the filters exclude everything.
    */
@@ -69,24 +62,6 @@ export function MiningStatusBar({
           </span>
         ) : (
           <span className="text-muted-foreground">No candidates yet</span>
-        )}
-
-        {/* "kept", not "found": the board holds the best `retain` candidates and then plateaus, so
-            after an hour of mining this still reads 200 while millions have been scored. "200
-            found" would be a lie by then; "200 candidates kept" is true at every moment of the
-            run. The honest count of what has been *scored* is the nonce count next to it.
-
-            Gated on the count itself rather than on `started` (which is what the elapsed clock
-            uses): "No candidates yet · 0 candidates kept" says the same nothing twice, at the
-            moment the bar has least to say, and `started` is true for the whole window in which
-            that happens. Because both this and the best score read the same board, the condition
-            moves in exact lockstep with `hasBest` — the count arrives with the first result, and
-            the branch above covers every moment before it, in words. */}
-        {status.retainedCount > 0 && (
-          <span className="text-muted-foreground">
-            {status.retainedCount.toLocaleString('en-US')}{' '}
-            {status.retainedCount === 1 ? 'candidate kept' : 'candidates kept'}
-          </span>
         )}
 
         <span className="text-muted-foreground">
