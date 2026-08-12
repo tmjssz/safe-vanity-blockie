@@ -5,6 +5,10 @@ import { Slider as SliderPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+// Deviates from the generated source by two props: `aria-label` and `aria-labelledby`. Radix puts
+// role="slider" on the thumb, not the root, and only the thumb's own label names it — spread onto
+// the root, as generated, they name nothing at all and the control is announced as a bare
+// "slider". They are pulled out here and forwarded to every thumb below.
 function Slider({
   className,
   defaultValue,
@@ -52,9 +56,7 @@ function Slider({
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
-        // Radix puts role="slider" on the thumb, not the root, and only the thumb's own
-        // aria-label / aria-labelledby names it. Left on the root (where the generated component
-        // spreads them) they name nothing at all, so they are forwarded here instead.
+        // See the note above the component: the label belongs on the thumb.
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           aria-label={ariaLabel}

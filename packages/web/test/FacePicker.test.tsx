@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { FacePicker } from '../components/FacePicker'
 import { DEFAULT_FACE_FILTERS, type FaceFilters } from '../lib/config'
+import { ALL_MOUTH_NAMES, targetGridFor } from '../lib/face-selection'
 
 function renderPicker(
   overrides: Partial<{
@@ -55,6 +56,26 @@ function tile(name: string): HTMLElement {
   return screen.getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') })
 }
 
+/** The cells one tile actually draws, as "row:col" pairs. */
+function drawnCells(name: string): string {
+  return Array.from(tile(name).querySelectorAll('rect[data-filled="true"]'))
+    .map((cell) => `${cell.getAttribute('data-row')}:${cell.getAttribute('data-col')}`)
+    .join(' ')
+}
+
+/** The cells `targetGridFor` promises for one expression, mirrored the way blo mirrors its grid. */
+function expectedCells(mouthName: string): string {
+  const grid = targetGridFor(mouthName)
+  const cells: string[] = []
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const source = col < 4 ? col : 7 - col
+      if (grid[row * 4 + source] === 1) cells.push(`${row}:${col}`)
+    }
+  }
+  return cells.join(' ')
+}
+
 describe('FacePicker', () => {
   it('renders a toggle for every expression', () => {
     renderPicker({ value: ['smile'] })
@@ -101,6 +122,19 @@ describe('FacePicker', () => {
       for (const name of ['smile', 'frown', 'neutral', 'open', 'small']) {
         expect(tile(name).querySelectorAll('rect')).toHaveLength(64)
       }
+    })
+
+    // Counting <rect>s proves a tile has *a* preview, not the right one: every tile has 64 cells
+    // whatever it draws, so hard-coding one expression's pattern under all five captions would
+    // pass every other test here. These are the same data-row/data-col/data-filled attributes
+    // TargetPreview.test.tsx asserts on, read back through the tile that is meant to own them.
+    it('draws each expression its own pattern, under its own caption', () => {
+      renderPicker({ value: ['smile'] })
+      for (const name of ALL_MOUTH_NAMES) {
+        expect(drawnCells(name)).toBe(expectedCells(name))
+      }
+      // …and no two tiles draw the same shape, so "all five show one pattern" cannot pass either.
+      expect(new Set(ALL_MOUTH_NAMES.map(drawnCells)).size).toBe(ALL_MOUTH_NAMES.length)
     })
 
     it('keeps all five previews when the selection changes, re-ticking the accepted ones', () => {
@@ -213,11 +247,27 @@ describe('FacePicker', () => {
       ).toBe('151')
     })
 
-    it('covers the full 0–442 range one step at a time', () => {
-      renderPicker({ filters: { twoColor: true, minContrast: 150 } })
-      const slider = screen.getByRole('slider', { name: /minimum contrast/i })
-      expect(slider.getAttribute('aria-valuemin')).toBe('0')
-      expect(slider.getAttribute('aria-valuemax')).toBe('442')
+    // Step 1 is pinned by the 150 → 151 test above; this one is about the ends of the range being
+    // declared and actually reachable.
+    it('covers the full 0–442 range, both ends included', async () => {
+      render(
+        <ControlledPicker
+          initialFilters={{ twoColor: true, minContrast: 150 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      const slider = () => screen.getByRole('slider', { name: /minimum contrast/i })
+      expect(slider().getAttribute('aria-valuemin')).toBe('0')
+      expect(slider().getAttribute('aria-valuemax')).toBe('442')
+
+      slider().focus()
+      await userEvent.keyboard('{End}')
+      expect(slider().getAttribute('aria-valuenow')).toBe('442')
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('442')
+
+      await userEvent.keyboard('{Home}')
+      expect(slider().getAttribute('aria-valuenow')).toBe('0')
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('0')
     })
 
     it('reflects a non-default filters prop', () => {

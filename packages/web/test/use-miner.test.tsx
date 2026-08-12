@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMiner } from '../lib/use-miner'
 import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
 
@@ -63,6 +63,10 @@ const startInput = {
 beforeEach(() => {
   instances.length = 0
   vi.stubGlobal('Worker', FakeWorker)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('useMiner', () => {
@@ -189,6 +193,93 @@ describe('useMiner', () => {
     expect(instances.every((worker) => !worker.terminated)).toBe(true)
     // Progress is preserved, not reset.
     expect(result.current.state.scanned).toBe(10)
+  })
+
+  // The elapsed clock stops when *scanning* stops, and stop() is not the only thing that stops
+  // scanning: every path that sets `running: false` ends the run just as finally. Without a stamp
+  // on those paths the clock stands still only until something re-publishes — a filter change,
+  // say — at which point it silently absorbs however long the user spent reading the error, and
+  // the rate collapses by the same factor.
+  describe('elapsed time after a run ends without stop()', () => {
+    const ranFor = (ms: number) => {
+      const hook = renderHook(() => useMiner())
+      act(() => hook.result.current.start(startInput))
+      act(() => vi.advanceTimersByTime(ms))
+      act(() => instances[0].emit({ type: 'progress', scanned: 1_000, candidates: [] }))
+      expect(hook.result.current.state.elapsedMs).toBe(ms)
+      return hook
+    }
+
+    const endings: [string, () => void][] = [
+      [
+        'a worker reporting an error',
+        () => instances[0].emit({ type: 'error', message: 'wasm failed to load' }),
+      ],
+      [
+        'a worker failing to start at all',
+        () => instances[0].emitError('worker chunk failed to load'),
+      ],
+      ['an unreadable message from a worker', () => instances[0].emitMessageError()],
+    ]
+
+    for (const [description, end] of endings) {
+      it(`stops the clock at ${description}, not at whatever happens next`, () => {
+        vi.useFakeTimers()
+        const { result } = ranFor(12_000)
+
+        act(end)
+        expect(result.current.state.running).toBe(false)
+
+        // The user reads the error, thinks for five minutes, then nudges the contrast filter.
+        act(() => vi.advanceTimersByTime(300_000))
+        act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+        expect(result.current.state.elapsedMs).toBe(12_000)
+        expect(result.current.state.rate).toBeCloseTo(1_000 / 12, 5)
+      })
+    }
+
+    it('stops the clock when the last worker finishes its range', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emit({ type: 'done', scanned: 1_000, candidates: [] }))
+      act(() => instances[1].emit({ type: 'done', scanned: 0, candidates: [] }))
+      expect(result.current.state.running).toBe(false)
+
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+      expect(result.current.state.elapsedMs).toBe(12_000)
+    })
+
+    // The stamp must still describe the moment scanning ended, not the moment the component was
+    // torn down or the user got round to pressing Pause.
+    it('does not let a later stop() walk the stamp forward', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emitError('worker chunk failed to load'))
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.stop())
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+      expect(result.current.state.elapsedMs).toBe(12_000)
+    })
+
+    // …and a resume after a failed run still bills only the mining either side of it.
+    it('carries only the active time into a resumed run', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emitError('worker chunk failed to load'))
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.start({ ...startInput, resume: true, start: 1_000 }))
+      act(() => vi.advanceTimersByTime(3_000))
+      act(() => instances[2].emit({ type: 'progress', scanned: 10, candidates: [] }))
+
+      expect(result.current.state.elapsedMs).toBe(15_000)
+    })
   })
 
   it('ignores a message from a superseded run, so a stale worker cannot corrupt the new one', async () => {

@@ -128,6 +128,20 @@ export function useMiner(): {
 
   useEffect(() => teardown, [teardown])
 
+  /**
+   * Marks the moment scanning stopped. Called from every path that ends a segment — stop(), a
+   * worker error, a worker that never ran, an unreadable message, and the last worker finishing
+   * its range — because the elapsed clock must stop when mining stops, not when the user next
+   * touches something that re-publishes.
+   *
+   * Only the first stop of a segment counts: a later stop() (the effect cleanup on unmount, say,
+   * or Pause pressed long after a run already died) must not walk the stamp forward across the
+   * idle time it exists to exclude.
+   */
+  const markStopped = useCallback(() => {
+    if (stoppedAtRef.current < startedAtRef.current) stoppedAtRef.current = Date.now()
+  }, [])
+
   const start = useCallback(
     (input: StartMiningInput) => {
       // Only a real resume of an existing run preserves anything — a `resume: true` with no
@@ -199,6 +213,7 @@ export function useMiner(): {
           if (runIdRef.current !== runId) return
           const event = message.data
           if (event.type === 'error') {
+            markStopped()
             setState((previous) => ({ ...previous, running: false, error: event.message }))
             teardown()
             return
@@ -208,7 +223,12 @@ export function useMiner(): {
           publish()
           if (event.type === 'done') {
             liveRef.current -= 1
-            if (liveRef.current <= 0) setState((previous) => ({ ...previous, running: false }))
+            if (liveRef.current <= 0) {
+              // The range is exhausted: this is the end of the run, and the clock stops here
+              // rather than wherever the next re-publish happens to fall.
+              markStopped()
+              setState((previous) => ({ ...previous, running: false }))
+            }
           }
         }
         // Covers a failure to run the worker module at all — a 404 on the worker chunk after a
@@ -218,6 +238,7 @@ export function useMiner(): {
         // "0 nonces" with no explanation.
         worker.onerror = (event: ErrorEvent) => {
           if (runIdRef.current !== runId) return
+          markStopped()
           setState((previous) => ({
             ...previous,
             running: false,
@@ -230,6 +251,7 @@ export function useMiner(): {
         // report progress.
         worker.onmessageerror = () => {
           if (runIdRef.current !== runId) return
+          markStopped()
           setState((previous) => ({
             ...previous,
             running: false,
@@ -251,18 +273,16 @@ export function useMiner(): {
         return worker
       })
     },
-    [teardown],
+    [markStopped, teardown],
   )
 
   const stop = useCallback(() => {
     // Record when scanning stopped before telling the workers, so the elapsed clock stops here
-    // and the pause that follows is not counted as mining time (see activeUntil). Only the first
-    // stop of a segment counts: a second stop with no start in between would otherwise push the
-    // stamp forward across the pause it is supposed to exclude.
-    if (stoppedAtRef.current < startedAtRef.current) stoppedAtRef.current = Date.now()
+    // and the pause that follows is not counted as mining time (see activeUntil).
+    markStopped()
     const request: WorkerRequest = { type: 'stop' }
     for (const worker of workersRef.current) worker.postMessage(request)
-  }, [])
+  }, [markStopped])
 
   const setFilters = useCallback((filters: LiveFilters) => {
     filtersRef.current = filters
