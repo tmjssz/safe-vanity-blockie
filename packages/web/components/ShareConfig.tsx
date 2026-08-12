@@ -1,7 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { encodeConfigParam, type SharedConfig } from '../lib/deep-link'
+import { Alert, AlertDescription } from './ui/alert'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
 
 const COPY_FAILED_MESSAGE =
   'Could not copy automatically — select the link above and copy it manually.'
@@ -20,36 +25,53 @@ export function ShareConfig({ config }: { config: SharedConfig }) {
       const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
       if (!clipboard) {
         setCopyError(COPY_FAILED_MESSAGE)
+        toast.error(COPY_FAILED_MESSAGE)
         return
       }
       clipboard
         .writeText(url)
-        .then(() => setCopied(true))
-        .catch(() => setCopyError(COPY_FAILED_MESSAGE))
+        .then(() => {
+          setCopied(true)
+          toast.success('Share link copied')
+        })
+        .catch(() => {
+          setCopyError(COPY_FAILED_MESSAGE)
+          toast.error(COPY_FAILED_MESSAGE)
+        })
     } catch {
       setCopyError(COPY_FAILED_MESSAGE)
+      toast.error(COPY_FAILED_MESSAGE)
     }
   }
 
   return (
-    <div>
-      <p>
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="share-link">Share link</Label>
+      <div className="flex gap-2">
         {/* Always rendered, read-only and selectable: the share link is currently the only way
             to preserve a mined saltNonce without deploying, so a copy-button failure must never
             be the only path to it. */}
-        <input
+        <Input
+          id="share-link"
           type="text"
           readOnly
           value={url}
-          aria-label="Share link"
           onFocus={(event) => event.currentTarget.select()}
         />
-        <button type="button" onClick={copy}>
+        <Button type="button" variant="outline" onClick={copy}>
           {copied ? 'Copied' : 'Copy share link'}
-        </button>
-        <span className="hint"> The config is deterministic — deploy it whenever you like.</span>
+        </Button>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        The config is deterministic — deploy it whenever you like.
       </p>
-      {copyError && <p role="alert">{copyError}</p>}
+      {/* A toast disappears on a timer; this stays on screen until the next successful copy, so
+          a failure that needs the user to act (select-and-copy manually) is never lost. */}
+      {copyError && (
+        <Alert variant="destructive">
+          <AlertDescription>{copyError}</AlertDescription>
+        </Alert>
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Toaster } from '@/components/ui/sonner'
 import { ConnectButton } from '../components/ConnectButton'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Providers } from './providers'
@@ -24,6 +25,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
           </header>
           <main>{children}</main>
+          {/* Mounted once, here, so every toast.* call from anywhere in the tree — including
+              server-rendered pages before hydration finishes — has a renderer to land in. */}
+          <Toaster />
         </Providers>
       </body>
     </html>

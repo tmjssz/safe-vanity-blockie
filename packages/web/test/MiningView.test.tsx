@@ -33,15 +33,18 @@ const CANDIDATE = {
   regions: { mouth: 'small' },
 }
 
-const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy } = vi.hoisted(() => ({
-  constantsState: {
-    current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
-  },
-  minerState: { current: {} as Record<string, unknown> },
-  startSpy: vi.fn(),
-  stopSpy: vi.fn(),
-  setFiltersSpy: vi.fn(),
-}))
+const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy } = vi.hoisted(
+  () => ({
+    constantsState: {
+      current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
+    },
+    minerState: { current: {} as Record<string, unknown> },
+    startSpy: vi.fn(),
+    stopSpy: vi.fn(),
+    setFiltersSpy: vi.fn(),
+    toastErrorSpy: vi.fn(),
+  }),
+)
 
 vi.mock('../lib/use-safe-constants.js', () => ({
   useSafeConstants: () => constantsState.current,
@@ -56,10 +59,17 @@ vi.mock('../lib/use-miner.js', () => ({
   }),
 }))
 
+// A worker failure must reach the toast layer as well as the inline alert (see the test below) —
+// the alert is what the brief requires to stay put, the toast is the extra, timed feedback.
+vi.mock('sonner', () => ({
+  toast: { error: toastErrorSpy, success: vi.fn() },
+}))
+
 beforeEach(() => {
   constantsState.current = { loading: true }
   minerState.current = IDLE_STATE
   startSpy.mockClear()
+  toastErrorSpy.mockClear()
   stopSpy.mockClear()
   setFiltersSpy.mockClear()
 })
@@ -224,5 +234,40 @@ describe('MiningView', () => {
 
     expect(screen.getByRole('alert').textContent).toMatch(/RPC blew up/)
     expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('toasts a worker failure in addition to (not instead of) the inline alert', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, error: 'Worker failed to start: boom' }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(toastErrorSpy).toHaveBeenCalledWith('Worker failed to start: boom')
+    // The toast is additive: the alert this same error produces (MiningView.tsx) must still be
+    // on screen, since a toast alone would disappear before the user can act on it.
+    expect(screen.getByRole('alert').textContent).toMatch(/worker failed to start: boom/i)
+  })
+
+  it('does not toast when there is no worker error', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = IDLE_STATE
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(toastErrorSpy).not.toHaveBeenCalled()
   })
 })

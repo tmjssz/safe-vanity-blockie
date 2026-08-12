@@ -2,6 +2,7 @@
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
@@ -91,6 +92,14 @@ export function MiningView({
   useEffect(() => {
     setFilters({ twoColor, minContrast })
   }, [twoColor, minContrast, setFilters])
+
+  // A worker failure (crash, WASM blocked, unreadable message — see use-miner's onerror /
+  // onmessageerror) is transient feedback worth surfacing immediately, but the toast fades on
+  // its own timer. The `role="alert"` rendered below stays on screen for as long as the error
+  // is current, so the toast is additive, not a replacement for it.
+  useEffect(() => {
+    if (state.error) toast.error(state.error)
+  }, [state.error])
 
   if (constants.loading) return <p>Reading Safe constants…</p>
   if (constants.error) return <p role="alert">Could not read Safe constants: {constants.error}</p>

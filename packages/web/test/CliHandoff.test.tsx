@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { CliHandoff, npxCommandFor } from '../components/CliHandoff'
 
 const config = {
@@ -49,18 +50,24 @@ describe('npxCommandFor', () => {
   })
 })
 
+// CliHandoff is now a Radix Collapsible: its content is unmounted while closed, so every test
+// below opens it via the trigger first. That is the only change from the pre-shadcn version —
+// every assertion the earlier <details>-based tests made still holds.
+
 describe('CliHandoff', () => {
-  it('explains why a user would want the CLI', () => {
+  it('explains why a user would want the CLI', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
     expect(screen.getByText(/longer/i)).toBeDefined()
   })
 
-  it('warns that a narrowed subset of expressions has no builtin CLI target', () => {
+  it('warns that a narrowed subset of expressions has no builtin CLI target', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
     expect(screen.getByText(/full set of faces/i)).toBeDefined()
   })
 
-  it('includes the live filters in the handed-off command', () => {
+  it('includes the live filters in the handed-off command', async () => {
     render(
       <CliHandoff
         config={config}
@@ -68,7 +75,43 @@ describe('CliHandoff', () => {
         filters={{ twoColor: false, minContrast: 300 }}
       />,
     )
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
     expect(screen.getByText(/--no-two-color/)).toBeDefined()
     expect(screen.getByText(/--min-contrast 300/)).toBeDefined()
+  })
+
+  // fireEvent, not userEvent, for the clicks below: userEvent.setup() unconditionally replaces
+  // navigator.clipboard with its own stub on first use, clobbering the deliberate value set here
+  // (see the equivalent note in ShareConfig.test.tsx). A plain click event exercises the same
+  // onClick handlers without that interference.
+
+  it('copies the command and surfaces an alert plus toast when the clipboard is unavailable', async () => {
+    const original = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    fireEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
+    expect(screen.getByText(command)).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
+    expect(await screen.findByRole('alert')).toBeDefined()
+    expect(screen.getByText(/could not copy/i)).toBeDefined()
+
+    Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true })
+  })
+
+  it('copies the command and flips the button label on success', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    fireEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('button', { name: /^copied$/i })).toBeDefined()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

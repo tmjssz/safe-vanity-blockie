@@ -65,4 +65,19 @@ describe('ShareConfig', () => {
     expect(await screen.findByRole('alert')).toBeDefined()
     expect(screen.queryByRole('button', { name: /^copied$/i })).toBeNull()
   })
+
+  it('keeps the URL selectable even when the clipboard is unavailable', async () => {
+    const original = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+
+    render(<ShareConfig config={config} />)
+    const field = screen.getByRole('textbox', { name: /share link/i })
+    expect((field as HTMLInputElement).readOnly).toBe(true)
+    expect((field as HTMLInputElement).value).toContain('?config=')
+
+    fireEvent.click(screen.getByRole('button', { name: /copy/i }))
+    expect(await screen.findByText(/could not copy/i)).toBeDefined()
+
+    Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true })
+  })
 })
