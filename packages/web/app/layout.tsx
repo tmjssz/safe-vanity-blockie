@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Toaster } from '@/components/ui/sonner'
 import { ConnectButton } from '../components/ConnectButton'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { Toaster } from '../components/ui/sonner'
 import { Providers } from './providers'
 import './globals.css'
 
