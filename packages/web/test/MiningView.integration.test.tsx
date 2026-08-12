@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
@@ -72,6 +72,10 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true })
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('MiningView + useMiner integration (pause/resume)', () => {
   it('preserves the leaderboard and continues from the resume point, instead of resetting to zero', () => {
     const { rerender } = render(
@@ -130,6 +134,100 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     // progress from the new worker should report a cumulative total, not just the new segment.
     act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
     expect(screen.getByText(/700\s*nonces/)).toBeDefined()
+  })
+
+  // The status bar now shows the elapsed time, which turned a long-standing accounting bug into
+  // something a user can watch happen: stop() recorded nothing, so the resuming start() folded
+  // the whole wall-clock duration of the pause into "active mining time". Two seconds of mining
+  // either side of a two-minute pause is four seconds of mining, not 2m 04s.
+  it('does not bill the time spent paused as mining time', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    act(() => vi.advanceTimersByTime(2_000))
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(screen.getByText('2s elapsed')).toBeDefined()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+
+    // A long look at a candidate before going back to mining.
+    act(() => vi.advanceTimersByTime(120_000))
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(2_000))
+    act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
+
+    // Exact text, not a substring match: "2m 04s elapsed" contains "4s elapsed".
+    expect(screen.getByText('4s elapsed')).toBeDefined()
+  })
+
+  it('holds the clock still while paused, even if a filter change re-publishes mid-pause', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(3_000))
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(screen.getByText('3s elapsed')).toBeDefined()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(90_000))
+
+    // The Face card never locks, so the contrast filter can be dragged while paused — that
+    // re-publishes from the existing leaderboard, and the clock must not jump when it does.
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={{ twoColor: true, minContrast: 120 }}
+        paused
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('3s elapsed')).toBeDefined()
   })
 
   it('starts a genuinely new run from zero, without carrying over the previous board, when the face spec changes', () => {

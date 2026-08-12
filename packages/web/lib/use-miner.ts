@@ -61,6 +61,20 @@ const IDLE: MinerState = {
   nextStart: 0,
 }
 
+/**
+ * The instant the current segment's active mining ends: the moment scanning was stopped if it has
+ * been stopped since the segment began, otherwise now. Everything that measures elapsed time reads
+ * this rather than `Date.now()` directly, so wall-clock time spent paused counts for nothing — a
+ * pause must neither inflate the elapsed total when the run resumes nor let a re-publish during
+ * the pause (a filter change, a late `done` message) tick the clock forward.
+ *
+ * A `stoppedAt` older than `startedAt` — including the initial 0 — means this segment has not been
+ * stopped, so it is still running and ends now.
+ */
+function activeUntil(startedAt: number, stoppedAt: number): number {
+  return stoppedAt >= startedAt ? stoppedAt : Date.now()
+}
+
 export interface LiveFilters {
   twoColor: boolean
   minContrast: number
@@ -77,6 +91,10 @@ export function useMiner(): {
   const scannedRef = useRef<number[]>([])
   const boardRef = useRef<Leaderboard | undefined>(undefined)
   const startedAtRef = useRef(0)
+  // When scanning last stopped, so that a pause is not billed as active mining time. 0 (or any
+  // stamp older than the current segment's start) means "no stop since this segment began" — a
+  // start() with no intervening stop(), e.g. a config change while still running.
+  const stoppedAtRef = useRef(0)
   const liveRef = useRef(0)
   // Cumulative scanned count / active-mining time from segments before the current one. A
   // "segment" ends whenever start() is called again (pause or a fresh run); on resume these
@@ -129,7 +147,8 @@ export function useMiner(): {
         // Fold the segment that just ended into the running totals instead of discarding them.
         // `boardRef.current` is left as-is (same Leaderboard instance, same entries).
         priorScannedRef.current += scannedRef.current.reduce((a, b) => a + b, 0)
-        priorElapsedRef.current += Date.now() - startedAtRef.current
+        priorElapsedRef.current +=
+          activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current
       } else {
         boardRef.current = new Leaderboard(retain)
         priorScannedRef.current = 0
@@ -138,6 +157,8 @@ export function useMiner(): {
 
       scannedRef.current = new Array(input.workers).fill(0)
       startedAtRef.current = Date.now()
+      // The stamp belonged to the segment just folded in; the new segment is running.
+      stoppedAtRef.current = 0
       liveRef.current = input.workers
       filtersRef.current = { twoColor: input.twoColor, minContrast: input.minContrast }
       setState((previous) =>
@@ -148,7 +169,11 @@ export function useMiner(): {
         const board = boardRef.current
         if (!board) return
         const scanned = priorScannedRef.current + scannedRef.current.reduce((a, b) => a + b, 0)
-        const elapsedMs = Math.max(1, priorElapsedRef.current + (Date.now() - startedAtRef.current))
+        const elapsedMs = Math.max(
+          1,
+          priorElapsedRef.current +
+            (activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current),
+        )
         const { reported, droppedCount } = selectReported(board.entries(), {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,
@@ -230,6 +255,11 @@ export function useMiner(): {
   )
 
   const stop = useCallback(() => {
+    // Record when scanning stopped before telling the workers, so the elapsed clock stops here
+    // and the pause that follows is not counted as mining time (see activeUntil). Only the first
+    // stop of a segment counts: a second stop with no start in between would otherwise push the
+    // stamp forward across the pause it is supposed to exclude.
+    if (stoppedAtRef.current < startedAtRef.current) stoppedAtRef.current = Date.now()
     const request: WorkerRequest = { type: 'stop' }
     for (const worker of workersRef.current) worker.postMessage(request)
   }, [])

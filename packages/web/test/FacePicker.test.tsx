@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { FacePicker } from '../components/FacePicker'
 import { DEFAULT_FACE_FILTERS, type FaceFilters } from '../lib/config'
@@ -22,6 +23,36 @@ function renderPicker(
   }
   const result = render(<FacePicker {...props} />)
   return { ...result, onChange, onFiltersChange }
+}
+
+/**
+ * The picker is fully controlled, so a slider driven from a static `filters` prop can never move
+ * on screen however hard the test drags it. This is the parent the real app provides: it feeds
+ * every change straight back down, which is what makes the readout worth asserting on.
+ */
+function ControlledPicker({
+  initialFilters,
+  onFiltersChange,
+}: {
+  initialFilters: FaceFilters
+  onFiltersChange: (filters: FaceFilters) => void
+}) {
+  const [filters, setFilters] = useState(initialFilters)
+  return (
+    <FacePicker
+      value={['smile']}
+      onChange={vi.fn()}
+      filters={filters}
+      onFiltersChange={(next) => {
+        onFiltersChange(next)
+        setFilters(next)
+      }}
+    />
+  )
+}
+
+function tile(name: string): HTMLElement {
+  return screen.getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') })
 }
 
 describe('FacePicker', () => {
@@ -62,12 +93,17 @@ describe('FacePicker', () => {
   })
 
   describe('target previews', () => {
-    it('shows one preview per accepted expression', () => {
-      renderPicker({ value: ['smile', 'frown'] })
-      expect(screen.getAllByRole('img', { name: /target pattern/i })).toHaveLength(2)
+    // The previews are the control now: every expression gets one whether or not it is accepted,
+    // because clicking a preview is how an expression is accepted in the first place. A preview
+    // is identifiable by its 64 grid cells — nothing else in the card renders <rect>s.
+    it('renders a preview for every expression, not only the accepted ones', () => {
+      renderPicker({ value: ['smile'] })
+      for (const name of ['smile', 'frown', 'neutral', 'open', 'small']) {
+        expect(tile(name).querySelectorAll('rect')).toHaveLength(64)
+      }
     })
 
-    it('updates the preview count when the selection changes', () => {
+    it('keeps all five previews when the selection changes, re-ticking the accepted ones', () => {
       const { rerender } = render(
         <FacePicker
           value={['smile']}
@@ -76,7 +112,13 @@ describe('FacePicker', () => {
           onFiltersChange={vi.fn()}
         />,
       )
-      expect(screen.getAllByRole('img', { name: /target pattern/i })).toHaveLength(1)
+      const checkedNames = () =>
+        screen
+          .getAllByRole('checkbox')
+          .filter((entry) => entry.getAttribute('aria-checked') === 'true')
+          .map((entry) => entry.textContent)
+      expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+      expect(checkedNames()).toEqual(['smile'])
 
       rerender(
         <FacePicker
@@ -86,16 +128,49 @@ describe('FacePicker', () => {
           onFiltersChange={vi.fn()}
         />,
       )
-      expect(screen.getAllByRole('img', { name: /target pattern/i })).toHaveLength(3)
+      expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+      expect(checkedNames()).toEqual(['smile', 'frown', 'neutral'])
     })
 
-    it('never labels the target patterns section or its previews a blockie or identicon', () => {
+    // Colour alone would leave the accepted set invisible to anyone who cannot see the ring
+    // colour — the selected ResultCard pairs its ring with a badge, and so does this.
+    it('marks a selected preview with more than colour', () => {
       renderPicker({ value: ['smile'] })
-      const heading = screen.getByRole('heading', { name: /target patterns/i })
+      const selected = tile('smile')
+      expect(selected.querySelector('[data-slot="expression-selected-mark"]')).not.toBeNull()
+      expect(selected.className).toMatch(/ring-2/)
+
+      const unselected = tile('frown')
+      expect(unselected.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
+      expect(unselected.className).not.toMatch(/ring-2/)
+    })
+
+    // Inside a tile that is already named after its expression, the preview's own
+    // "Target pattern for smile" would be announced twice over — so it is decorative here, and
+    // the tile carries the name.
+    it('names each tile after its expression, without a duplicate announcement from the preview', () => {
+      renderPicker({ value: ['smile'] })
+      expect(screen.queryAllByRole('img', { name: /target pattern/i })).toHaveLength(0)
+      expect(
+        screen.getAllByRole('checkbox').map((entry) => entry.getAttribute('aria-label') ?? entry.textContent),
+      ).toEqual(['smile', 'frown', 'neutral', 'open', 'small'])
+    })
+
+    it('never labels the expression section or its tiles a blockie or identicon', () => {
+      renderPicker({ value: ['smile'] })
+      const heading = screen.getByRole('heading', { name: /accepted expressions/i })
       expect(heading.textContent).not.toMatch(/blockie|identicon/i)
-      for (const preview of screen.getAllByRole('img', { name: /target pattern/i })) {
-        expect(preview.getAttribute('aria-label')).not.toMatch(/blockie|identicon/i)
+      for (const entry of screen.getAllByRole('checkbox')) {
+        expect(entry.textContent).not.toMatch(/blockie|identicon/i)
+        expect(entry.getAttribute('aria-label') ?? '').not.toMatch(/blockie|identicon/i)
       }
+    })
+
+    it('still says what the shapes are, and what they are not', () => {
+      renderPicker({ value: ['smile'] })
+      expect(
+        screen.getByText(/not a blockie of any real address, since none exists yet/i),
+      ).toBeDefined()
     })
   })
 
@@ -103,55 +178,73 @@ describe('FacePicker', () => {
     it('defaults to two colours on and zero minimum contrast', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
-        screen.getByRole('checkbox', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
       ).toBe('true')
-      expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
-        'value',
-        '0',
-      )
+      expect(
+        screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
+      ).toBe('0')
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('0')
     })
 
-    it('calls onFiltersChange with twoColor flipped when the checkbox is toggled', async () => {
+    it('calls onFiltersChange with twoColor flipped when the switch is toggled', async () => {
       const { onFiltersChange } = renderPicker({ filters: DEFAULT_FACE_FILTERS })
-      await userEvent.click(screen.getByRole('checkbox', { name: /two colours only/i }))
+      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
       expect(onFiltersChange).toHaveBeenCalledWith({ twoColor: false, minContrast: 0 })
     })
 
-    it('calls onFiltersChange with the entered contrast value', () => {
-      const { onFiltersChange } = renderPicker({ filters: DEFAULT_FACE_FILTERS })
-      const input = screen.getByRole('spinbutton', { name: /minimum contrast/i })
-      fireEvent.change(input, { target: { value: '300' } })
-      expect(onFiltersChange).toHaveBeenCalledWith({ twoColor: true, minContrast: 300 })
+    // jsdom cannot drag a slider — no layout, so no pointer geometry — but Radix's thumb is
+    // keyboard operable, which is the path a keyboard user takes anyway.
+    it('reports the new contrast, and shows it, when the slider is moved', async () => {
+      const onFiltersChange = vi.fn()
+      render(
+        <ControlledPicker
+          initialFilters={{ twoColor: true, minContrast: 150 }}
+          onFiltersChange={onFiltersChange}
+        />,
+      )
+      const slider = screen.getByRole('slider', { name: /minimum contrast/i })
+      slider.focus()
+      await userEvent.keyboard('{ArrowRight}')
+
+      expect(onFiltersChange).toHaveBeenCalledWith({ twoColor: true, minContrast: 151 })
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('151')
+      expect(
+        screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
+      ).toBe('151')
+    })
+
+    it('covers the full 0–442 range one step at a time', () => {
+      renderPicker({ filters: { twoColor: true, minContrast: 150 } })
+      const slider = screen.getByRole('slider', { name: /minimum contrast/i })
+      expect(slider.getAttribute('aria-valuemin')).toBe('0')
+      expect(slider.getAttribute('aria-valuemax')).toBe('442')
     })
 
     it('reflects a non-default filters prop', () => {
       renderPicker({ filters: { twoColor: false, minContrast: 150 } })
       expect(
-        screen.getByRole('checkbox', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
       ).toBe('false')
-      expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
-        'value',
-        '150',
-      )
+      expect(
+        screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
+      ).toBe('150')
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('150')
     })
 
-    it('resynchronises the displayed contrast when the filters prop changes externally', async () => {
+    it('follows an external write to the contrast, since this section never locks', () => {
       const { rerender } = render(
         <FacePicker
           value={['smile']}
           onChange={vi.fn()}
-          filters={{ twoColor: true, minContrast: 0 }}
+          filters={{ twoColor: true, minContrast: 42 }}
           onFiltersChange={vi.fn()}
         />,
       )
-      const input = screen.getByRole('spinbutton', { name: /minimum contrast/i })
-      await userEvent.clear(input)
-      await userEvent.type(input, '42')
-      expect(input).toHaveProperty('value', '42')
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('42')
 
-      // An external write to `filters` — e.g. a future "Start over" reset or a `?config=` deep
-      // link — must overwrite whatever the input is currently showing, since this section never
-      // locks and the displayed value must not silently diverge from what the miner filters by.
+      // An external write to `filters` — a "Start over" reset, a `?config=` deep link — must
+      // overwrite whatever is on screen, since this section never locks and the displayed value
+      // must not silently diverge from what the miner filters by.
       rerender(
         <FacePicker
           value={['smile']}
@@ -160,10 +253,10 @@ describe('FacePicker', () => {
           onFiltersChange={vi.fn()}
         />,
       )
-      expect(screen.getByRole('spinbutton', { name: /minimum contrast/i })).toHaveProperty(
-        'value',
-        '300',
-      )
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe('300')
+      expect(
+        screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
+      ).toBe('300')
     })
   })
 })

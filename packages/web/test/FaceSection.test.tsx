@@ -43,27 +43,36 @@ describe('FaceSection', () => {
     expect(screen.getByText(/smile, frown/i)).toBeDefined()
   })
 
-  it('renders one target preview per accepted expression', () => {
+  // The previews are the expression control now, so there is one per expression rather than one
+  // per accepted expression, and each is decorative inside its own labelled toggle — a preview is
+  // identified by its 64 grid cells.
+  it('renders a target preview inside every expression toggle', () => {
     renderSection({ mouths: ['smile', 'frown', 'open'] })
-    expect(screen.getAllByRole('img', { name: /target pattern/i })).toHaveLength(3)
+    const toggles = screen.getAllByRole('checkbox')
+    expect(toggles).toHaveLength(5)
+    for (const toggle of toggles) {
+      expect(toggle.querySelectorAll('rect')).toHaveLength(64)
+    }
   })
 
   it('reports a two-colour toggle change', async () => {
     const props = renderSection()
-    await userEvent.click(screen.getByRole('checkbox', { name: /two colours only/i }))
+    await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
     expect(props.onFiltersChange).toHaveBeenCalledWith({
       ...DEFAULT_FACE_FILTERS,
       twoColor: false,
     })
   })
 
+  // The contrast control is a slider now: jsdom cannot drag one, but Radix's thumb is keyboard
+  // operable, which is the same code path a keyboard user takes.
   it('reports a contrast change', async () => {
-    const props = renderSection()
-    const input = screen.getByLabelText(/minimum contrast/i)
-    await userEvent.clear(input)
-    await userEvent.type(input, '150')
+    const props = renderSection({ filters: { twoColor: true, minContrast: 150 } })
+    const slider = screen.getByLabelText(/minimum contrast/i)
+    slider.focus()
+    await userEvent.keyboard('{ArrowRight}')
     expect(props.onFiltersChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ minContrast: 150 }),
+      expect.objectContaining({ minContrast: 151 }),
     )
   })
 })

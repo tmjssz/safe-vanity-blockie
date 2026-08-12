@@ -2,6 +2,7 @@
 
 import { formatScore } from '@safe-vanity-blockie/core'
 import { Pause, Play } from 'lucide-react'
+import { formatDuration } from '../lib/format-duration'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Progress } from './ui/progress'
@@ -20,6 +21,8 @@ export interface MiningStatus {
   scanned: number
   rate: number
   workers: number
+  /** Active mining time — see use-miner: time spent paused is not counted. */
+  elapsedMs: number
   bestScore?: number
   bestMaxScore?: number
 }
@@ -62,6 +65,14 @@ export function MiningStatusBar({
         </span>
         <span className="text-muted-foreground">{formatRate(status.rate)}</span>
         <span className="text-muted-foreground">{status.workers} workers</span>
+        {/* Gated on `started` — the same condition the Pause control uses — because a clock
+            reading "0s elapsed" before anything has been mined claims a run that does not
+            exist. The count and rate can honestly read zero; a duration cannot. */}
+        {started && (
+          <span className="text-muted-foreground tabular-nums">
+            {`${formatDuration(status.elapsedMs)} elapsed`}
+          </span>
+        )}
 
         {started && (
           <Button

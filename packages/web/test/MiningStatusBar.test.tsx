@@ -9,6 +9,7 @@ const status = {
   scanned: 4_200_000,
   rate: 1_030_000,
   workers: 5,
+  elapsedMs: 125_000,
   bestScore: 120,
   bestMaxScore: 133,
 }
@@ -25,6 +26,21 @@ describe('MiningStatusBar', () => {
     expect(screen.getByText(/4,200,000/)).toBeDefined()
     expect(screen.getByText(/1\.03M\/s/)).toBeDefined()
     expect(screen.getByText(/5 workers/)).toBeDefined()
+  })
+
+  it('shows how long the run has been going, formatted the way the CLI reports it', () => {
+    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
+    expect(screen.getByText(/2m 05s/)).toBeDefined()
+  })
+
+  it('keeps showing the elapsed time while paused, so it reads as a frozen clock', () => {
+    render(
+      <MiningStatusBar
+        status={{ ...status, running: false, paused: true }}
+        onPauseToggle={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/2m 05s/)).toBeDefined()
   })
 
   it('offers Pause while running and Resume while paused', async () => {
@@ -59,5 +75,15 @@ describe('MiningStatusBar', () => {
       />,
     )
     expect(screen.queryByRole('button', { name: /pause|resume/i })).toBeNull()
+  })
+
+  it('shows no elapsed time before a run exists, since there is nothing to have elapsed', () => {
+    render(
+      <MiningStatusBar
+        status={{ ...status, running: false, paused: false, scanned: 0, elapsedMs: 0 }}
+        onPauseToggle={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/elapsed/i)).toBeNull()
   })
 })

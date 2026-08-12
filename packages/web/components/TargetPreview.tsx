@@ -3,6 +3,14 @@ import { targetGridFor } from '../lib/face-selection'
 export interface TargetPreviewProps {
   mouthName: string
   size?: number
+  /**
+   * Drops the preview's own image role and label. Use inside a control that is already named
+   * after the same expression (FacePicker's toggles), where "Target pattern for smile" alongside
+   * a caption reading "smile" is announced twice and would also corrupt the control's own
+   * accessible name. Standalone, the preview keeps its label — it is the only thing describing
+   * itself.
+   */
+  decorative?: boolean
 }
 
 const GRID_SIZE = 8
@@ -13,7 +21,7 @@ const GRID_SIZE = 8
  * This is deliberately not an identicon of any address: no address exists yet at this step, and
  * calling it a "blockie" would misrepresent what it shows.
  */
-export function TargetPreview({ mouthName, size = 64 }: TargetPreviewProps) {
+export function TargetPreview({ mouthName, size = 64, decorative = false }: TargetPreviewProps) {
   const grid = targetGridFor(mouthName)
   const cells = []
   for (let row = 0; row < GRID_SIZE; row++) {
@@ -39,8 +47,9 @@ export function TargetPreview({ mouthName, size = 64 }: TargetPreviewProps) {
   return (
     <div className="inline-flex rounded-md border bg-muted/30 p-2 text-foreground">
       <svg
-        role="img"
-        aria-label={`Target pattern for ${mouthName}`}
+        role={decorative ? undefined : 'img'}
+        aria-label={decorative ? undefined : `Target pattern for ${mouthName}`}
+        aria-hidden={decorative || undefined}
         viewBox={`0 0 ${GRID_SIZE} ${GRID_SIZE}`}
         width={size}
         height={size}

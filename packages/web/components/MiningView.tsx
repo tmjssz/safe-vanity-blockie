@@ -156,6 +156,7 @@ export function MiningView({
     scanned: state.scanned,
     rate: state.rate,
     workers,
+    elapsedMs: state.elapsedMs,
     bestScore: best?.score,
     bestMaxScore: best?.maxScore,
   }
