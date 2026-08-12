@@ -12,6 +12,7 @@ import { CliHandoff } from './CliHandoff'
 import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from './MiningStatusBar'
 import { ResultsGrid } from './ResultsGrid'
 import { Alert, AlertDescription } from './ui/alert'
+import { Badge } from './ui/badge'
 
 /**
  * How many candidates the leaderboard keeps. Every one of them that survives the two-colour and
@@ -153,8 +154,11 @@ export function MiningView({
       </Alert>
     )
 
-  // The board is score-ranked, so the head of it is the best candidate found so far.
-  const best = state.candidates[0]
+  // `bestOverall` and `retainedCount`, never `state.candidates`: the bar reports the run, and
+  // `candidates` is the filtered view. Reading the head of that list made the bar say "No
+  // candidates yet" the moment a contrast floor excluded everything — directly above an empty
+  // state explaining that hundreds had been found and excluded — and threw away the only live
+  // signal of search quality exactly when the user needs it to decide where to put the slider.
   const status: MiningStatus = {
     running: state.running,
     paused,
@@ -162,8 +166,9 @@ export function MiningView({
     rate: state.rate,
     workers,
     elapsedMs: state.elapsedMs,
-    bestScore: best?.score,
-    bestMaxScore: best?.maxScore,
+    retainedCount: state.retainedCount,
+    bestScore: state.bestOverall?.score,
+    bestMaxScore: state.bestOverall?.maxScore,
   }
   const statusBar = <MiningStatusBar status={status} onPauseToggle={togglePause} />
 
@@ -171,7 +176,17 @@ export function MiningView({
     <>
       {statusBarSlot ? createPortal(statusBar, statusBarSlot) : statusBar}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold">Results</h2>
+        {/* The badge counts the cards below it — what the eye can check — and replaces the muted
+            "N filtered out" line that used to sit above the grid. It is not the bar's count: that
+            one is the retained board, which the filters never touch, so the two never contradict
+            each other. This heading is a bare <h2>, not a CardHeader, so a flex row is the right
+            way to put something beside it; CardAction is for the grid-based CardHeader. */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Results</h2>
+          <Badge variant="secondary">
+            {state.candidates.length.toLocaleString('en-US')} shown
+          </Badge>
+        </div>
         {state.error && (
           <Alert variant="destructive">
             <AlertDescription>{state.error}</AlertDescription>

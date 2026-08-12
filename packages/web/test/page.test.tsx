@@ -166,7 +166,11 @@ vi.mock('../components/FacePicker', () => ({
 // Its two buttons stand in for "the page is handed a candidate". A real card click is one way;
 // the link-candidate reconstruction in page.tsx setting `selected` from an effect is another,
 // and that one can fire while a dialog is already open — the path the `key` guards.
-const miningViewPropsRef = { current: undefined as { paused?: boolean } | undefined }
+const miningViewPropsRef = {
+  current: undefined as
+    | { paused?: boolean; onSelect: (candidate: unknown) => void }
+    | undefined,
+}
 vi.mock('../components/MiningView', () => ({
   MiningView: (props: { paused?: boolean; onSelect: (candidate: unknown) => void }) => {
     miningViewPropsRef.current = props
@@ -739,5 +743,29 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
 
     expect(facePickerPropsRef.current?.value).toEqual(ALL_MOUTH_NAMES)
+  })
+
+  // The grid holds up to 200 memoised cards, each an inline blockie, and re-renders several times
+  // a second while mining. That memo only pays for itself while the callback threaded down to the
+  // cards is the same function on every render — `setSelected`, a state setter, is. Swapping it
+  // for `onSelect={(candidate) => setSelected(candidate)}` here would leave every other test in
+  // this repo green while turning the memo into 200 wasted comparisons per publish, which the
+  // comment on ResultCard warns is worse than no memo at all.
+  it('hands MiningView a callback that survives a re-render, so the card memo keeps working', async () => {
+    const { ALL_MOUTH_NAMES } = await import('../lib/face-selection')
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    const first = miningViewPropsRef.current?.onSelect
+    expect(first).toBeTypeOf('function')
+
+    // Anything that re-renders the page will do; changing the accepted expressions is the one a
+    // user reaches for most often, and it re-renders the whole page by design.
+    act(() => {
+      facePickerPropsRef.current?.onChange(ALL_MOUTH_NAMES.slice(0, 1))
+    })
+
+    expect(miningViewPropsRef.current?.onSelect).toBe(first)
   })
 })

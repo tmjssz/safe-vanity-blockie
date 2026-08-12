@@ -22,6 +22,7 @@ const IDLE_STATE = {
   rate: 0,
   candidates: [],
   droppedCount: 0,
+  retainedCount: 0,
   nextStart: 0,
 }
 
@@ -37,6 +38,22 @@ const CANDIDATE = {
 
 // Each result card is one button, named after the result it opens ("Deploy 90.2% match 0x70e9…").
 const resultCards = () => screen.getAllByRole('button', { name: /deploy .* match/i })
+
+// Counting identicon draws is how "this card did not re-render" is observable from outside — see
+// ResultsGrid.test.tsx. Used here to prove the callback this component hands the grid survives a
+// publish, which is the invariant ResultCard's memo is worth anything under.
+const { bloSvgSpy } = vi.hoisted(() => ({ bloSvgSpy: vi.fn() }))
+
+vi.mock('@safe-vanity-blockie/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@safe-vanity-blockie/core')>()
+  return {
+    ...actual,
+    bloSvg: (address: string, size: number) => {
+      bloSvgSpy(address, size)
+      return actual.bloSvg(address, size)
+    },
+  }
+})
 
 const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy } = vi.hoisted(
   () => ({
@@ -73,6 +90,7 @@ vi.mock('sonner', () => ({
 beforeEach(() => {
   constantsState.current = { loading: true }
   minerState.current = IDLE_STATE
+  bloSvgSpy.mockClear()
   startSpy.mockClear()
   toastErrorSpy.mockClear()
   stopSpy.mockClear()
@@ -178,11 +196,144 @@ describe('MiningView', () => {
       />,
     )
 
-    const message = screen.getByRole('status').textContent ?? ''
+    // The whole panel, not the live region inside it: that region carries the stable headline
+    // only, so the numbers do not queue an announcement each time they change.
+    const message = screen.getByTestId('no-matches').textContent ?? ''
     expect(message).toMatch(/no result matches/i)
     expect(message).toMatch(/162/)
     expect(message).toMatch(/300/)
     expect(message).toMatch(/143/)
+  })
+
+  // The bar used to read the head of the *displayed* list. Once the filters can empty that list
+  // (they no longer fall back to showing everything), the bar answered a filter change with "No
+  // candidates yet" two rows above an empty state explaining that 162 candidates had been found —
+  // re-asserting the exact misreading the empty state exists to correct, and taking the only live
+  // signal of search quality with it. It reads the unfiltered board instead.
+  it('keeps reporting the best result while the filters exclude every card', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      retainedCount: 162,
+      bestOverall: CANDIDATE,
+      bestContrast: 143,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('90.2%')).toBeDefined()
+    expect(screen.getByText(/best result/i)).toBeDefined()
+    expect(screen.queryByText(/no candidates yet/i)).toBeNull()
+    // …and the empty state is on screen at the same time, saying the compatible thing.
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+  })
+
+  it('shows how many candidates the board is holding, which is not the number of cards', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [CANDIDATE],
+      droppedCount: 199,
+      retainedCount: 200,
+      bestOverall: CANDIDATE,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/200 candidates kept/i)).toBeDefined()
+  })
+
+  // The filtered-out count is gone from above the grid; what replaces it is a count of what is
+  // actually on screen, next to the heading, so it can be checked against the cards by eye.
+  it('badges the Results heading with the number of cards shown, and drops the filtered-out line', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: Array.from({ length: 3 }, (_, index) => ({
+        ...CANDIDATE,
+        address: `0x${index.toString(16).padStart(40, '0')}`,
+      })),
+      droppedCount: 197,
+      retainedCount: 200,
+      bestOverall: CANDIDATE,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { name: /^results$/i })
+    const badge = screen.getByText(/^3 shown$/i)
+    // On the heading, not floating somewhere above the grid.
+    expect(heading.parentElement?.contains(badge)).toBe(true)
+    expect(badge.textContent).toMatch(String(resultCards().length))
+    expect(screen.queryByText(/filtered out/i)).toBeNull()
+  })
+
+  // ResultCard's memo is what keeps a 200-card grid usable across several publishes a second, and
+  // it is worth nothing unless the callback threaded down to it is the same function every time.
+  // A refactor to `onSelect={(candidate) => onSelect(candidate)}` anywhere on that path would
+  // leave every test green while turning the memo into 200 wasted comparisons per publish.
+  it('hands the grid a callback that survives a publish, which is what the card memo rides on', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE], retainedCount: 1 }
+    const onSelect = vi.fn()
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={onSelect}
+      />,
+    )
+    const drawn = bloSvgSpy.mock.calls.length
+    expect(drawn).toBeGreaterThan(0)
+
+    // A publish: a new state object and a new candidates array holding the same candidate object,
+    // exactly what useMiner produces when the board did not change.
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      scanned: 5_000,
+      candidates: [CANDIDATE],
+      retainedCount: 1,
+    }
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={onSelect}
+      />,
+    )
+
+    expect(screen.getByText(/5,000/)).toBeDefined()
+    expect(bloSvgSpy.mock.calls.length).toBe(drawn)
   })
 
   it('calls start with the twoColor and minContrast values from the filters prop, not hardcoded ones', () => {

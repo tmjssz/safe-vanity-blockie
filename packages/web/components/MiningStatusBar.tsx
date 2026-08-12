@@ -5,7 +5,6 @@ import { Pause, Play } from 'lucide-react'
 import { formatDuration } from '../lib/format-duration'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Progress } from './ui/progress'
 
 /**
  * The page renders an empty element with this id at the very top of the layout, and MiningView —
@@ -23,6 +22,17 @@ export interface MiningStatus {
   workers: number
   /** Active mining time — see use-miner: time spent paused is not counted. */
   elapsedMs: number
+  /**
+   * How many candidates the leaderboard is holding (MinerState.retainedCount) — deliberately not
+   * the number of cards in the grid, which the filters decide and the Results heading counts.
+   * Two counts of the same population that disagree read as a bug; these count different things
+   * and are labelled accordingly.
+   */
+  retainedCount: number
+  /**
+   * The best candidate found, from the unfiltered board. Undefined only when nothing has been
+   * found at all — never merely because the filters exclude everything.
+   */
   bestScore?: number
   bestMaxScore?: number
 }
@@ -39,9 +49,6 @@ export function MiningStatusBar({
   onPauseToggle: () => void
 }) {
   const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
-  const percent = hasBest
-    ? Math.min(100, Math.max(0, (status.bestScore! / status.bestMaxScore!) * 100))
-    : 0
   const started = status.running || status.paused || status.scanned > 0
 
   return (
@@ -49,16 +56,29 @@ export function MiningStatusBar({
     // pin underneath it and be invisible for the whole run. z-40 keeps it below the header.
     <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-2 text-sm">
+        {/* No progress bar, and the percentage is labelled: a filled track next to a bare "90.2%"
+            reads as "the run is 90% done", which is not a number this search can have — the
+            keyspace is 2^256 wide and nothing is being counted down. What the number actually
+            measures is how close the best result found is to a perfect match. */}
         {hasBest ? (
-          <>
+          <span className="flex items-center gap-2">
+            <span className="text-muted-foreground">Best result</span>
             <Badge variant="secondary" className="font-mono">
               {formatScore(status.bestScore!, status.bestMaxScore!)}
             </Badge>
-            <Progress value={percent} className="hidden h-2 w-32 sm:block" />
-          </>
+          </span>
         ) : (
           <span className="text-muted-foreground">No candidates yet</span>
         )}
+
+        {/* "kept", not "found": the board holds the best `retain` candidates and then plateaus, so
+            after an hour of mining this still reads 200 while millions have been scored. "200
+            found" would be a lie by then; "200 candidates kept" is true at every moment of the
+            run. The honest count of what has been *scored* is the nonce count next to it. */}
+        <span className="text-muted-foreground">
+          {status.retainedCount.toLocaleString('en-US')}{' '}
+          {status.retainedCount === 1 ? 'candidate kept' : 'candidates kept'}
+        </span>
 
         <span className="text-muted-foreground">
           {status.scanned.toLocaleString('en-US')} nonces

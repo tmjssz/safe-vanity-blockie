@@ -19,12 +19,20 @@ that candidate's score, a full-size identicon, its address and `saltNonce`, its 
 button that spends the gas. Closing the dialog puts you straight back on a grid that never stopped
 mining.
 
-The bar carries the best score so far, the nonces scanned, the current rate, the worker count and a
-Pause/Resume control. It appears as soon as a config is submitted and the Safe constants resolve —
+The bar carries the best result found so far as a percentage, how many candidates the run is
+keeping, the nonces scanned, the current rate, the worker count and a Pause/Resume control. It
+appears as soon as a config is submitted and the Safe constants resolve —
 which is not the same as "once mining has started": on a `?config=…` link that carries a saltNonce
 it shows up already paused, offering Resume, before a single nonce has been scanned, because the
 link's address is being re-derived first. It is fed by the mining state itself, so it keeps
 reporting while you scroll through results far below it.
+
+Two counts are on screen at once and they count different things. The bar's "N candidates kept" is
+the leaderboard: the best 200 the run has found, scored and ranked without regard to the filters,
+so it climbs to 200 and then stays there however long you mine — that is why it says *kept* and not
+*found*. The badge on the **Results** heading is the number of cards below it, after the filters.
+Raise the contrast floor past everything and the badge goes to 0 while the bar keeps reporting the
+best result found, because the search has not got worse — only the filter has got stricter.
 
 Pause is not one flag. What the bar shows is your own pause combined with the app's: a deploy in
 flight and a share link still being reconstructed both hold mining stopped on their own account. So

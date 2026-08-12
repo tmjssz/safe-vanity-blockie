@@ -134,6 +134,47 @@ describe('useMiner', () => {
     })
   })
 
+  // The status bar cannot read the head of `candidates`: that list is the filtered one, so a
+  // contrast floor nothing clears empties it and the bar would announce "No candidates yet" over
+  // an empty state explaining that plenty had been found. Retention is score-ranked and blind to
+  // the filters, so the head of the board is the honest best-so-far — and its size is the honest
+  // "how many has this run found", which is not the number of cards on screen.
+  it('reports the best retained candidate, and how many it is holding, whatever the filters exclude', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 125, true, 150), candidate('0xb', 120, true, 140)],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+
+    expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestOverall?.address).toBe('0xa')
+    expect(result.current.state.retainedCount).toBe(2)
+  })
+
+  // A three-colour result can outscore every two-colour one; the board keeps it either way, so
+  // "the best found" means the best the run has retained, not the best the filters would allow.
+  it('takes the best retained candidate by score alone, not by the filters', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 130, false), candidate('0xb', 120, true)],
+      }),
+    )
+
+    await waitFor(() => expect(result.current.state.bestOverall?.address).toBe('0xa'))
+    expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
+  })
+
   // "No matches" is far more useful as "no matches — the best contrast found so far is 143", since
   // the contrast floor is the control the user is about to move. It has to be measured over the
   // candidates the *other* filters accept, or a three-colour result with huge contrast would

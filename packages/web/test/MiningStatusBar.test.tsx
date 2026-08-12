@@ -10,6 +10,7 @@ const status = {
   rate: 1_030_000,
   workers: 5,
   elapsedMs: 125_000,
+  retainedCount: 200,
   bestScore: 120,
   bestMaxScore: 133,
 }
@@ -19,6 +20,36 @@ describe('MiningStatusBar', () => {
     render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
     expect(screen.getByText('90.2%')).toBeDefined()
     expect(screen.queryByText(/120\/133/)).toBeNull()
+  })
+
+  // A bare percentage next to a progress bar reads as "the run is 90% done", which is not a
+  // number this search can even have — the space is 2^256 wide and nothing is being counted down.
+  it('labels the percentage, so it cannot be read as run progress', () => {
+    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
+    expect(screen.getByText(/best result/i)).toBeDefined()
+  })
+
+  // The bar itself was the other half of that misreading: a filled track implies a total to be a
+  // fraction of, and the only total here is the template's maximum score, which is not progress.
+  it('draws no progress bar', () => {
+    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  // Deliberately the retained leaderboard's size, not the number of cards on screen: the grid's
+  // own badge counts what survives the filters, and two counts of the same population that
+  // disagree read as a bug. "kept" rather than "found" because the board holds the best N and
+  // then plateaus — "200 found" after an hour of mining would be a lie.
+  it('shows how many candidates the run is keeping', () => {
+    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} />)
+    expect(screen.getByText(/200 candidates kept/i)).toBeDefined()
+  })
+
+  it('says one candidate, not one candidates', () => {
+    render(
+      <MiningStatusBar status={{ ...status, retainedCount: 1 }} onPauseToggle={vi.fn()} />,
+    )
+    expect(screen.getByText(/1 candidate kept/i)).toBeDefined()
   })
 
   it('shows scanned count, rate and worker count', () => {
@@ -60,7 +91,7 @@ describe('MiningStatusBar', () => {
   it('says so plainly before any candidate exists', () => {
     render(
       <MiningStatusBar
-        status={{ ...status, bestScore: undefined, bestMaxScore: undefined }}
+        status={{ ...status, retainedCount: 0, bestScore: undefined, bestMaxScore: undefined }}
         onPauseToggle={vi.fn()}
       />,
     )

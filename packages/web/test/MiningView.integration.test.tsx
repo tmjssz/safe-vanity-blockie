@@ -234,6 +234,47 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(screen.getByText('3s elapsed')).toBeDefined()
   })
 
+  // The failure this pins is the whole screen contradicting itself: drag the contrast floor past
+  // every result and the grid says "162 candidates have been found so far and all of them were
+  // excluded", while the bar two rows above it says "No candidates yet". The bar's best result has
+  // to come from the retained board, which the filters never touch, so it stays true and steady
+  // while the grid below it is empty.
+  it('keeps the bar reporting the best result found when the filters empty the grid', () => {
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(resultCards()).toHaveLength(1)
+    // The card carries the same percentage, so this is deliberately not a unique match yet.
+    expect(screen.getAllByText('90.2%').length).toBeGreaterThan(0)
+
+    // CANDIDATE's contrast is 157, so this floor excludes it — and everything else on the board.
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={{ twoColor: true, minContrast: 442 }}
+        paused={false}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(noResultCards()).toHaveLength(0)
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+    expect(screen.getByText('90.2%')).toBeDefined()
+    expect(screen.getByText(/best result/i)).toBeDefined()
+    expect(screen.queryByText(/no candidates yet/i)).toBeNull()
+    // The bar counts the board, which the filters do not touch; the heading counts the cards.
+    expect(screen.getByText(/1 candidate kept/i)).toBeDefined()
+    expect(screen.getByText(/^0 shown$/i)).toBeDefined()
+  })
+
   it('starts a genuinely new run from zero, without carrying over the previous board, when the face spec changes', () => {
     const { rerender } = render(
       <MiningView
