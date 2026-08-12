@@ -88,7 +88,11 @@ describe('MiningStatusBar', () => {
     expect(screen.getByRole('button', { name: /resume/i })).toBeDefined()
   })
 
-  it('says so plainly before any candidate exists', () => {
+  // …and says it once. "No candidates yet · 0 candidates kept · 0 nonces · 0k/s" restates the same
+  // nothing in two ways at the moment the bar has least to say. The count appears with the first
+  // result, in lockstep with the best score — both read the same board, so neither can arrive
+  // without the other.
+  it('says so plainly before any candidate exists, and does not also count to zero', () => {
     render(
       <MiningStatusBar
         status={{ ...status, retainedCount: 0, bestScore: undefined, bestMaxScore: undefined }}
@@ -96,6 +100,7 @@ describe('MiningStatusBar', () => {
       />,
     )
     expect(screen.getByText(/no candidates yet/i)).toBeDefined()
+    expect(screen.queryByText(/candidates? kept/i)).toBeNull()
   })
 
   it('hides the pause control entirely when mining has not started', () => {

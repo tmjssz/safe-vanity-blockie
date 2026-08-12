@@ -294,6 +294,54 @@ describe('MiningView', () => {
     expect(screen.queryByText(/filtered out/i)).toBeNull()
   })
 
+  // The badge's whole claim is that it counts what is on screen. In the opening seconds of a run
+  // the grid holds four skeleton placeholders, so "0 shown" is the one moment that claim is false —
+  // and counting the placeholders instead would be worse, since they are not results. There is
+  // simply nothing to count yet, so the badge waits.
+  it('does not count placeholders: no badge until there is something real to count', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [], droppedCount: 0 }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/shown$/i)).toBeNull()
+  })
+
+  // The exception: nothing found *yet* is not the same as nothing surviving the filters. There the
+  // grid has no cards on purpose, "0 shown" is the point, and it agrees with the empty state.
+  it('keeps the badge at zero when the filters exclude everything, agreeing with the empty state', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      retainedCount: 162,
+      bestOverall: CANDIDATE,
+    }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/^0 shown$/i)).toBeDefined()
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+  })
+
   // ResultCard's memo is what keeps a 200-card grid usable across several publishes a second, and
   // it is worth nothing unless the callback threaded down to it is the same function every time.
   // A refactor to `onSelect={(candidate) => onSelect(candidate)}` anywhere on that path would

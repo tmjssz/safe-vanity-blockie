@@ -180,12 +180,22 @@ export function MiningView({
             "N filtered out" line that used to sit above the grid. It is not the bar's count: that
             one is the retained board, which the filters never touch, so the two never contradict
             each other. This heading is a bare <h2>, not a CardHeader, so a flex row is the right
-            way to put something beside it; CardAction is for the grid-based CardHeader. */}
+            way to put something beside it; CardAction is for the grid-based CardHeader.
+
+            Shown only once there is something real to count. While the grid is still looking it
+            holds four skeleton placeholders, and a badge reading "0 shown" over four visible boxes
+            is the one state in which its claim to count what is on screen would be false —
+            counting the placeholders would be worse, since they are not results. `droppedCount`
+            is what distinguishes "nothing found yet" from "nothing survived the filters": in the
+            second case there are deliberately no cards, "0 shown" is the point, and it says the
+            same thing as the empty state directly below it. */}
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">Results</h2>
-          <Badge variant="secondary">
-            {state.candidates.length.toLocaleString('en-US')} shown
-          </Badge>
+          {(state.candidates.length > 0 || state.droppedCount > 0) && (
+            <Badge variant="secondary">
+              {state.candidates.length.toLocaleString('en-US')} shown
+            </Badge>
+          )}
         </div>
         {state.error && (
           <Alert variant="destructive">
