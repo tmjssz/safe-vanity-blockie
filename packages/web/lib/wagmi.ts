@@ -19,16 +19,20 @@ export function chainById(chainId: number): Chain {
 }
 
 /**
- * Wagmi config for injected wallets only. EIP-6963 discovery is on by default, so every
- * injected wallet the browser announces appears without naming any of them here. No
- * WalletConnect: it would require a Reown/WalletConnect Cloud project id, which would become
- * a required secret for anyone running this app.
+ * Wagmi config for MetaMask only. `target: 'metaMask'` pins the injected connector to that one
+ * wallet rather than accepting whatever `window.ethereum` happens to be, and it also turns off
+ * the EIP-6963 discovery that would otherwise add a connector — and so a button — per wallet the
+ * browser announces. One wallet means one connect control everywhere, and no screen has to ask
+ * the user to choose between providers before it can do anything.
+ *
+ * Deliberately not WalletConnect: it would require a Reown/WalletConnect Cloud project id, which
+ * would become a required secret for anyone running this app.
  *
  * Transports use each chain's default public RPC (no API key) — mining reads it before any
  * wallet connects, so it must work unauthenticated.
  */
 export const wagmiConfig = createConfig({
   chains: CHAIN_LIST,
-  connectors: [injected()],
+  connectors: [injected({ target: 'metaMask' })],
   transports: Object.fromEntries(CHAIN_LIST.map((chain) => [chain.id, http()])) as never,
 })

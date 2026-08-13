@@ -5,11 +5,16 @@ import { decodeConfigParam } from '../lib/deep-link'
 
 const state = vi.hoisted(() => ({
   account: { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 11155111 },
+  // lib/wagmi configures MetaMask alone, so this is a one-element list in production; the empty
+  // case below is what the connect button's disabled state exists for.
+  connectors: [{ uid: 'metamask', name: 'MetaMask' }] as { uid: string; name: string }[],
+  connect: vi.fn(),
 }))
 
 vi.mock('wagmi', () => ({
   useAccount: () => state.account,
   useSwitchChain: () => ({ switchChain: vi.fn() }),
+  useConnect: () => ({ connect: state.connect, connectors: state.connectors, isPending: false }),
   useConnectorClient: () => ({ data: { transport: {} } }),
   // The error-rendering test below clicks the deploy button, which dynamically imports
   // ../lib/wagmi for chainById — that module also imports createConfig/http from 'wagmi' at
@@ -50,6 +55,8 @@ const config = {
 
 beforeEach(() => {
   state.account = { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 11155111 }
+  state.connectors = [{ uid: 'metamask', name: 'MetaMask' }]
+  state.connect.mockClear()
 })
 
 /**
@@ -91,11 +98,28 @@ describe('DeployDialog', () => {
     expect(onDeployStart).toHaveBeenCalledOnce()
   })
 
-  it('asks for a wallet before offering to deploy', async () => {
+  // The prompt is a button among the footer's actions, not a line of prose further up: connecting
+  // is the next thing to do here, and it lands where the deploy button will be once it is done.
+  it('asks for a wallet before offering to deploy, and connects when asked', async () => {
     state.account = { isConnected: false, address: undefined as never, chainId: 11155111 }
     await renderDialog()
-    expect(screen.getByText(/connect a wallet/i)).toBeDefined()
+
+    const connectButton = screen.getByRole('button', { name: /connect a wallet to deploy/i })
     expect(screen.queryByRole('button', { name: /^deploy this safe$/i })).toBeNull()
+
+    await userEvent.click(connectButton)
+    expect(state.connect).toHaveBeenCalledWith({ connector: state.connectors[0] })
+  })
+
+  // Nothing to connect with means nothing to click: an enabled button that cannot do anything is
+  // worse than a disabled one, since the failure only shows up after the user commits to it.
+  it('disables the connect button when there is no connector at all', async () => {
+    state.account = { isConnected: false, address: undefined as never, chainId: 11155111 }
+    state.connectors = []
+    await renderDialog()
+
+    const connectButton = screen.getByRole('button', { name: /connect a wallet to deploy/i })
+    expect((connectButton as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('offers the counterfactual path alongside deploying', async () => {

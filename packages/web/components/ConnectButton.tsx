@@ -16,21 +16,22 @@ export function ConnectButton() {
     )
   }
 
+  // One button, not one per connector: lib/wagmi configures MetaMask alone, which also switches
+  // off the EIP-6963 discovery that used to add a connector — and so a button — for every wallet
+  // the browser announced. Still written defensively rather than as `connectors[0]!`, so that
+  // adding a connector back shows a button instead of silently connecting the first one.
+  const connector = connectors[0]
+  if (!connector) return <p className="text-sm text-muted-foreground">No browser wallet detected.</p>
+
   return (
-    <>
-      {connectors.map((connector) => (
-        <Button
-          key={connector.uid}
-          type="button"
-          variant="default"
-          size="sm"
-          disabled={isPending}
-          onClick={() => connect({ connector })}
-        >
-          Connect {connector.name}
-        </Button>
-      ))}
-      {connectors.length === 0 && <p className="text-sm text-muted-foreground">No browser wallet detected.</p>}
-    </>
+    <Button
+      type="button"
+      variant="default"
+      size="sm"
+      disabled={isPending}
+      onClick={() => connect({ connector })}
+    >
+      Connect {connector.name}
+    </Button>
   )
 }

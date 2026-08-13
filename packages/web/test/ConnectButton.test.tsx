@@ -59,6 +59,26 @@ describe('ConnectButton', () => {
     expect(connectMock).toHaveBeenCalledWith({ connector })
   })
 
+  // The header used to render one button per connector, so a browser announcing several wallets
+  // via EIP-6963 grew a row of them. lib/wagmi now pins the connector to MetaMask, but the
+  // component must not go back to multiplying either — this fails the moment it maps again.
+  it('renders one connect button even if several connectors are announced', () => {
+    useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
+    useConnectMock.mockReturnValue({
+      connect: connectMock,
+      connectors: [
+        { uid: 'injected-1', name: 'MetaMask' },
+        { uid: 'injected-2', name: 'Rabby' },
+      ],
+      isPending: false,
+    })
+
+    render(<ConnectButton />)
+
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /rabby/i })).toBeNull()
+  })
+
   it('when disconnected with no wallet available, shows the fallback message and no connect button', () => {
     useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
     useConnectMock.mockReturnValue({ connect: connectMock, connectors: [], isPending: false })

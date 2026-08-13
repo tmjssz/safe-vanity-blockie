@@ -84,6 +84,7 @@ vi.mock('wagmi', () => ({
   useAccount: useAccountMock,
   useSwitchChain: useSwitchChainMock,
   useConnectorClient: useConnectorClientMock,
+  useConnect: () => ({ connect: vi.fn(), connectors: [], isPending: false }),
   createConfig: vi.fn(() => ({})),
   http: vi.fn(() => ({})),
 }))

@@ -4,7 +4,7 @@ import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { useAccount, useConnectorClient, useSwitchChain } from 'wagmi'
+import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
 import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
 import { Blockie } from './Blockie'
 import { ShareConfig } from './ShareConfig'
@@ -46,6 +46,7 @@ export function DeployDialog({
 }: DeployDialogProps) {
   const { isConnected, address, chainId } = useAccount()
   const { switchChain } = useSwitchChain()
+  const { connect, connectors, isPending: isConnecting } = useConnect()
   const { data: client } = useConnectorClient()
   const [status, setStatus] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
@@ -131,7 +132,6 @@ export function DeployDialog({
             or that escape route disappears with the panel. */}
         <ShareConfig config={{ ...config, saltNonce: candidate.saltNonce }} />
 
-        {!isConnected && <p className="text-sm">Connect a wallet to deploy.</p>}
         {/* Always mounted, even while empty. A live region only announces changes to a container
             that was already there when the text arrived — mounting the <p> together with its
             first message (which is what `{status && …}` did) announces nothing at all, and this
@@ -154,6 +154,24 @@ export function DeployDialog({
               {busy ? 'Close and keep waiting' : 'Cancel'}
             </Button>
           </DialogClose>
+          {/* Sits where the deploy button will be once there is a wallet, rather than as a line of
+              prose further up: connecting is the next action here, so it belongs among the
+              actions. `connectors[0]` is safe to reach for — lib/wagmi always configures
+              injected(), and EIP-6963 discovery only ever appends to that list. It does mean a
+              browser announcing several wallets connects the first rather than offering a choice;
+              the header's ConnectButton is the one that lists them all. */}
+          {!isConnected && (
+            <Button
+              type="button"
+              disabled={isConnecting || connectors.length === 0}
+              onClick={() => {
+                const connector = connectors[0]
+                if (connector) connect({ connector })
+              }}
+            >
+              Connect a wallet to deploy
+            </Button>
+          )}
           {wrongChain && (
             <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
               Switch network to continue
