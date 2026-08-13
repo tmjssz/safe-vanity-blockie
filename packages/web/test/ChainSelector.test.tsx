@@ -39,7 +39,11 @@ describe('ChainSelector', () => {
     // change. Nothing has happened yet — the same treatment "Start over" gives the fields that
     // determine the address.
     const dialog = await screen.findByRole('dialog')
-    expect(dialog.textContent).toMatch(/discard every result/i)
+    // Both halves of the loss, and neither of them assuming a search is running: the results
+    // found for the chain being left, and a result open in front of the user — which is all a
+    // share-link recipient has, and all they would lose.
+    expect(dialog.textContent).toMatch(/every result found for Sepolia is discarded/i)
+    expect(dialog.textContent).toMatch(/any result open in front of you closes/i)
     expect(onSelect).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: /switch and start over/i }))
@@ -52,7 +56,9 @@ describe('ChainSelector', () => {
     render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={onSelect} />)
 
     await choose(user, /ethereum/i)
-    await user.click(screen.getByRole('button', { name: /keep mining/i }))
+    // Named rather than "Keep mining": this dialog is also shown to a share-link recipient with
+    // nothing mining at all, and the chain being kept is the answer to the question in the title.
+    await user.click(screen.getByRole('button', { name: /^stay on sepolia$/i }))
 
     expect(onSelect).not.toHaveBeenCalled()
     // And the trigger has not moved either: the value it shows is the chain the results on screen
@@ -107,6 +113,21 @@ describe('ChainSelector', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(onSelect).toHaveBeenCalledWith(POLYGON)
+  })
+
+  // The chain is the one input the deploy dialog reads that can move while that dialog is open —
+  // it is non-modal now, which is why this control lives in the header at all. While a transaction
+  // is in the wallet's hands it must not: the open dialog's description, share link and
+  // wrong-chain gate would follow the header away from the transaction the user confirmed.
+  it('is held still while a deploy is in flight', async () => {
+    const onSelect = vi.fn()
+    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} disabled onSelect={onSelect} />)
+
+    expect((trigger() as HTMLButtonElement).disabled).toBe(true)
+    // Not merely styled as unavailable: the menu does not open, so nothing can be chosen.
+    await userEvent.click(trigger())
+    expect(screen.queryByRole('option', { name: /polygon/i })).toBeNull()
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('names both chains in the question, so it is clear what is being left and for what', async () => {

@@ -1800,7 +1800,7 @@ describe('Page', () => {
 
     await chooseChain(user, /ethereum/i)
     expect(await screen.findByRole('dialog')).toBeDefined()
-    await user.click(screen.getByRole('button', { name: /keep mining/i }))
+    await user.click(screen.getByRole('button', { name: /^stay on sepolia$/i }))
 
     // Declined: still on Sepolia, still mining, and the result's own entry is still live — Back
     // reopens it.
@@ -2002,7 +2002,7 @@ describe('Page', () => {
     // Asked, not done. (The confirmation is itself modal, so it is queried by its own text: while
     // it is up it aria-hides the deploy dialog behind it, exactly as intended.)
     expect(await screen.findByText(/switch to ethereum\?/i)).toBeDefined()
-    await user.click(screen.getByRole('button', { name: /keep mining/i }))
+    await user.click(screen.getByRole('button', { name: /^stay on sepolia$/i }))
 
     // Declined leaves everything alone — the chain, the run, and the open dialog with its own
     // config still paired to the candidate on screen.
@@ -2144,5 +2144,178 @@ describe('Page', () => {
     await traverse(() => window.history.back())
     expect(window.location.href).toBe(first)
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // …and the exception to that, which is the whole point of the busy guards. The grid behind the
+  // dialog became a live control when the dialog stopped being modal, and it would otherwise walk
+  // straight around the rule Escape, the X and outside interaction all obey: a send in flight must
+  // not lose the one place its outcome can be read inline. A stray click on any of 200 cards would
+  // swap `selection`, unmount the dialog mid-send through the `key`, and leave a "Gas was spent"
+  // message with nowhere to land but a toast on a timer — while the abandoned sequence's `finally`
+  // handed mining back and re-enabled the chain selector under a wallet still holding the
+  // transaction.
+  it('ignores a card click behind the dialog while a send is in flight, and takes it again once settled', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const opened = window.location.href
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+    // Nothing moved: the same dialog, the same in-flight sequence, the same URL. In particular
+    // mining is still paused and the selector still disabled — an unmount here would have handed
+    // both back while the wallet still had the transaction.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_B.address)
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(window.location.href).toBe(opened)
+    expect(screen.getByText('paused')).toBeDefined()
+    expect((screen.getByRole('combobox', { name: /^chain$/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+
+    // The moment the attempt settles the grid is a live control again — this is a guard for the
+    // window, not a new lock on the leaderboard.
+    await release()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
+  })
+
+  // The carry keeps the candidate, so without the chain in the `key` it would re-render this
+  // dialog rather than replace it — and a finished deploy's `status`/`completed` would come along.
+  // This is the flow the dialog's own copy invites ("you can copy the share link and deploy it
+  // later, on any chain"), and it is exactly the flow the carry was supposed to unlock: deploy on
+  // Sepolia, then switch to Polygon to deploy the same address there.
+  it('starts the carried dialog clean, so a finished deploy does not disable the new chain', async () => {
+    // The wallet moves with the user, so the wrong-chain gate is out of the way in both halves and
+    // what is asserted is the deploy button's own state rather than which button is rendered.
+    let walletChain = 11155111
+    useAccountMock.mockImplementation(() => ({
+      isConnected: true,
+      address: '0x' + 'cc'.repeat(20),
+      chainId: walletChain,
+    }))
+    buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+    getSafeAddressFromDeploymentTxMock.mockReturnValue(CANDIDATE_A.address)
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+
+    expect(
+      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
+    ).toBeDefined()
+    expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
+
+    walletChain = 137
+    await chooseChain(user, /polygon/i)
+
+    // A fresh dialog on the same address: no Sepolia success line above a Polygon description, and
+    // a Deploy button that can actually be pressed.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(screen.getByRole('dialog').textContent).toContain('Polygon')
+    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
+    expect(sharedChainId()).toBe(137)
+  })
+
+  // The window before either a run or a selection exists, and the one the resolving overlay leaves
+  // open on purpose: it swallows the pointer but traps no focus, so a keyboard user can reach the
+  // header while a link's saltNonce is still being reconstructed. The link's chain is already
+  // spoken for there — the address about to appear is derived from it — so a crossing has to be
+  // asked about. Unasked, the header would land on the other singleton class and the candidate
+  // would arrive paired with a config for the class the header had just left: a `selection` and a
+  // run in different classes, which is the one state from which a later same-class switch could
+  // carry a `Safe.sol` address onto a `SafeL2.sol` config and offer a share link that reproduces a
+  // DIFFERENT address for whoever opened it.
+  it('asks about the link being resolved before crossing the boundary out from under it', async () => {
+    let resolveCandidate: (candidate: unknown) => void = () => {}
+    linkCandidateOverride.current = () =>
+      new Promise((resolve) => {
+        resolveCandidate = resolve
+      })
+    // A link on mainnet: any of the six is a crossing from here.
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: 1,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+    expect(spinner()).not.toBeNull()
+
+    await chooseChain(user, /sepolia/i)
+
+    // Asked, and nothing switched yet. `{ hidden: true }` here and only here: the CONFIRMATION is
+    // modal, deliberately and unchanged — it is a blocking question, not a panel to work beside —
+    // so while it is up the header behind it is aria-hidden exactly as it should be.
+    expect(await screen.findByText(/switch to sepolia\?/i)).toBeDefined()
+    expect(
+      screen.getByRole('combobox', { name: /^chain$/i, hidden: true }).textContent,
+    ).toContain('Ethereum')
+
+    // Declining leaves the link alone: it resolves into its own dialog, on its own chain.
+    await user.click(screen.getByRole('button', { name: /^stay on ethereum$/i }))
+    await act(async () => {
+      resolveCandidate(CANDIDATE_A)
+    })
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    expect(shownChain()).toContain('Ethereum')
+    expect(sharedChainId()).toBe(1)
+  })
+
+  it('discards the link being resolved when the crossing is confirmed, rather than repairing it later', async () => {
+    let resolveCandidate: (candidate: unknown) => void = () => {}
+    linkCandidateOverride.current = () =>
+      new Promise((resolve) => {
+        resolveCandidate = resolve
+      })
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: 1,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: /switch and start over/i }))
+
+    // The reset is the one "Start over" performs, and it holds even though the reconstruction was
+    // still in flight when it happened: the candidate it produces belongs to a chain the user has
+    // left, so it must not open a dialog on the page it lands on.
+    await act(async () => {
+      resolveCandidate(CANDIDATE_A)
+    })
+    expect(shownChain()).toContain('Sepolia')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(spinner()).toBeNull()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+
+    // And the search the recipient starts from here is on the chain they chose, with no trace of
+    // the link's own.
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(sharedChainId()).toBe(11155111)
   })
 })

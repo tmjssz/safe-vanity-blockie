@@ -105,8 +105,16 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
       </Select>
 
       {/* Open exactly while a switch is pending. Dismissing it any way at all — Escape, the X, the
-          overlay, "Keep mining" — drops the pending chain, so the select stays exactly where it
-          was and nothing is switched by walking away from the question. */}
+          overlay, the decline button — drops the pending chain, so the select stays exactly where
+          it was and nothing is switched by walking away from the question.
+
+          The copy does not assume a search is running. It asks about `runChainId`, which is the
+          chain whose addresses are at stake, and that is a mined run in the ordinary case but a
+          single open result in another: a share-link recipient meets this dialog with nothing
+          mining and nothing found, and "discard every result found so far" over a button reading
+          "Keep mining" described neither the loss nor the way out. Naming the chain being kept is
+          true in both cases and says more than "keep" did — it is the answer to the question in
+          the title. */}
       <Dialog open={pending !== undefined} onOpenChange={(open) => !open && setPending(undefined)}>
         <DialogContent>
           <DialogHeader>
@@ -114,13 +122,14 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
             <DialogDescription>
               {chainName(leaving)} and {pending === undefined ? '' : chainName(pending)} deploy
               through different Safe singletons, so a Safe with the same owners, threshold and
-              version lands on a different address on each. Switching will discard every result
-              found so far and any selected result.
+              version lands on a different address on each. Switching starts over: every result
+              found for {chainName(leaving)} is discarded, and any result open in front of you
+              closes.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">Keep mining</Button>
+              <Button variant="ghost">Stay on {chainName(leaving)}</Button>
             </DialogClose>
             <Button
               variant="destructive"
