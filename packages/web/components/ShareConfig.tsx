@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { encodeConfigParam, type SharedConfig } from '../lib/deep-link'
+import { shareConfigPath, type SharedConfig } from '../lib/deep-link'
 import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -14,7 +14,9 @@ const COPY_FAILED_MESSAGE =
 export function ShareConfig({ config }: { config: SharedConfig }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | undefined>()
-  const url = `${typeof window === 'undefined' ? '' : window.location.origin}/?config=${encodeConfigParam(config)}`
+  // Absolute, because this one is copied and pasted elsewhere; page.tsx pushes the same path
+  // into the address bar relative, where the origin is already there. Same builder either way.
+  const url = `${typeof window === 'undefined' ? '' : window.location.origin}${shareConfigPath(config)}`
 
   const copy = () => {
     setCopyError(undefined)

@@ -37,6 +37,17 @@ export function encodeConfigParam(config: SharedConfig): string {
   return toBase64Url(JSON.stringify(config))
 }
 
+/**
+ * The share link for a config, as a path — the single place a `?config=` URL is spelled out.
+ * Two of them exist now: the copyable field in the deploy dialog, and the address bar, which
+ * page.tsx pushes when that dialog opens. They have to be the same string (it is the one a user
+ * copies straight out of the bar), and the only way to be sure of that is for there to be one
+ * builder rather than two that agree today.
+ */
+export function shareConfigPath(config: SharedConfig): string {
+  return `/?config=${encodeConfigParam(config)}`
+}
+
 /** Decodes and fully re-validates — a link is untrusted input, not a trusted config. */
 export function decodeConfigParam(param: string): { config?: SharedConfig; error?: string } {
   let raw: unknown

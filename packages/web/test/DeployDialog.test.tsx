@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MineConfig } from '../lib/config'
 import { decodeConfigParam } from '../lib/deep-link'
 
 const state = vi.hoisted(() => ({
@@ -64,14 +65,20 @@ beforeEach(() => {
  * above have to be in place before the component module is evaluated.
  */
 async function renderDialog(
-  props: { onDeployStart?: () => void; onDeploySettled?: () => void; onOpenChange?: () => void } = {},
+  props: {
+    onDeployStart?: () => void
+    onDeploySettled?: () => void
+    onOpenChange?: () => void
+    /** Overridden by the config-summary test, which needs owners nothing else here shares. */
+    config?: MineConfig
+  } = {},
 ) {
   const { DeployDialog } = await import('../components/DeployDialog')
   return render(
     <DeployDialog
       open
       candidate={candidate}
-      config={config}
+      config={props.config ?? config}
       onOpenChange={props.onOpenChange ?? vi.fn()}
       onDeployStart={props.onDeployStart ?? vi.fn()}
       onDeploySettled={props.onDeploySettled ?? vi.fn()}
@@ -89,6 +96,38 @@ describe('DeployDialog', () => {
     await renderDialog()
     expect(screen.getByText(candidate.address)).toBeDefined()
     expect(screen.getByText(/1885506/)).toBeDefined()
+  })
+
+  // The dialog used to name the address and the saltNonce but never whose Safe it was — and the
+  // one state where that matters is reachable: a share-link recipient can submit their own config
+  // while the reconstruction is still in flight, ending with the Configure card summarising THEIR
+  // owners while this dialog deploys the SENDER's. The `selection: { candidate, config }` pairing
+  // already makes that safe; this makes it visible.
+  //
+  // Rendered with a config that shares nothing with the fixture used everywhere else in this file
+  // (nor with the connected account), so the assertions can only pass if the block reads this
+  // component's own `config` prop.
+  it('names the config it deploys with: owners in full, threshold, Safe version and chain', async () => {
+    const senders = {
+      owners: ['0x' + '44'.repeat(20), '0x' + '55'.repeat(20)],
+      threshold: 2,
+      safeVersion: '1.3.0' as const,
+      chainId: 137,
+    }
+    await renderDialog({ config: senders })
+
+    // Every owner, in full: the owner set is what determines control of the Safe, and a count is
+    // nothing a user can check against an address they recognise.
+    for (const owner of senders.owners) expect(screen.getByText(owner)).toBeDefined()
+    expect(screen.getByText('2 of 2')).toBeDefined()
+    expect(screen.getByText('1.3.0')).toBeDefined()
+    // By name, not id 137.
+    expect(screen.getAllByText(/Polygon/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/137/)).toBeNull()
+
+    // And nothing of the config this file's other tests use leaked in from anywhere else.
+    expect(screen.queryByText(config.owners[0] as string)).toBeNull()
+    expect(screen.queryByText('1.4.1')).toBeNull()
   })
 
   it('pauses mining the moment a deploy is initiated', async () => {

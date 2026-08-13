@@ -120,6 +120,47 @@ export function DeployDialog({
           </div>
         </div>
 
+        {/* Whose Safe this is. Read from `config` — this component's own prop, which page.tsx
+            pairs with the candidate the address came from — and never from anything the page
+            holds separately, because the two can legitimately differ: a share-link recipient can
+            submit their own config while the link is still reconstructing, and then the Configure
+            card behind this dialog summarises THEIR owners while this deploys the SENDER's.
+            Nothing there drifts and nothing lies, but until this block existed the dialog never
+            named the owners at all, so that state was merely self-consistent rather than
+            self-evident — and a recipient who had edited the prefill to their own address could
+            reasonably read the dialog as a result of their own search and spend gas creating a
+            Safe they do not control.
+
+            Owners in full, not a count: the owner set is what determines control of the Safe, and
+            "1 owner" is nothing a user can check on the one screen whose entire job is checking.
+            `break-all` for the same reason the address above uses it. Subordinate to the blockie
+            and the address by size and weight — those remain the thing being verified. */}
+        <div className="flex flex-col gap-2 rounded-lg border p-4">
+          <h3 className="text-sm font-medium">The config this address comes from</h3>
+          <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">Owners</dt>
+            <dd className="flex min-w-0 flex-col gap-1">
+              {config.owners.map((owner) => (
+                <code key={owner} className="break-all">
+                  {owner}
+                </code>
+              ))}
+            </dd>
+            <dt className="text-muted-foreground">Threshold</dt>
+            <dd>
+              {config.threshold} of {config.owners.length}
+            </dd>
+            <dt className="text-muted-foreground">Safe version</dt>
+            <dd>{config.safeVersion}</dd>
+            <dt className="text-muted-foreground">Network</dt>
+            {/* By name, never a raw id: `chainName` is the same lookup the description above
+                uses. The fallback cannot be reached from a validated config — validateMineConfig
+                rejects any chain not in SUPPORTED_CHAINS — but printing nothing at all would be
+                the worst possible outcome on this screen. */}
+            <dd>{chainName ?? `Chain ${config.chainId}`}</dd>
+          </dl>
+        </div>
+
         <p className="text-sm text-muted-foreground">
           You do not have to deploy now: this address exists whether or not you do, so you can
           copy the share link and deploy it later, on any chain with the canonical Safe contracts.

@@ -46,6 +46,7 @@ const {
   getSafeAddressFromDeploymentTxMock,
   facePickerPropsRef,
   searchParamsRef,
+  historySync,
   linkCandidateOverride,
   toastErrorSpy,
   toastSuccessSpy,
@@ -65,7 +66,44 @@ const {
       | { value: string[]; onChange: (names: string[]) => void }
       | undefined,
   },
-  searchParamsRef: { current: new URLSearchParams() },
+  // The address bar, as the App Router presents it to useSearchParams(). It is a subscribable
+  // store rather than a bare `{ current }` because the page now WRITES the URL as well as
+  // reading it: a mock that only ever returned whatever a test assigned would hide the feedback
+  // loop this whole change has to survive (a written `?config=` coming straight back in as a
+  // "share link"). Tests still assign `searchParamsRef.current` exactly as before; the setter
+  // additionally puts window.location in step, because the page's popstate reconciliation reads
+  // location directly and in a browser the two can never disagree.
+  ...(() => {
+    const listeners = new Set<() => void>()
+    let params = new URLSearchParams()
+    const publish = (next: URLSearchParams) => {
+      params = next
+      for (const listener of listeners) listener()
+    }
+    return {
+      historySync: {
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => {
+            listeners.delete(listener)
+          }
+        },
+        // Identity is stable between writes, which useSyncExternalStore requires.
+        snapshot: () => params,
+        fromLocation: () => publish(new URLSearchParams(window.location.search)),
+      },
+      searchParamsRef: {
+        get current() {
+          return params
+        },
+        set current(next: URLSearchParams) {
+          const query = next.toString()
+          window.history.replaceState(null, '', query ? `/?${query}` : '/')
+          publish(next)
+        },
+      },
+    }
+  })(),
   // Lets one test replace candidateFromSaltNonce with a promise it controls. Left undefined by
   // default so every other test — NEW-1 in particular — keeps exercising the real deriver.
   linkCandidateOverride: { current: undefined as (() => Promise<unknown>) | undefined },
@@ -109,9 +147,43 @@ vi.mock('@safe-global/protocol-kit', () => ({
   getSafeAddressFromDeploymentTx: getSafeAddressFromDeploymentTxMock,
 }))
 
-vi.mock('next/navigation', () => ({
-  useSearchParams: () => searchParamsRef.current,
-}))
+// The App Router patches window.history.pushState/replaceState so that a client-side URL write is
+// reflected by useSearchParams() — dist/client/components/app-router.js hands the new URL to
+// ACTION_RESTORE before delegating to the native method. jsdom does not, so the two lines below
+// stand in for that patch, and useSearchParams() is a real subscription rather than a snapshot.
+// Without this the suite would be testing a page whose URL writes it cannot see, which is
+// precisely the half that can go wrong.
+const nativePushState = window.history.pushState.bind(window.history)
+window.history.pushState = ((data: unknown, unused: string, url?: string | URL | null) => {
+  nativePushState(data, unused, url)
+  historySync.fromLocation()
+}) as typeof window.history.pushState
+window.addEventListener('popstate', () => historySync.fromLocation())
+
+vi.mock('next/navigation', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useSearchParams: () => useSyncExternalStore(historySync.subscribe, historySync.snapshot),
+  }
+})
+
+/**
+ * Drives a real history traversal and waits for the popstate it queues. jsdom implements
+ * same-document back/forward as a task, so nothing about it is observable in the turn that asks
+ * for it — and the page's own close/reopen hangs off exactly that event.
+ */
+async function traverse(go: () => void) {
+  const before = window.location.href
+  await act(async () => {
+    go()
+    for (let attempt = 0; attempt < 50 && window.location.href === before; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1))
+    }
+    // One more turn so the popstate listeners (the page's, and the searchParams mirror above)
+    // have run before any assertion.
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  })
+}
 
 // Partial mock: everything (encodeConfigParam, decodeConfigParam, and candidateFromSaltNonce
 // itself) stays real unless a test installs an override, so the share-link tests keep driving
@@ -290,6 +362,153 @@ describe('Page', () => {
     // The two-step flow's own controls are gone with it.
     expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /back to mining/i })).toBeNull()
+  })
+
+  // The headline of the URL/history work: the address bar has to name the result that is open,
+  // and it has to be a history ENTRY — a silent replace would put the link in the bar but leave
+  // Back doing something else entirely.
+  it('puts the open result in the address bar as a history entry, and Back closes the dialog', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(window.location.search).toBe('')
+
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    // Not "a URL containing the saltNonce": the *same* link the dialog renders, character for
+    // character. Two encoders that agree today are two encoders that can drift tomorrow, and the
+    // one in the bar is the one users copy.
+    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    expect(window.location.href).toBe(shared)
+
+    await traverse(() => window.history.back())
+
+    // Back closes the dialog and takes the URL with it. A Back that left either behind would be
+    // worse than never having touched the URL.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.search).toBe('')
+  })
+
+  // Trap 1. `awaitingLinkCandidate` is `Boolean(linkSaltNonce) && !linkCandidateSettled &&
+  // !constantsForLink.error`, and on an ordinary mining session `linkCandidateSettled` is false
+  // forever. So a `?config=` carrying a saltNonce arriving in the URL — which is exactly what
+  // opening a dialog now does, and which the App Router's patched pushState feeds straight back
+  // into useSearchParams() — would make that expression true: the full-screen resolving overlay
+  // over the dialog that caused it, and mining paused behind it, until a reload.
+  it('does not read its own URL write back as a share link: no spinner over the dialog, no pause', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    expect(window.location.search).toContain('config=')
+    expect(spinner()).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    // Nor the RPC read that resolving a link would start: the page's own useSafeConstants is the
+    // only caller of this before a deploy is clicked (MiningView is mocked).
+    expect(loadSafeConstantsMock).not.toHaveBeenCalled()
+    // And the reconstruction never ran, so nothing could have replaced what is on screen.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+
+    // Still true after Back and Forward, which is where the same state is re-derived.
+    await traverse(() => window.history.back())
+    expect(spinner()).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    await traverse(() => window.history.forward())
+    expect(spinner()).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    expect(loadSafeConstantsMock).not.toHaveBeenCalled()
+  })
+
+  it('reopens the result on Forward, with the config its address came from', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+
+    await traverse(() => window.history.back())
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await traverse(() => window.history.forward())
+
+    // The same candidate, and the same share link — the selection is restored from the entry
+    // rather than reconstructed out of the URL, so the candidate/config pairing is the original.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    ).toBe(shared)
+    expect(window.location.href).toBe(shared)
+  })
+
+  // Closing by hand takes the pushed entry back off the stack rather than overwriting it: a
+  // replaceState cannot remove an entry, so every dialog opened and closed would leave a dead
+  // duplicate behind and Back would slowly stop being a way out of the site. Forward still
+  // reaching the result is what tells the two apart from the outside.
+  it('takes its history entry back when the dialog is closed by hand, and leaves the URL agreeing', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(window.location.search).toContain('config=')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await traverse(() => window.history.forward())
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // The dialog is modal, so a card cannot be clicked while one is open — but the traversal that
+  // a close starts is asynchronous, and in the gap before it lands the grid is live again. A
+  // card clicked there pushes its entry first, and the in-flight back would then pop THAT one,
+  // closing the dialog the user just opened.
+  it('does not let a close still traversing back steal the entry of the next result opened', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    // fireEvent, so nothing is awaited between the two: this is the gap, driven deliberately.
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    fireEvent.click(screen.getByText('select-b'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain(CANDIDATE_B.address)
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+  })
+
+  it('closes the dialog and resumes mining when Back is pressed while the wallet prompt is open', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    await traverse(() => window.history.back())
+
+    // Same contract as the footer's "Close and keep waiting": the dialog goes, the toast mirror
+    // carries the outcome, and mining is handed back rather than left paused by a host that is
+    // no longer on screen.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    expect(window.location.search).toBe('')
+
+    await release()
   })
 
   it('keeps mining while a result is inspected, and pauses only while a deploy is in flight', async () => {
@@ -716,6 +935,11 @@ describe('Page', () => {
     expect(sharedConfig()?.owners).toEqual(LINK_OWNERS)
     expect(sharedConfig()?.owners).not.toEqual(CONFIG.owners)
     expect(sharedConfig()?.saltNonce).toBe('12345')
+    // …and it says so on screen, which is the point of the dialog naming its config at all: this
+    // is the state where the Configure card behind it summarises the recipient's owners while
+    // the dialog would deploy the sender's. The owners on screen are the link's.
+    expect(screen.getByText(LINK_OWNERS[0] as string)).toBeDefined()
+    expect(screen.queryByText(CONFIG.owners[0] as string)).toBeNull()
 
     // And a deploy started from this mixed state acts on the link's config too — the rendered
     // link and the config the plan is built from are the same thing, which is exactly what a
@@ -784,6 +1008,60 @@ describe('Page', () => {
     expect(screen.queryByText('paused')).toBeNull()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  // A recipient is already standing on the URL that names the open dialog, so there is nothing to
+  // push: a second, identical entry would make their first Back a no-op that leaves the dialog
+  // open. The link they were sent is also left exactly as they received it rather than rewritten
+  // to this app's canonical encoding of the same config.
+  it('leaves the address bar alone when the dialog was opened by the link already in it', async () => {
+    searchParamsRef.current = linkParams()
+    const received = window.location.href
+
+    render(<Page />)
+    const user = userEvent.setup()
+    await screen.findByRole('dialog')
+
+    expect(window.location.href).toBe(received)
+
+    // And closing it does not reach for a history entry this page never pushed — which would
+    // have walked the recipient off the app entirely.
+    await user.keyboard('{Escape}')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.href).toBe(received)
+  })
+
+  // The same Back, in the session where `linkCandidateSettled` is true and a link's saltNonce is
+  // sitting in the latch. Landing back on the link's own URL must not restart anything: the
+  // reconstruction is one-shot and already spent, and the recipient's own search is what is on
+  // screen.
+  it('returns to the link, and closes the dialog, when Back is pressed on a result mined in a link session', async () => {
+    searchParamsRef.current = linkParams()
+    const linkUrl = window.location.href
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await screen.findByRole('dialog')
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+
+    await traverse(() => window.history.back())
+
+    expect(window.location.href).toBe(linkUrl)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(spinner()).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+    expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
   it('NEW-2 regression: changing the face while a link candidate is still reconstructing does not strand mining paused', async () => {

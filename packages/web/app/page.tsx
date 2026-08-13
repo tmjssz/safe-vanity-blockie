@@ -17,9 +17,20 @@ import {
   type FaceFilters,
   type MineConfig,
 } from '../lib/config'
-import { candidateFromSaltNonce, decodeConfigParam } from '../lib/deep-link'
+import {
+  candidateFromSaltNonce,
+  decodeConfigParam,
+  encodeConfigParam,
+  shareConfigPath,
+} from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
 import { useSafeConstants } from '../lib/use-safe-constants'
+
+/**
+ * A candidate and the config its address was derived from, travelling as one value. See the
+ * `selection` state below for why they are never apart.
+ */
+type Selection = { candidate: Candidate; config: MineConfig }
 
 // useSearchParams() opts this subtree out of static rendering unless it is wrapped in
 // Suspense; isolating it in its own component keeps that bailout scoped instead of
@@ -28,11 +39,44 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const configParam = searchParams.get('config')
 
+  // Every `?config=` this session has written into the address bar, mapped to the selection it
+  // names. One fact — "did this app write it?" — answering two questions, and both matter:
+  //
+  //   - Reading. A param the app wrote is not a share link to reconstruct. Without this the first
+  //     write would be read straight back in as one: `linkSaltNonce` becomes defined while
+  //     `linkCandidateSettled` is still false, so `awaitingLinkCandidate` below flips true — the
+  //     full-screen resolving overlay drops over the very dialog whose opening caused it, and
+  //     mining pauses behind it. That is not hypothetical: the App Router patches
+  //     history.pushState precisely so useSearchParams() sees the write (see pushSelectionUrl).
+  //   - Navigating. Forward onto one of these entries has to put back the dialog it names, and
+  //     the selection is already here — so nothing is re-derived, no constants are re-read, and
+  //     the candidate/config pairing is restored intact rather than rebuilt out of a URL.
+  const writtenSelections = useRef<Map<string, Selection>>(new Map())
+
+  // The link is an INPUT, and it is read exactly once. Before the address bar became something
+  // this page writes, `?config=` could only change by a full navigation — which remounts — and
+  // everything below was written against that: a previous review closed a candidate/config race
+  // by observing that `linkMineConfig` could not change underneath the reconstruction effect.
+  // Latching the first `?config=` this mount sees that the app did not write itself restores that
+  // premise as an explicit rule rather than an accident of there being no writer: `linkResult`,
+  // `linked`, `initial`, `linkMineConfig` and the constants read below are all as invariant as
+  // they ever were, whatever the address bar does for the rest of the session.
+  //
+  // Latched on first sight rather than captured on the first render: this subtree reaches its
+  // first client render through the Suspense bailout above, and taking whatever
+  // useSearchParams() held at that instant risks latching an empty one and dropping the link.
+  const linkParamRef = useRef<string | null>(null)
+  if (linkParamRef.current === null && configParam && !writtenSelections.current.has(configParam)) {
+    linkParamRef.current = configParam
+  }
+  const linkParam = linkParamRef.current
+
   // Re-decoding on every render would be wasted work and (for the error case) would not
-  // change the outcome anyway, so this is keyed on the one input that can change it.
+  // change the outcome anyway, so this is keyed on the one input that can change it — which,
+  // since the latch above, changes at most once per mount.
   const linkResult = useMemo(
-    () => (configParam ? decodeConfigParam(configParam) : undefined),
-    [configParam],
+    () => (linkParam ? decodeConfigParam(linkParam) : undefined),
+    [linkParam],
   )
 
   const [config, setConfig] = useState<MineConfig | undefined>()
@@ -51,9 +95,7 @@ function HomeContent() {
   // its candidate did not come from — rather than leaving it to DeployDialog's
   // `plan.address !== candidate.address` refusal, which is a last-resort backstop and should never
   // be the thing that notices.
-  const [selection, setSelection] = useState<
-    { candidate: Candidate; config: MineConfig } | undefined
-  >()
+  const [selection, setSelection] = useState<Selection | undefined>()
   // True only while a deploy transaction is in flight. Opening a candidate's deploy dialog
   // deliberately does NOT pause mining (design spec, behaviour rule 3): the wallet confirmation
   // is the one moment a user must read an address carefully, so that — not merely looking at a
@@ -176,6 +218,94 @@ function HomeContent() {
     Boolean(linkSaltNonce) && !linkCandidateSettled && !constantsForLink.error
   const linkConstantsError = linkSaltNonce ? constantsForLink.error : undefined
 
+  // True while the entry at the top of the history stack is one this page pushed for the dialog
+  // that is currently open — and so the one thing that says whether closing the dialog may take
+  // an entry back off again.
+  const pushedEntry = useRef(false)
+  // `history.back()` is asynchronous: the traversal, and the popstate reporting it, land a task
+  // or more after the call. A card clicked inside that gap would push its own entry first, and
+  // the traversal would then pop THAT one — closing the dialog the user had just opened. So a
+  // selection made while a back is in flight waits here and is pushed once the traversal lands.
+  const backInFlight = useRef(false)
+  const deferredPush = useRef<Selection | undefined>(undefined)
+
+  const pushSelectionUrl = useCallback((selection: Selection) => {
+    if (backInFlight.current) {
+      deferredPush.current = selection
+      return
+    }
+    const shared = { ...selection.config, saltNonce: selection.candidate.saltNonce }
+    // Same pure encoder the dialog's copyable field goes through, one line below — the address
+    // bar and that field are the same string, which the headline test in test/page.test.tsx pins
+    // character for character.
+    const param = encodeConfigParam(shared)
+    // Recorded BEFORE the write: the render the write provokes must already be able to tell that
+    // this param is the app's own and not a share link (see `writtenSelections`).
+    writtenSelections.current.set(param, selection)
+    // A link recipient is already standing on this exact URL. Pushing a second, identical entry
+    // would make Back a no-op that leaves the dialog open — the one outcome worth avoiding here.
+    if (new URLSearchParams(window.location.search).get('config') === param) return
+    // The App Router's patched pushState, deliberately, rather than router.push(): this is a URL
+    // change and nothing else — no navigation, no RSC request, no scroll reset, and no re-render
+    // of a route tree with five to eight mining workers under it — while the patch is what keeps
+    // useSearchParams() reporting the truth afterwards.
+    window.history.pushState(null, '', shareConfigPath(shared))
+    pushedEntry.current = true
+  }, [])
+
+  // Every route out of the dialog goes through here — the footer button, Escape, the X, the
+  // overlay, and "Start over" — so that the URL always agrees with what is on screen.
+  //
+  // The pushed entry is taken back off with `history.back()` rather than overwritten with a
+  // replaceState: a replace cannot remove an entry, so every dialog a user opened and closed
+  // would leave a dead duplicate behind and Back would stop being a way out of the site. What
+  // Back then reaches is exactly what it would have reached had the dialog never been opened.
+  const closeSelection = useCallback(() => {
+    setSelection(undefined)
+    // Belt and braces, and the only remaining place it can be done: the deploy sequence's own
+    // `finally` clears this, but if the dialog is dismissed while a wallet prompt is still open,
+    // nothing else would hand mining back until (or unless) that promise settles — and `paused`
+    // is a HOST pause, which the status bar's own Resume deliberately cannot clear.
+    setDeploying(false)
+    if (!pushedEntry.current) return
+    pushedEntry.current = false
+    backInFlight.current = true
+    window.history.back()
+  }, [])
+
+  // The other half of the entry pushed above. This listens for the traversal itself rather than
+  // reacting to a changed useSearchParams(): "Back closes the dialog" must not be subject to how
+  // a given Next version routes a traversal into router state, and window.location is the truth
+  // under either. (A traversal that Next also reflects is harmless — the param is the app's own,
+  // so nothing downstream of the link latch moves.)
+  useEffect(() => {
+    const onPopState = () => {
+      const landed = backInFlight.current
+      backInFlight.current = false
+      const deferred = deferredPush.current
+      deferredPush.current = undefined
+      // A card clicked while a close was still traversing: `selection` already holds it and its
+      // dialog is already open, so the only thing outstanding is its entry. Reconciling to the
+      // URL here instead would close the dialog the user just opened.
+      if (landed && deferred) {
+        pushSelectionUrl(deferred)
+        return
+      }
+      const param = new URLSearchParams(window.location.search).get('config')
+      const restored = param ? writtenSelections.current.get(param) : undefined
+      pushedEntry.current = Boolean(restored)
+      // Whatever the URL names, including nothing: Forward puts the result back — with its own
+      // config, the pairing intact — and Back closes the dialog. A link's own `?config=` is not
+      // in the map, so landing back on one closes the dialog rather than reopening a link the
+      // user may have dismissed since; a reload there is still the shared-link flow, unchanged.
+      setSelection(restored)
+      // Same reason as closing by hand, above.
+      setDeploying(false)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [pushSelectionUrl])
+
   // Configure is locked once submitted because owners, threshold, Safe version and chain are
   // exactly the inputs the address is derived from: editing one silently invalidates every
   // result on screen. So the only way back is this — an explicit, confirmed reset that throws
@@ -184,14 +314,13 @@ function HomeContent() {
     setConfig(undefined)
     // Clears the link candidate too, if that is what is open: `linkDismissed` below puts the link
     // out of reach for good, and a dialog still deploying its config would be the one piece of it
-    // left reachable after the reset.
-    setSelection(undefined)
-    // The deploy dialog's own `finally` normally clears this, but a reset must never be able to
-    // leave a dismissed deploy holding mining paused.
-    setDeploying(false)
+    // left reachable after the reset. Through closeSelection so the address bar is reset with it:
+    // a reset that left the discarded result in the URL would leave it one reload away from
+    // coming back.
+    closeSelection()
     setLinkCandidateError(undefined)
     setLinkDismissed(true)
-  }, [])
+  }, [closeSelection])
 
   // Pairs the clicked card with the config it was mined under, at the moment it is clicked. Stable
   // across everything but a config change, which is what the 200 memoised result cards need from
@@ -200,11 +329,20 @@ function HomeContent() {
   //
   // The `config &&` is a type narrowing, not a branch: MiningView only exists while a config is
   // submitted, so it cannot call this without one.
+  //
+  // Opening a result is also what puts it in the address bar, and the push happens here rather
+  // than in an effect on `selection`: this is the one caller that represents a user asking for a
+  // result, which is what deserves a history entry. The link-candidate reconstruction and the
+  // popstate restore below both set `selection` too, and neither should push — one is already on
+  // its URL, the other IS a history navigation.
   const selectFromGrid = useCallback(
     (candidate: Candidate) => {
-      if (config) setSelection({ candidate, config })
+      if (!config) return
+      const selection = { candidate, config }
+      setSelection(selection)
+      pushSelectionUrl(selection)
     },
-    [config],
+    [config, pushSelectionUrl],
   )
 
   return (
@@ -223,7 +361,9 @@ function HomeContent() {
           this and either alert below are mutually exclusive by construction rather than by
           sequencing. Both those alerts therefore render underneath a cleared overlay, never behind
           a live one. On the ordinary no-link path `linkSaltNonce` is undefined and this never
-          mounts at all.
+          mounts at all — and it stays undefined however many results the address bar goes on to
+          name, because the link is latched from the first `?config=` this page did not write
+          itself. Without that latch, opening a dialog would drop this overlay over it.
 
           `z-60` because it has to cover the sticky header (z-50 in app/layout.tsx) and the mining
           status bar (z-40 in MiningStatusBar) rather than slide under them. It also swallows
@@ -345,13 +485,18 @@ function HomeContent() {
               - every user route out of the dialog runs `onOpenChange(false)` below, which
                 clears `selection` and unmounts it; a modal overlay is what stops a second card
                 from being clicked while one is open;
-              - the link-candidate effect above is the only other `setSelection` caller, and it
-                cannot land on an open dialog: before a submit there is no MiningView and so no
-                card to click at all, and a recipient who submits while it is still in flight
-                gets a MiningView held paused by `awaitingLinkCandidate` for precisely that
-                window, so the grid has no candidates either. Either way there is nothing for
-                `selection` to be already set to, and `linkCandidateAttempted` then makes it
-                one-shot.
+              - the link-candidate effect above cannot land on an open dialog: before a submit
+                there is no MiningView and so no card to click at all, and a recipient who
+                submits while it is still in flight gets a MiningView held paused by
+                `awaitingLinkCandidate` for precisely that window, so the grid has no candidates
+                either. Either way there is nothing for `selection` to be already set to, and
+                `linkCandidateAttempted` then makes it one-shot;
+              - the popstate reconciliation is the third and last `setSelection` caller, and what
+                it can hand this component is either `undefined` (Back — which unmounts it, not a
+                swap) or the selection an entry this page pushed already names. A swap would need
+                a SECOND dialog entry sitting next to this one in the stack, and there can never
+                be one: an entry is only ever pushed from a card click, a card can only be clicked
+                with no dialog open, and pushing discards whatever was forward of it.
 
             So this is one `setSelection` caller away from mattering, and it costs nothing.
             Deleting it does not fail anything a user can currently do — see the regression
@@ -364,13 +509,9 @@ function HomeContent() {
             config={selection.config}
             onOpenChange={(next) => {
               if (next) return
-              setSelection(undefined)
-              // Belt and braces, and the only remaining place it can be done: the deploy
-              // sequence's own `finally` clears this, but if the dialog is dismissed while a
-              // wallet prompt is still open, nothing else would hand mining back until (or
-              // unless) that promise settles — and `paused` here is a HOST pause, which the
-              // status bar's own Resume deliberately cannot clear.
-              setDeploying(false)
+              // Clears the selection, hands mining back and takes the pushed history entry with
+              // it, so the address bar never names a result that is no longer on screen.
+              closeSelection()
             }}
             onDeployStart={() => setDeploying(true)}
             onDeploySettled={() => setDeploying(false)}
