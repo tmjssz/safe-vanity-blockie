@@ -28,12 +28,20 @@ const chainName = (chainId: number) =>
   SUPPORTED_CHAINS.find((chain) => chain.id === chainId)?.name ?? `Chain ${chainId}`
 
 export interface ChainSelectorProps {
+  /** The chain the header shows, and the one a pick is compared against for being a no-op. */
   chainId: number
   /**
-   * True once a config is submitted, i.e. once there is a run whose results a chain switch could
-   * invalidate. Before that there is nothing to lose and every switch is unconditional.
+   * The chain the run on screen was mined for — the submitted config's — or undefined when nothing
+   * is submitted and there is nothing a switch could cost.
+   *
+   * This, and NOT the chain above, is what the question is asked about, because it is what the
+   * answer acts on: the page discards the run when the submitted config's chain and the new one
+   * take different singletons. The two agree today only by the invariant that the form submits
+   * whatever the header shows, so asking about the header meant the decision was read from one
+   * value and carried out against another — and the half that fails quietly is a reset performed
+   * without ever asking. One value, read once, decides both.
    */
-  hasRun: boolean
+  runChainId?: number
   /**
    * Called with the chosen chain once it is allowed to happen — immediately for a switch that
    * keeps every result valid, and only after the user confirms for one that does not. What the
@@ -43,7 +51,7 @@ export interface ChainSelectorProps {
   onSelect: (chainId: number) => void
 }
 
-export function ChainSelector({ chainId, hasRun, onSelect }: ChainSelectorProps) {
+export function ChainSelector({ chainId, runChainId, onSelect }: ChainSelectorProps) {
   // The chain the user picked that is waiting on a confirmation, and the dialog's own open state:
   // one value, because a pending switch and an open dialog are the same fact.
   const [pending, setPending] = useState<number | undefined>()
@@ -55,12 +63,17 @@ export function ChainSelector({ chainId, hasRun, onSelect }: ChainSelectorProps)
     // screen stops being true and there is nothing to ask about. Crossing the mainnet boundary
     // changes the singleton, and with it every address already found — the same loss "Start over"
     // asks about, so it is asked about the same way rather than done silently.
-    if (hasRun && chainSwitchDiscardsResults(chainId, next)) {
+    if (runChainId !== undefined && chainSwitchDiscardsResults(runChainId, next)) {
       setPending(next)
       return
     }
     onSelect(next)
   }
+
+  // The chain being left, as the question names it: the run's, which is the one whose results are
+  // at stake. `?? chainId` is narrowing and nothing more — the dialog below only ever opens on the
+  // branch above, which requires `runChainId`.
+  const leaving = runChainId ?? chainId
 
   return (
     <>
@@ -80,14 +93,14 @@ export function ChainSelector({ chainId, hasRun, onSelect }: ChainSelectorProps)
       </Select>
 
       {/* Open exactly while a switch is pending. Dismissing it any way at all — Escape, the X, the
-          overlay, "Keep mining" — drops the pending chain, so the select stays on the chain the
-          results were mined for and nothing is switched by walking away from the question. */}
+          overlay, "Keep mining" — drops the pending chain, so the select stays exactly where it
+          was and nothing is switched by walking away from the question. */}
       <Dialog open={pending !== undefined} onOpenChange={(open) => !open && setPending(undefined)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Switch to {pending === undefined ? '' : chainName(pending)}?</DialogTitle>
             <DialogDescription>
-              {chainName(chainId)} and {pending === undefined ? '' : chainName(pending)} deploy
+              {chainName(leaving)} and {pending === undefined ? '' : chainName(pending)} deploy
               through different Safe singletons, so a Safe with the same owners, threshold and
               version lands on a different address on each. Switching will discard every result
               found so far and any selected result.

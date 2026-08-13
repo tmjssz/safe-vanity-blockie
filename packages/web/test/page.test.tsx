@@ -1435,6 +1435,50 @@ describe('Page', () => {
     await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
 
     expect(screen.getByRole('button', { name: 'submit-config' }).dataset.initial).toBe('')
+    // The header, though, stays where it is. It is chrome rather than one of Configure's fields,
+    // and dropping an unpicked header back to the default would move the user to the OTHER
+    // singleton class from the one the link named — quietly, on a screen that has just emptied
+    // everything else. Changing chain is what the header is for; a reset is not.
+    expect(shownChain()).toContain('Polygon')
+  })
+
+  // The link is read at RENDER, not seeded once at mount. This subtree reaches its first client
+  // render through a Suspense bailout, so useSearchParams() can still be empty then — which is
+  // precisely why `linkParamRef` latches "the first `?config=` this mount SEES" rather than
+  // capturing the first render's. The form's fields already follow that latch; a missed chain used
+  // to read "Ethereum", the other singleton class from every link that names one of the six, so a
+  // recipient who submitted mined a different address family from the one they were sent — and,
+  // unlike a blank owners field, nothing on screen said so.
+  it('follows a link whose ?config= only arrives after the first render, chain included', async () => {
+    render(<Page />)
+    // The address bar was empty when this rendered, so the header is on its default.
+    expect(shownChain()).toContain('Ethereum')
+
+    act(() => {
+      searchParamsRef.current = new URLSearchParams({
+        config: encodeConfigParam({
+          owners: CONFIG.owners,
+          threshold: CONFIG.threshold,
+          safeVersion: CONFIG.safeVersion,
+          chainId: 137,
+        }),
+      })
+    })
+
+    // All four fields the address is derived from adopt the link together — three in the form, the
+    // fourth in the header — rather than three of them following it and one staying behind.
+    expect(
+      JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
+    ).toEqual({
+      owners: CONFIG.owners.join(', '),
+      threshold: CONFIG.threshold,
+      safeVersion: CONFIG.safeVersion,
+    })
+    expect(shownChain()).toContain('Polygon')
+
+    // And what is actually mined is the chain the link named, not the default it opened on.
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Polygon/)).toBeDefined()
   })
 
   it('locks the config once submitted and restores the form when starting over', async () => {
@@ -1692,7 +1736,7 @@ describe('Page', () => {
 
     await chooseChain(user, /sepolia/i)
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
-    expect(screen.getByTestId('mining-view')).toBeDefined()
+    const view = screen.getByTestId('mining-view')
     // The locked summary, which reads the submitted config rather than the header.
     expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Sepolia/)).toBeDefined()
 
@@ -1701,7 +1745,14 @@ describe('Page', () => {
     // No question, no reset: the Configure card is still locked on the same run, and mining was
     // never handed back to the starting screen.
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(screen.getByTestId('mining-view')).toBeDefined()
+    // The SAME element, not merely another one like it. "A MiningView is on screen" is true of a
+    // remount too, and a remount is the one thing this feature cannot survive: it takes the worker
+    // pool, the leaderboard and the scanned totals with it, for a switch whose whole point is that
+    // every address already found is still valid. A `key={config.chainId}` here would do exactly
+    // that and leave every other assertion in this file green — and MiningView.chain-switch.test.tsx
+    // cannot see it either, because it rerenders the component directly. This is the only place the
+    // page's own decision to keep it mounted is pinned.
+    expect(screen.getByTestId('mining-view')).toBe(view)
     expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
     expect(shownChain()).toContain('Polygon')
     // The submitted config moved with it — the locked summary reads the config, not the header.

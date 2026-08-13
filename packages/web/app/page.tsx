@@ -136,6 +136,13 @@ function HomeContent() {
   // longer prefill the form, its saltNonce is no longer waited on, and its error is no longer
   // reported. Anything less would leave the reconstruction that belongs to the *previous*
   // config able to reach the new one.
+  //
+  // One thing does survive it, and deliberately: the chain the header is ON. The header follows
+  // the link only until it is dismissed or the user picks something (see `picked` below), and
+  // "Start over" pins it where it stands rather than letting this drop it back to the default —
+  // which would be a silent move to the other singleton class the moment everything else on
+  // screen emptied. Nothing of the link's is reachable through it: it is a number in the chrome
+  // the user can change at will, not the decoded config.
   const [linkDismissed, setLinkDismissed] = useState(false)
 
   // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
@@ -144,12 +151,26 @@ function HomeContent() {
 
   const linked = linkDismissed ? undefined : linkResult?.config
   // The chain no longer travels with the other three: those are Configure's fields, this is the
-  // header's control, so it is seeded here instead of in the form. Seeded exactly the way the form
-  // seeds its own — read off `linked` at mount, once — so a share link puts the whole config on
-  // screen, chain included, or none of it. (A recipient meets the sender's chain, which is the
-  // chain the sender's dialog and CLI command name; the address itself would survive any of the
-  // six, but nothing here should quietly answer a question the link already answered.)
-  const [chainId, setChainId] = useState(() => linked?.chainId ?? DEFAULT_CHAIN_ID)
+  // header's control, so it is answered here instead of in the form. A share link puts the whole
+  // config on screen, chain included, or none of it. (A recipient meets the sender's chain, which
+  // is the chain the sender's dialog and CLI command name; the address itself would survive any of
+  // the six, but nothing here should quietly answer a question the link already answered.)
+  //
+  // DERIVED from the link, not seeded from it into state. `useState(() => linked?.chainId ?? …)`
+  // could only ever see the FIRST client render, and this subtree reaches that through the Suspense
+  // bailout above with a useSearchParams() that may still be empty — which is exactly why the link
+  // is LATCHED on first sight rather than captured on the first render (see `linkParamRef`). The
+  // form's fields follow that latch, so a late link leaves an obviously blank owners field that a
+  // recipient fills in; a chain that missed it read "Ethereum" instead, the other singleton class
+  // from every link that names one of the six, and a recipient who submitted then mined a different
+  // address family from the one they were sent with nothing on screen to say so. Reading `linked`
+  // where it is used removes the schedule question rather than answering it: whenever the link
+  // lands, all four fields land together.
+  //
+  // `picked` is the user's answer, and it outranks the link from the moment there is one — including
+  // a pick of the chain the link already named, which is indistinguishable and harmless.
+  const [picked, setPicked] = useState<number | undefined>()
+  const chainId = picked ?? linked?.chainId ?? DEFAULT_CHAIN_ID
   const initial = linked
     ? {
         owners: linked.owners.join(', '),
@@ -415,12 +436,30 @@ function HomeContent() {
     closeSelection()
     setLinkCandidateError(undefined)
     setLinkDismissed(true)
-  }, [closeSelection])
+    // The header keeps the chain it is on, and this is what keeps it there. The chain is chrome,
+    // not one of Configure's fields: this reset throws away the run, the form and the link, and
+    // since the header FOLLOWS the link until the user picks something (see `picked` above),
+    // dismissing the link would otherwise drop an untouched header back to the default — which,
+    // for a link naming any of the six, is the singleton class the recipient was not on, arriving
+    // unasked in the same instant as everything else disappearing.
+    //
+    // Functional, and that matters: `changeChain` calls this immediately after `setPicked(next)` on
+    // a confirmed mainnet crossing, so `chainId` in this closure is still the PRE-switch chain — a
+    // plain `setPicked(chainId)` would undo the switch the user just confirmed. Queued updates see
+    // each other, so `previous` is that `next` and the pick stands.
+    setPicked((previous) => previous ?? chainId)
+  }, [chainId, closeSelection])
 
   // The header's chain picker, applied. It has already asked the user where asking was required —
   // ChainSelector holds a switch that costs results behind a confirmation, exactly as Configure
   // holds its fields behind "Start over" — so by the time this runs the switch is allowed to
   // happen; what is left is making the page agree with it.
+  //
+  // The confirmation and the reset are decided from the SAME value, `config.chainId`: the selector
+  // is handed it as `runChainId` (it is not the header's chain, which is what it used to ask
+  // about), and the branch below reads it again from the same submitted config. What that rules
+  // out is the two disagreeing — a run discarded by a branch here that the user was never asked
+  // about, because the question had been put to a different chain.
   //
   // Three cases, and the middle one is the whole feature:
   //
@@ -444,7 +483,7 @@ function HomeContent() {
   // moves a result to the new chain, and it says so on screen both before and after.
   const changeChain = useCallback(
     (next: number) => {
-      setChainId(next)
+      setPicked(next)
       if (!config) return
       if (chainSwitchDiscardsResults(config.chainId, next)) {
         startOver()
@@ -467,7 +506,7 @@ function HomeContent() {
     setChainSlot(document.getElementById(HEADER_CHAIN_SLOT_ID))
   }, [])
   const chainSelector = (
-    <ChainSelector chainId={chainId} hasRun={Boolean(config)} onSelect={changeChain} />
+    <ChainSelector chainId={chainId} runChainId={config?.chainId} onSelect={changeChain} />
   )
 
   // Pairs the clicked card with the config it was mined under, at the moment it is clicked. Stable

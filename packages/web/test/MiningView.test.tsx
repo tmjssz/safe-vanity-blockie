@@ -59,8 +59,8 @@ vi.mock('@safe-vanity-blockie/core', async (importOriginal) => {
   }
 })
 
-const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy } = vi.hoisted(
-  () => ({
+const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy, reloadSpy } =
+  vi.hoisted(() => ({
     constantsState: {
       current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
     },
@@ -69,11 +69,13 @@ const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastError
     stopSpy: vi.fn(),
     setFiltersSpy: vi.fn(),
     toastErrorSpy: vi.fn(),
-  }),
-)
+    reloadSpy: vi.fn(),
+  }))
 
+// `reload` is part of the hook's contract, not part of what a test sets up: every state it can
+// return carries one, so it is spread in here rather than repeated in each `constantsState`.
 vi.mock('../lib/use-safe-constants.js', () => ({
-  useSafeConstants: () => constantsState.current,
+  useSafeConstants: () => ({ reload: reloadSpy, ...constantsState.current }),
 }))
 
 vi.mock('../lib/use-miner.js', () => ({
@@ -99,7 +101,16 @@ beforeEach(() => {
   toastErrorSpy.mockClear()
   stopSpy.mockClear()
   setFiltersSpy.mockClear()
+  reloadSpy.mockClear()
 })
+
+/** The page's slot for the portaled status bar, mounted so a test can ask whether the bar exists. */
+function mountStatusBarSlot(): HTMLElement {
+  const slot = document.createElement('div')
+  slot.id = MINING_STATUS_BAR_SLOT_ID
+  document.body.append(slot)
+  return slot
+}
 
 // RTL's cleanup only unmounts what it rendered; the portal slot is appended to the body by hand.
 afterEach(() => {
@@ -489,6 +500,85 @@ describe('MiningView', () => {
 
     expect(screen.getByRole('alert').textContent).toMatch(/RPC blew up/)
     expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  // The chain picker moved into the header, so the config can change — and the constants be
+  // re-read — under a LIVE search, against unauthenticated public RPCs where a rate-limited read
+  // is an ordinary event. Replacing the screen then says the search is gone while the run is in
+  // fact completely intact (leaderboard, cumulative totals and resume point are all still in
+  // useMiner), and the obvious response to that screen is the reload that really does lose it.
+  it('keeps a live run on screen when the constants read fails, and reports it inline', () => {
+    const slot = mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'HTTP 429: rate limited' }
+    minerState.current = { ...IDLE_STATE, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    // Everything the user would have lost is still exactly where it was: the status bar with its
+    // scanned count, and every card on the leaderboard.
+    expect(slot.textContent).toMatch(/4,200/)
+    expect(resultCards()).toHaveLength(1)
+
+    // …and the failure is reported among them rather than in place of them — saying what stopped,
+    // what did not, and offering the way back.
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toMatch(/HTTP 429: rate limited/)
+    expect(alert.textContent).toMatch(/every result below is still here/i)
+    expect(screen.getByRole('button', { name: /try again/i })).toBeDefined()
+    // The run is not mined on while the constants behind it are unknown.
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  // The other half of the same rule, kept deliberately: a run that has reported nothing has
+  // nothing on screen to protect, so the failure is still allowed to be the whole view.
+  it('still replaces the whole view with the error when no run has reported anything yet', () => {
+    const slot = mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'RPC blew up' }
+    minerState.current = IDLE_STATE
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('alert').textContent).toMatch(/RPC blew up/)
+    // Nothing else at all: no status bar in the page's slot, no Results section, no grid.
+    expect(slot.children).toHaveLength(0)
+    expect(screen.queryByRole('heading', { name: /^results$/i })).toBeNull()
+    expect(screen.queryByText(/nonces/i)).toBeNull()
+  })
+
+  it('asks for the constants again when the retry beside a live run is pressed', async () => {
+    mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'HTTP 429: rate limited' }
+    minerState.current = { ...IDLE_STATE, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+
+    // The hook's own reload, which re-reads for the same config — the run is never restarted and
+    // nothing on screen is thrown away to ask again.
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    expect(resultCards()).toHaveLength(1)
   })
 
   it('toasts a worker failure in addition to (not instead of) the inline alert', () => {
