@@ -5,7 +5,6 @@ import { Footer } from '../components/Footer'
 import packageJson from '../package.json'
 
 const REPO_URL = 'https://github.com/tmjssz/safe-vanity-blockie'
-const BLO_URL = 'https://github.com/bpierre/blo'
 const SAFE_URL = 'https://safe.global'
 
 function externalLink(name: RegExp) {
@@ -153,14 +152,6 @@ describe('Footer', () => {
   it('does not suggest the unpublished npx command', () => {
     render(<Footer />)
     expect(screen.queryByText(/npx/i)).toBeNull()
-  })
-
-  it('credits blo with a link that actually resolves, not the guessed github.com/download/blo', () => {
-    render(<Footer />)
-    const link = externalLink(/blo/i)
-    expect(link.href).toBe(BLO_URL)
-    expect(link.target).toBe('_blank')
-    expect(link.rel).toContain('noopener')
   })
 
   // The credit is carried by the word "Safe" inside the sentence rather than by a bare

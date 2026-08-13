@@ -37,10 +37,9 @@ function GithubMark() {
  * cannot contest the sticky header, the sticky mining bar (`top-14 z-40`) or the deploy dialog's
  * backdrop (`z-45`).
  *
- * Two tiers, deliberately: the identity line carries what a reader must not miss, and the blo
- * credit sits a size down as courtesy rather than content. The privacy note is the exception — it
- * is collapsed behind the shield because it is a paragraph, and a paragraph would make this
- * footer something to read rather than something to glance at.
+ * A single line: what the app is built on and disclaims, then the things you might want to open.
+ * The privacy note is the exception — it is collapsed behind the shield because it is a
+ * paragraph, and a paragraph would make this footer something to read rather than glance at.
  */
 export function Footer() {
   // `VERCEL_GIT_COMMIT_SHA` only exists on a Vercel build; a local build has no SHA at all, and
@@ -95,20 +94,6 @@ export function Footer() {
             </a>
           </div>
         </div>
-        {/* Outside the row above, so it stays a third tier rather than competing for a slot in
-            it: blo is MIT-licensed and this credit is a courtesy, not an obligation. */}
-        <p className="mt-1 text-xs">
-          Identicons by{' '}
-          {/* github.com/download/blo — the guess this footer's brief started from — 404s; blo's
-              actual repository is bpierre/blo, confirmed to resolve before shipping. */}
-          <a
-            href="https://github.com/bpierre/blo"
-            {...EXTERNAL_LINK_PROPS}
-            className={cn(EXTERNAL_LINK_PROPS.className, 'text-foreground/70')}
-          >
-            blo
-          </a>
-        </p>
       </div>
     </footer>
   )
