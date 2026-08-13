@@ -25,13 +25,14 @@ export function Footer() {
 
   return (
     <footer className="border-t">
-      <div className="mx-auto max-w-6xl space-y-3 px-4 py-6 text-sm text-muted-foreground">
-        {/* Plain and legible, not fine print: same size as the rest of the footer, and in the
-            page's normal foreground colour rather than muted, so it reads as a statement and not
-            as an aside. This exists so nobody reads Safe as vouching for an address this tool
-            produced — the app is named after Safe and deploys real Safes, but the repo is not
-            under a Safe-owned account. */}
-        <p className="font-medium text-foreground">Not an official Safe product.</p>
+      <div className="mx-auto max-w-6xl space-y-2 px-4 py-5 text-xs text-muted-foreground">
+        {/* The footer is deliberately quiet, but this line still carries weight — literally:
+            it keeps `font-medium` while everything around it does not, so it stays the first
+            thing read here without shouting. It exists so nobody reads Safe as vouching for an
+            address this tool produced (the app is named after Safe and deploys real Safes, but
+            the repo is not under a Safe-owned account), which is why it is dialled down rather
+            than dropped to the same emphasis as the credits. */}
+        <p className="font-medium">Not an official Safe product.</p>
         <p>
           {/* "Nothing leaves your browser" would be false: the app reads public RPCs for Safe's
               contract constants, and a deploy sends a transaction through the connected wallet.
@@ -61,7 +62,7 @@ export function Footer() {
             MIT License
           </a>
         </div>
-        <p className="text-xs">{version}</p>
+        <p>{version}</p>
       </div>
     </footer>
   )
