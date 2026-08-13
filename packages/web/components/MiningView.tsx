@@ -13,6 +13,7 @@ import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from '.
 import { ResultsGrid } from './ResultsGrid'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 
 /**
  * How many candidates the leaderboard keeps. Every one of them that survives the two-colour and
@@ -169,18 +170,37 @@ export function MiningView({
     if (state.error) toast.error(state.error)
   }, [state.error])
 
-  // Only while there is nothing to mine with. A re-read provoked by a chain switch keeps the
-  // constants already in hand (see use-safe-constants), and replacing a live run's status bar and
-  // leaderboard with this placeholder for the length of an RPC round trip would discard on screen
-  // exactly what the switch is supposed to preserve.
-  if (constants.loading && !constants.data)
-    return <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
-  if (constants.error)
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>Could not read Safe constants: {constants.error}</AlertDescription>
-      </Alert>
-    )
+  // Whether this component has a run on screen to protect.
+  //
+  // Both constants states below used to REPLACE everything this component renders, which is right
+  // while there is nothing yet and wrong the moment there is. The chain picker can provoke a
+  // re-read under a live search — a state that could not exist before, since the config could only
+  // change at submit — and these are unauthenticated public RPCs, so a rate-limited read is an
+  // ordinary event. Replacing the screen then takes the status bar, the scanned count and every
+  // card away and says the search is gone, while the run is in fact completely intact: the
+  // leaderboard, the cumulative totals and the resume point are all still in useMiner, and a
+  // successful re-read resumes from `state.nextStart` with the board kept. The likely response to
+  // a screen that says otherwise is a reload, which is the one thing that really does lose it.
+  //
+  // `scanned`/`candidates` rather than a "has ever started" ref, because what matters is exactly
+  // what a user would lose from the screen: a run that has reported nothing yet has nothing to
+  // protect, and the full-screen treatment is still the right one for it.
+  const runOnScreen = state.scanned > 0 || state.candidates.length > 0
+  if (!runOnScreen) {
+    if (constants.loading)
+      return <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
+    if (constants.error)
+      return (
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            <span>Could not read Safe constants: {constants.error}</span>
+            <Button type="button" variant="outline" size="sm" onClick={constants.reload}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )
+  }
 
   // `bestOverall`, never `state.candidates[0]`: the bar reports the run, and `candidates` is the
   // filtered view. Reading the head of that list made the bar say "No candidates yet" the moment a
@@ -227,6 +247,30 @@ export function MiningView({
             </Badge>
           )}
         </div>
+        {/* The other side of `runOnScreen` above: with a run to protect, a constants failure is
+            reported here, INSIDE the results section, so the bar above and every card below it stay
+            exactly where they are. It says what was lost (the read, and mining with it) and what
+            was not (everything on screen), and it offers the retry — which resumes the same run
+            from where it stopped, because nothing about the run was thrown away. */}
+        {constants.error && (
+          <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              <span>
+                Could not read Safe constants for this chain: {constants.error}. Mining has stopped,
+                but every result below is still here — retry, or pick a chain that answers.
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={constants.reload}>
+                Try again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* Same window, before it has failed or succeeded: a re-read with no constants left to fall
+            back on (i.e. a retry after a failure — an ordinary switch keeps the previous ones and
+            never lands here). Inline, for the same reason. */}
+        {constants.loading && !constants.data && (
+          <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
+        )}
         {state.error && (
           <Alert variant="destructive">
             <AlertDescription>{state.error}</AlertDescription>

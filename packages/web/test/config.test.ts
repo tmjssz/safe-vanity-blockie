@@ -59,15 +59,32 @@ describe('validateMineConfig', () => {
   })
 
   // The chain reaches the address through exactly one thing: which Safe singleton protocol-kit
-  // deploys through. Measured on live RPCs across all seven supported chains — the factory and the
-  // initializer hash are identical everywhere, and the initCodeHash takes one of two values,
-  // splitting mainnet (Safe.sol) from the other six (SafeL2.sol). That is what makes a switch
-  // among the six free and a crossing of the mainnet boundary a reset, so it is pinned here rather
-  // than left implicit in whichever component happens to ask.
-  it('puts mainnet on the L1 singleton and every other supported chain on the L2 one', () => {
-    expect(safeSingletonFor(1)).toBe('Safe.sol')
-    for (const chain of SUPPORTED_CHAINS.filter((entry) => entry.id !== 1)) {
-      expect(safeSingletonFor(chain.id)).toBe('SafeL2.sol')
+  // deploys through. That is what makes a switch among the six free and a crossing of the mainnet
+  // boundary a reset, so it is pinned here rather than left implicit in whichever component
+  // happens to ask.
+  //
+  // Chain by chain, by ID, against the measurement — NOT by re-deriving "mainnet is special", which
+  // is the assumption under test. A rule-shaped assertion would pass automatically for a chain
+  // nobody had measured, and the app would then ask nothing before a switch that silently
+  // invalidated the whole leaderboard.
+  it('names the measured singleton for each supported chain, one by one', () => {
+    expect(safeSingletonFor(1)).toBe('Safe.sol') // Ethereum
+    expect(safeSingletonFor(11155111)).toBe('SafeL2.sol') // Sepolia
+    expect(safeSingletonFor(137)).toBe('SafeL2.sol') // Polygon
+    expect(safeSingletonFor(42161)).toBe('SafeL2.sol') // Arbitrum One
+    expect(safeSingletonFor(10)).toBe('SafeL2.sol') // OP Mainnet
+    expect(safeSingletonFor(8453)).toBe('SafeL2.sol') // Base
+    expect(safeSingletonFor(100)).toBe('SafeL2.sol') // Gnosis
+  })
+
+  // The gate on adding a chain: offer one the app has not measured and this fails, rather than the
+  // app quietly assuming it behaves like the others.
+  it('has a measured singleton for every chain the app offers', () => {
+    for (const chain of SUPPORTED_CHAINS) {
+      expect({ chain: chain.name, singleton: safeSingletonFor(chain.id) }).toEqual({
+        chain: chain.name,
+        singleton: expect.stringMatching(/^Safe(L2)?\.sol$/),
+      })
     }
   })
 
@@ -80,6 +97,18 @@ describe('validateMineConfig', () => {
         expect(chainSwitchDiscardsResults(from.id, to.id)).toBe(false)
       }
     }
+  })
+
+  // An unmeasured chain is not assumed to be like the six. It cannot be reached from the header
+  // today (the picker only offers SUPPORTED_CHAINS), so this pins the direction the fallback
+  // takes rather than a live path: ask and reset, never assume and discard.
+  it('treats a chain nobody has measured as a class of its own', () => {
+    const LINEA = 59144
+    expect(safeSingletonFor(LINEA)).toBeUndefined()
+    expect(chainSwitchDiscardsResults(137, LINEA)).toBe(true)
+    expect(chainSwitchDiscardsResults(LINEA, 137)).toBe(true)
+    // …but a "switch" to the chain already in use is still not a switch.
+    expect(chainSwitchDiscardsResults(LINEA, LINEA)).toBe(false)
   })
 
   it('rejects a chain the app does not support', () => {

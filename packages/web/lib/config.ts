@@ -18,32 +18,63 @@ export const SUPPORTED_CHAINS = [
 export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
 
 /**
- * Which Safe singleton protocol-kit deploys through on a given chain: `Safe.sol` on mainnet,
- * `SafeL2.sol` everywhere else. That default is deliberately left alone — every chain then gets
- * its own conventional, properly-indexed deployment — and this function is where the consequence
- * is written down.
+ * Which Safe singleton protocol-kit deploys through, per chain — the ONLY thing about a chain that
+ * reaches the Safe address, and therefore the only reason a chain switch can cost results.
  *
- * It is the ONLY thing about a chain that reaches the address. Measured against live RPCs on all
- * seven supported chains: the proxy factory (0x4e1DCf7AD…) and the initializer hash (owners,
- * threshold and version, and nothing else) are identical everywhere, and the initCodeHash takes
- * exactly two values — one for mainnet, one shared by sepolia, polygon, arbitrum, optimism, base
- * and gnosis. Forcing `isL1SafeSingleton` both ways swaps them, which is what identifies the
- * singleton rather than the chain as the cause.
+ * These are MEASURED, chain by chain, against live RPCs — not a rule with mainnet special-cased,
+ * and deliberately not derived from one. For all seven chains below:
+ *
+ *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+ *   - the initializerHash is identical (it is owners, threshold and version, and nothing else)
+ *   - both singletons are deployed at identical addresses everywhere
+ *   - the initCodeHash takes exactly two values: 0x76733d70… on mainnet, and 0xe298282c… on
+ *     sepolia, polygon, arbitrum, optimism, base and gnosis
+ *
+ * The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
+ * exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the
+ * singleton protocol-kit picks that splits them, and the per-chain default is kept precisely so
+ * every chain gets its conventional, properly-indexed deployment.
+ *
+ * A chain that is not in either set has not been measured, and `safeSingletonFor` says so by
+ * returning undefined rather than guessing — see `chainSwitchDiscardsResults`, which then treats a
+ * switch involving it as one that costs results. Adding a chain to SUPPORTED_CHAINS without adding
+ * it here fails test/config.test.ts, which is the point: the entry belongs to whoever measured it.
  */
-export function safeSingletonFor(chainId: number): 'Safe.sol' | 'SafeL2.sol' {
-  return chainId === 1 ? 'Safe.sol' : 'SafeL2.sol'
+const L1_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([
+  1, // Ethereum
+])
+const L2_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([
+  11155111, // Sepolia
+  137, // Polygon
+  42161, // Arbitrum One
+  10, // OP Mainnet
+  8453, // Base
+  100, // Gnosis
+])
+
+/** The measured singleton for a chain, or undefined for one nobody has measured. */
+export function safeSingletonFor(chainId: number): 'Safe.sol' | 'SafeL2.sol' | undefined {
+  if (L1_SINGLETON_CHAIN_IDS.has(chainId)) return 'Safe.sol'
+  if (L2_SINGLETON_CHAIN_IDS.has(chainId)) return 'SafeL2.sol'
+  return undefined
 }
 
 /**
  * Whether moving a search from one chain to another changes the addresses it has already found —
  * i.e. whether the results on screen have to be discarded rather than carried across.
  *
- * True only when the two chains deploy through different singletons, so switching among the six
- * non-mainnet chains is free and every mined address stays exactly as valid as it was; crossing
- * the mainnet boundary in either direction is not.
+ * False only when both chains are measured and share a singleton, so switching among the six is
+ * free and every mined address stays exactly as valid as it was. Anything else — the mainnet
+ * boundary, or a chain nobody has measured — is true, which costs a confirmation and a reset. That
+ * asymmetry is the safe one: asking about a switch that would in fact have been free is a dialog,
+ * while not asking about one that is not is a leaderboard silently invalidated.
  */
 export function chainSwitchDiscardsResults(from: number, to: number): boolean {
-  return safeSingletonFor(from) !== safeSingletonFor(to)
+  if (from === to) return false
+  const before = safeSingletonFor(from)
+  const after = safeSingletonFor(to)
+  if (before === undefined || after === undefined) return true
+  return before !== after
 }
 
 export interface MineConfig {
