@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { loadSafeConstants } from '@safe-vanity-blockie/safe-config'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MineConfig } from '../lib/config'
 import { decodeConfigParam } from '../lib/deep-link'
@@ -155,11 +156,14 @@ describe('DeployDialog', () => {
   })
 
   // Non-modal, and this is what that has to mean: the page behind stays in the accessibility tree
-  // (Radix `hideOthers` would have aria-hidden it), there is no overlay over it, and interacting
-  // with it is not a dismissal. That last one is a deliberate reversal — with the overlay gone,
-  // "outside" is the live page, and reaching for the header's chain selector must not throw away
-  // the result that reach was for. Escape stays the deliberate way out.
-  it('leaves the page behind it usable: nothing hidden, no overlay, and no dismissal on an outside click', async () => {
+  // (Radix `hideOthers` would have `aria-hidden` it), nothing is inert, and Radix lays no overlay
+  // of its own — the backdrop this component draws is a different element with a different shape
+  // (it stops at the header) and a different slot, which is why the query below is specifically
+  // for Radix's. Interacting with something outside that is NOT the backdrop is not a dismissal:
+  // reaching for the header's chain selector, or moving focus onto something behind, must not
+  // throw away the result that reach was for. The backdrop's own click is the exception, three
+  // tests below.
+  it('leaves the page behind it in the tree, lays no Radix overlay, and does not dismiss on an outside click', async () => {
     const onOpenChange = vi.fn()
     const { DeployDialog } = await import('../components/DeployDialog')
     render(
@@ -184,6 +188,86 @@ describe('DeployDialog', () => {
 
     await userEvent.keyboard('{Escape}')
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  /**
+   * The backdrop this dialog draws for itself. Radix renders no overlay at all for a non-modal
+   * dialog (`DialogOverlay` returns null), so this is not the shadcn one under another name — it
+   * is queried by its own slot, and the assertion above that `[data-slot="dialog-overlay"]` is
+   * still absent stays true beside it.
+   */
+  const backdrop = () =>
+    document.querySelector('[data-slot="deploy-dialog-backdrop"]') as HTMLElement | null
+
+  // HEADLINE 1. What the backdrop covers, expressed the only way jsdom can express it: the classes
+  // that decide it. `top-14` is the header's own `h-14` in app/layout.tsx — the same relationship
+  // MiningStatusBar's `top-14` already depends on — so the covered region starts exactly where the
+  // header ends and the header is exempt by construction rather than by a special case. The
+  // stacking is asserted as the constraint rather than as a magic number: above the mining status
+  // bar (z-40) and page content, below this dialog's own content and the header (both z-50). That
+  // the two boxes really do not overlap, and that the class really generates CSS, are checked in
+  // the headless run — neither is something jsdom can see.
+  it('draws a backdrop over everything below the header, and nothing above it', async () => {
+    await renderDialog()
+
+    const element = backdrop()
+    expect(element).not.toBeNull()
+    const classes = (element as HTMLElement).className.split(/\s+/)
+
+    expect(classes).toContain('fixed')
+    expect(classes).toContain('inset-x-0')
+    expect(classes).toContain('bottom-0')
+    expect(classes).toContain('top-14')
+    // Not the full-viewport sheet: that is the resolving overlay's shape, and it covers the header
+    // on purpose. This one must not.
+    expect(classes).not.toContain('inset-0')
+
+    // The same visual language as that overlay, which is what was asked for.
+    expect(classes).toContain('bg-background/60')
+    expect(classes).toContain('backdrop-blur-sm')
+
+    const layer = Number(classes.find((name) => /^z-\d+$/.test(name))?.slice(2))
+    expect(layer).toBeGreaterThan(40)
+    expect(layer).toBeLessThan(50)
+  })
+
+  // HEADLINE 2. The backdrop is unambiguously "not the dialog and not the header": there is
+  // nothing on it to reach for, so a click on it can only mean "dismiss this". That is what makes
+  // it — and only it — a dismissal, while `onInteractOutside` stays refused for everything else
+  // (the header above all, which is the whole reason this dialog is non-modal).
+  it('closes when the darkened area is clicked', async () => {
+    const onOpenChange = vi.fn()
+    await renderDialog({ onOpenChange })
+
+    await userEvent.click(backdrop() as HTMLElement)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  // HEADLINE 3. …and the exception, which is the same rule Escape and the X already obey. While a
+  // send is in flight this dialog is the only place its outcome can be read inline, and closing
+  // unmounts it outright, so an accidental dismissal costs the user the status of a transaction
+  // the wallet is holding. A backdrop click is exactly that class of accident. The deliberate,
+  // relabelled footer button is still the way out.
+  it('does not close on a backdrop click while a send is in flight', async () => {
+    // Resolves so the sequence gets past the constants read (this file's module mock rejects it by
+    // default); ../lib/deploy's buildDeploymentPlan then never settles, so `busy` stays true.
+    vi.mocked(loadSafeConstants).mockResolvedValueOnce({} as never)
+    const onOpenChange = vi.fn()
+    await renderDialog({ onOpenChange })
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /^deploy this safe$/i }))
+    expect(await screen.findByRole('button', { name: /deploying…/i })).toBeDefined()
+
+    // Asserted before the click, and not merely implied by it: "there is nothing to click" would
+    // otherwise satisfy "clicking it does not close", and this test would pass on a build with no
+    // backdrop at all.
+    expect(backdrop()).not.toBeNull()
+    await user.click(backdrop() as HTMLElement)
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    // The one route out that says what it is, and it is untouched.
+    expect(screen.getByRole('button', { name: /close and keep waiting/i })).toBeDefined()
   })
 
   it('pauses mining the moment a deploy is initiated', async () => {

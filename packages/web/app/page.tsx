@@ -359,9 +359,11 @@ function HomeContent() {
   }, [])
 
   // Every route out of the dialog that is a USER ACTION IN THE APP goes through here — the footer
-  // button, Escape, the X, and "Start over" — so that the URL always agrees with what is on
-  // screen. (There is no overlay in that list any more, and no dismissal by clicking outside: the
-  // dialog is non-modal, and using the page behind it is not a way out of it. See DeployDialog.)
+  // button, Escape, the X, a click on the dialog's backdrop, and "Start over" — so that the URL
+  // always agrees with what is on screen. (The backdrop is the only outside click in that list.
+  // The dialog is non-modal and the backdrop stops at the header, so using the header is not a way
+  // out of it, and neither is anything else Radix would call an interaction outside. See
+  // DeployDialog.)
   // Closing by pressing the browser's own Back does NOT: the browser has already changed the URL,
   // and the popstate handler below is where that lands. Pushing there would destroy the entry the
   // user had just stepped off and strand them with no way forward.
@@ -645,18 +647,23 @@ function HomeContent() {
   // its URL, the other IS a history navigation.
   //
   // Inert while a deploy is in flight, and this is the same guard DeployDialog spends `busy` on:
-  // Escape, the X and interaction outside are all refused for that window precisely so a send
-  // cannot lose the one place its outcome can be read inline. The grid behind the dialog became a
-  // live control when the dialog stopped being modal, and it would otherwise walk straight around
-  // that: one stray click on any of up to 200 large cards swaps `selection`, the `key` unmounts
+  // Escape, the X, interaction outside and the backdrop's own click are all refused for that
+  // window precisely so a send cannot lose the one place its outcome can be read inline. The
+  // backdrop has taken the pointer route to the grid back, but a card behind it is still focusable
+  // and still activates on Enter (see the `key` note below), so this would otherwise walk around
+  // that guard by the one route that is left: an activation swaps `selection`, the `key` unmounts
   // the dialog mid-send, and a "Deployment reverted. Gas was spent." that should have stayed on
   // screen survives only as a toast on a timer. Worse, the abandoned sequence's `finally` still
   // fires `onDeploySettled`, which would hand mining back and re-enable the chain selector while
   // the wallet is still holding a transaction the new dialog knows nothing about.
   //
-  // A no-op click rather than a disabled grid: the cards' contract is that they stay visible and
-  // clickable whatever MiningView's `paused` says (that is what puts a live leaderboard back in
-  // front of the user the instant a dialog closes), so this is the page's rule about its own
+  // Kept even though the backdrop now covers the grid: a guard that is cheap, that is the page's
+  // own rule about its own dialog, and that does not depend on a stacking context staying right is
+  // worth more than the line it costs — and it is the only thing standing in that remaining route.
+  //
+  // A no-op activation rather than a disabled grid: the cards' contract is that they stay visible
+  // and clickable whatever MiningView's `paused` says (that is what puts a live leaderboard back
+  // in front of the user the instant a dialog closes), so this is the page's rule about its own
   // dialog, made where the page can see both. The window is seconds long and the dialog in front
   // of the user says what is happening in it.
   const selectFromGrid = useCallback(
@@ -691,8 +698,10 @@ function HomeContent() {
           name, because the link is latched from the first `?config=` this page did not write
           itself. Without that latch, opening a dialog would drop this overlay over it.
 
-          `z-60` because it has to cover the sticky header (z-50 in app/layout.tsx) and the mining
-          status bar (z-40 in MiningStatusBar) rather than slide under them. It also swallows
+          `z-60` because it has to cover the sticky header (z-50 in app/layout.tsx), the mining
+          status bar (z-40 in MiningStatusBar) and the deploy dialog's backdrop (z-45) rather than
+          slide under them — and `inset-0`, unlike that backdrop, which stops at the header on
+          purpose: nothing is usable while a link resolves, including the chain. It also swallows
           pointer events over the whole viewport, which is the point of an overlay rather than an
           inline spinner: submitting the form halfway through resolving a link is not something to
           invite. It deliberately does NOT trap focus or mark anything inert — a keyboard user can
@@ -803,23 +812,32 @@ function HomeContent() {
             the toast mirror in DeployDialog — mounted in app/layout.tsx, outside every subtree
             that can unmount here — is what carries the outcome instead.
 
-            `key` is LIVE defence, and the ordinary way to reach it is now a single click. What it
-            prevents is a completed (or in-flight) deploy of one candidate leaving its "Safe
-            deployed at 0x…" status and permanently disabled button rendered above a DIFFERENT
-            candidate's address — which needs `selection` to change from one candidate to another
-            with no unmount in between. That used to be unreachable, because a modal overlay lay
-            over the grid and no second card could be clicked while a dialog was open. The dialog
-            is non-modal now, and it deliberately does not dismiss on interaction outside (see
-            DeployDialog): a card behind it is a live control, so clicking one runs
-            `selectFromGrid` straight into this element position with the previous candidate's
-            dialog still mounted. Every other `setSelection` caller stays as it was —
-            `onOpenChange(false)` clears and unmounts; the link-candidate effect is one-shot and
-            runs in a window where the grid is empty; the popstate reconciliation hands over
-            either `undefined` or the selection its entry names.
+            `key` is defence against a state that is now reachable only through the accessibility
+            tree. What it prevents is a completed (or in-flight) deploy of one candidate leaving
+            its "Safe deployed at 0x…" status and permanently disabled button rendered above a
+            DIFFERENT candidate's address — which needs `selection` to change from one candidate to
+            another with no unmount in between. Under the modal that was unreachable outright: an
+            overlay lay over the grid and everything behind it was `aria-hidden` as well as
+            unclickable. Between then and now the dialog was non-modal with nothing over the page,
+            and a mouse click on a card walked straight into it. The backdrop (see DeployDialog)
+            takes that back — it covers the grid, so a click there lands on the backdrop and closes
+            the dialog instead — and the route it does NOT take back is the one that was never
+            open: Radix keeps `loop` on for a non-modal dialog, so Tab cycles inside the dialog and
+            has never reached the grid (measured in a browser, 120 presses).
 
-            So it is no longer a guard against a hypothetical: the regression test in
-            test/page.test.tsx pins the state it protects, and the "clicking a card behind the
-            open dialog swaps it cleanly" test walks in through the front door.
+            What is left is a real route, and the reason this stays: nothing behind the backdrop is
+            `aria-hidden`, `inert` or pointer-events-none — deliberately, that is what non-modal
+            bought — so an assistive technology's virtual cursor can focus a card and activate it,
+            running `selectFromGrid` straight into this element position with the previous
+            candidate's dialog still mounted. Verified in a browser, not assumed: focusing a card
+            behind an open dialog and pressing Enter swaps it. Every other `setSelection` caller
+            stays as it was — `onOpenChange(false)` clears and unmounts; the link-candidate effect
+            is one-shot and runs in a window where the grid is empty; the popstate reconciliation
+            hands over either `undefined` or the selection its entry names.
+
+            So it is still not a guard against a hypothetical: the regression test in
+            test/page.test.tsx pins the state it protects, and the "card behind the open dialog is
+            activated without a pointer" test walks in by the route that is left.
 
             THE CHAIN IS PART OF THE KEY for the same reason the address is, and it is the carry in
             `changeChain` that makes it so. That carry keeps the candidate, so without the second

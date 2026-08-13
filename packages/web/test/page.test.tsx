@@ -7,15 +7,19 @@ import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
 // Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
 //
-// One thing to know before reading the `key` regression test below: it reproduces a state a user
-// can now walk into. Handing the dialog a second candidate with no unmount in between leaves the
-// first candidate's `status`/`completed` state rendered above the second one's address, and
-// `key={selected.address}` is what prevents that. It used to be unreachable — a modal overlay lay
-// over the grid, so no second card could be clicked while a dialog was open — and the test existed
-// only so the guard could not be deleted as dead weight. The dialog is non-modal now and does not
-// dismiss on interaction outside, so a card behind it is an ordinary live control: "swaps to
-// another result when a card behind the open dialog is clicked" walks the same path with a real
-// click. This one keeps driving it through the mocked MiningView because it needs the swap to land
+// One thing to know before reading the `key` regression test below: it reproduces a state that is
+// still reachable, but no longer with a mouse. Handing the dialog a second candidate with no
+// unmount in between leaves the first candidate's `status`/`completed` state rendered above the
+// second one's address, and `key={selected.address}` is what prevents that. Under the modal it was
+// unreachable outright — an overlay lay over the whole page, and everything behind it was
+// `aria-hidden` as well as unclickable. Between then and now the dialog was non-modal with nothing
+// over the page and a card click walked straight in. The backdrop (see DeployDialog) takes that
+// back: it covers the grid, so a mouse click there lands on the backdrop and closes the dialog.
+// Tab was never a route either — Radix keeps `loop` on for a non-modal dialog, so focus cycles
+// inside it (measured in a browser, 120 presses). What is left is the accessibility tree: nothing
+// behind is `aria-hidden` or `inert`, so a card can still be focused and activated, and "swaps to
+// another result when a card behind the open dialog is activated without a pointer" walks that
+// path. This one keeps driving it through the mocked MiningView because it needs the swap to land
 // on a dialog whose deploy has already COMPLETED, which is the state whose leftovers matter.
 
 const CONFIG = { owners: ['0x' + '11'.repeat(20)], threshold: 1, safeVersion: '1.4.1', chainId: 1 }
@@ -674,12 +678,13 @@ describe('Page', () => {
     // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
     // the element position and only `key={selected.address}` forces a fresh instance.
     //
-    // A reachable sequence now, and the ordinary one: the dialog is non-modal and does not dismiss
-    // on interaction outside, so the grid behind it takes real clicks (see "swaps to another
-    // result when a card behind the open dialog is clicked", which uses userEvent for exactly
-    // that). It is driven here through the mocked MiningView because this test needs the swap to
-    // land while candidate A's deploy has already COMPLETED — the state whose leftovers are what
-    // the `key` prevents from being rendered above another address.
+    // A reachable sequence, through the accessibility tree: the dialog is non-modal, so the grid
+    // behind the backdrop is neither hidden nor inert and its cards are still real, focusable
+    // buttons (see "swaps to another result when a card behind the open dialog is activated
+    // without a pointer", which walks in that way). It is driven here through the mocked
+    // MiningView because this test needs the swap to land while
+    // candidate A's deploy has already COMPLETED — the state whose leftovers are what the `key`
+    // prevents from being rendered above another address.
     fireEvent.click(screen.getByText('select-b'))
 
     // The dialog now shows candidate B, and nothing of candidate A's deploy survives: not the
@@ -1520,7 +1525,7 @@ describe('Page', () => {
     expect(screen.queryByText(/1 owner/i)).toBeNull()
   })
 
-  // S1(a). Escape, the X and an overlay click all unmount DialogContent, and every terminal
+  // S1(a). Escape, the X and a backdrop click all unmount DialogContent, and every terminal
   // branch of the deploy sequence then writes to a dead component. The accidental dismissals are
   // blocked outright while the sequence is in flight; only the relabelled footer button remains.
   it('S1: does not let Escape dismiss the deploy dialog while the sequence is in flight', async () => {
@@ -2024,12 +2029,24 @@ describe('Page', () => {
     expect(screen.queryByTestId('mining-view')).toBeNull()
   })
 
-  // The dismissal contract, restated for a dialog that no longer has an overlay. "Outside" used to
-  // be a sheet of dark glass whose only purpose was to be clicked; it is now the live page, and
-  // reaching for something on it — the chain selector above all — must not throw away the result
-  // that reach was for. Escape and the footer button are the deliberate ways out, and they still
-  // work.
-  it('does not dismiss the deploy dialog when the page behind it is used, and still closes on Escape', async () => {
+  /** The dialog's own backdrop; see DeployDialog. Radix renders no overlay for a non-modal one. */
+  const backdrop = () =>
+    document.querySelector('[data-slot="deploy-dialog-backdrop"]') as HTMLElement | null
+
+  // The dismissal contract, and it is now a contract about WHICH outside thing was touched. The
+  // backdrop closes (next test). Everything else outside does not — Radix's `onInteractOutside`
+  // fires for the header, for a focus move and for the backdrop alike, so it is refused outright
+  // and the backdrop carries the dismissal on its own handler instead. What that protects is the
+  // reach the whole non-modal decision exists for: the chain selector in the header, which the
+  // backdrop deliberately does not cover.
+  //
+  // Two routes, both of which really reach the page behind a backdrop that covers it: a focus move
+  // onto a card (nothing back there is inert or `aria-hidden`, so an assistive technology can put
+  // focus there — Radix's `focusOutside` fires for it), and a pointer event on the mining status
+  // text — which in a browser a mouse could not deliver through the backdrop, but which is exactly
+  // the DismissableLayer event the header's own click produces, and which does nothing at all when
+  // clicked, so a closed dialog could only mean it was read as a dismissal.
+  it('does not dismiss the deploy dialog when something outside it other than the backdrop is used, and still closes on Escape', async () => {
     render(<Page />)
     const user = userEvent.setup()
 
@@ -2037,8 +2054,9 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     const opened = window.location.href
 
-    // A real click on the page behind the dialog — the mining status text, which does nothing at
-    // all when clicked, so a closed dialog could only mean the click was read as a dismissal.
+    screen.getByRole('button', { name: 'select-b' }).focus()
+    expect(screen.getByRole('dialog')).toBeDefined()
+
     await user.click(screen.getByText('running'))
 
     expect(screen.getByRole('dialog')).toBeDefined()
@@ -2051,24 +2069,61 @@ describe('Page', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  // S1(c). The busy guards, verified against the new delivery rather than read off the old one:
-  // non-modal changes how outside interaction reaches the layer (no overlay to swallow it, no
-  // `pointer-events: none` on the body), so "an in-flight send cannot be dismissed by accident"
-  // has to be re-proved by a real click on the page and a real Escape, not by inspecting the
-  // handlers. The one deliberate, relabelled way out stays live.
-  it('S1: neither an outside click nor Escape can dismiss the deploy dialog while the sequence is in flight', async () => {
+  // …and the one outside click that IS a dismissal, driven at page level because closing has a
+  // second half the dialog cannot see: `closeSelection` pushes the base URL over the entry naming
+  // this result, so the address bar never names a dialog that is not on screen. A backdrop click
+  // has to be the same route out as Escape and the footer button, not a private one that leaves
+  // the URL behind.
+  it('closes the deploy dialog on a backdrop click, and takes the URL with it', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(window.location.search).not.toBe('')
+
+    expect(backdrop()).not.toBeNull()
+    await user.click(backdrop() as HTMLElement)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(window.location.search).toBe('')
+    expect(backdrop()).toBeNull()
+
+    // Closing this way is a push like every other, so the result is still one Back away.
+    await traverse(() => window.history.back())
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // S1(c). The busy guards, verified against the delivery rather than read off the handlers:
+  // non-modal changed how outside interaction reaches the layer (no Radix overlay to swallow it,
+  // no `pointer-events: none` on the body) and the backdrop has added one outside click that IS a
+  // dismissal — so "an in-flight send cannot be dismissed by accident" has to be re-proved by real
+  // clicks, including one on the backdrop, and a real Escape. Losing this dialog mid-send loses
+  // the only inline copy of what the wallet is holding, which is why the backdrop is not an
+  // exception to the busy rule. The one deliberate, relabelled way out stays live.
+  it('S1: neither an outside click, a backdrop click nor Escape can dismiss the deploy dialog while the sequence is in flight', async () => {
     const release = pendingDeploy()
     render(<Page />)
     const user = userEvent.setup()
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const opened = window.location.href
     await user.click(deployButton())
     expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
 
     await user.click(screen.getByText('paused'))
     expect(screen.getByRole('dialog')).toBeDefined()
     expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+
+    // The backdrop is still there — it still blocks the page — it just does not dismiss.
+    expect(backdrop()).not.toBeNull()
+    await user.click(backdrop() as HTMLElement)
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    // Nothing was pushed either: a URL moving under a dialog that stayed put would mean
+    // `closeSelection` ran halfway.
+    expect(window.location.href).toBe(opened)
 
     await user.keyboard('{Escape}')
     expect(screen.getByRole('dialog')).toBeDefined()
@@ -2118,12 +2173,20 @@ describe('Page', () => {
     expect(sharedChainId()).toBe(137)
   })
 
-  // The consequence of the dialog no longer covering the grid, walked in through the front door:
-  // a card behind an open dialog is a live control, so clicking one swaps the dialog with no
-  // unmount in between. That is the state `key={selection.candidate.address}` exists for — the
-  // regression test above pins what it prevents; this pins that the route to it is now a single
-  // ordinary click, and that the address bar comes along.
-  it('swaps to another result when a card behind the open dialog is clicked, without closing first', async () => {
+  // The route to the grid that survives the backdrop. The backdrop covers the leaderboard, so a
+  // pointer cannot reach a card behind an open dialog — that half is the headless run's to prove,
+  // since jsdom does no hit testing and a `user.click` here would pass whatever was on top of what
+  // it clicked. Tab is not a way round it either: Radix keeps `loop` on for a non-modal dialog, so
+  // focus cycles inside the dialog (both measured in a browser).
+  //
+  // What the backdrop does NOT do is make anything `aria-hidden` or `inert` — that is what
+  // non-modal bought and it is deliberately kept — so a card behind it is still a focusable button
+  // that activates on Enter, which is how an assistive technology's virtual cursor reaches it. The
+  // focus here is set the way that route sets it, rather than by tabbing to it, because tabbing to
+  // it is exactly what does not happen. It swaps the dialog with no unmount in between: the state
+  // `key={selection.candidate.address}` exists for. The regression test above pins what the `key`
+  // prevents; this pins that the route to it is still open and that the address bar comes along.
+  it('swaps to another result when a card behind the open dialog is activated without a pointer, without closing first', async () => {
     render(<Page />)
     const user = userEvent.setup()
 
@@ -2131,7 +2194,8 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     const first = window.location.href
 
-    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    screen.getByRole('button', { name: 'select-b' }).focus()
+    await user.keyboard('{Enter}')
 
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_A.address)
@@ -2146,15 +2210,16 @@ describe('Page', () => {
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
   })
 
-  // …and the exception to that, which is the whole point of the busy guards. The grid behind the
-  // dialog became a live control when the dialog stopped being modal, and it would otherwise walk
-  // straight around the rule Escape, the X and outside interaction all obey: a send in flight must
-  // not lose the one place its outcome can be read inline. A stray click on any of 200 cards would
-  // swap `selection`, unmount the dialog mid-send through the `key`, and leave a "Gas was spent"
-  // message with nowhere to land but a toast on a timer — while the abandoned sequence's `finally`
-  // handed mining back and re-enabled the chain selector under a wallet still holding the
-  // transaction.
-  it('ignores a card click behind the dialog while a send is in flight, and takes it again once settled', async () => {
+  // …and the exception to that, which is the whole point of the busy guards. The backdrop has
+  // taken the pointer route back, but an activation through the accessibility tree still lands,
+  // and would otherwise walk straight around the rule Escape, the X, the backdrop and outside
+  // interaction all obey: a send in flight must not lose the one place its outcome can be read
+  // inline. A stray activation would swap `selection`, unmount the dialog mid-send through the
+  // `key`, and leave a "Gas was spent" message with nowhere to land but a toast on a timer — while
+  // the abandoned sequence's `finally` handed mining back and re-enabled the chain selector under a
+  // wallet still holding the transaction. So `selectFromGrid`'s `deploying` guard is not made
+  // redundant by the backdrop, and this drives it by the route the backdrop leaves open.
+  it('ignores a card activated behind the dialog while a send is in flight, and takes it again once settled', async () => {
     const release = pendingDeploy()
     render(<Page />)
     const user = userEvent.setup()
@@ -2165,7 +2230,8 @@ describe('Page', () => {
     await user.click(deployButton())
     expect(screen.getByText('paused')).toBeDefined()
 
-    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    screen.getByRole('button', { name: 'select-b' }).focus()
+    await user.keyboard('{Enter}')
 
     // Nothing moved: the same dialog, the same in-flight sequence, the same URL. In particular
     // mining is still paused and the selector still disabled — an unmount here would have handed
@@ -2179,11 +2245,12 @@ describe('Page', () => {
       true,
     )
 
-    // The moment the attempt settles the grid is a live control again — this is a guard for the
-    // window, not a new lock on the leaderboard.
+    // The moment the attempt settles the grid takes the same activation again — this is a guard
+    // for the window, not a new lock on the leaderboard.
     await release()
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
-    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    screen.getByRole('button', { name: 'select-b' }).focus()
+    await user.keyboard('{Enter}')
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
   })
 

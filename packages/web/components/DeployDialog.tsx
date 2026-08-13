@@ -18,6 +18,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogPortal,
   DialogTitle,
 } from './ui/dialog'
 
@@ -73,26 +74,71 @@ export function DeployDialog({
        changed without closing the result first. Raising the header above the overlay instead
        would have let a mouse through while leaving the control invisible to keyboard and screen
        reader users, which is worse than not offering it at all; non-modal is the honest version:
-       Radix drops the overlay entirely, stops trapping focus and hides nothing, so the page
-       behind really is the page. What follows from it is handled in page.tsx — a card behind this
-       dialog is now clickable, and the header's chain now carries the open selection with it. */
+       Radix drops the overlay entirely (`DialogOverlay` renders nothing at all when
+       `modal={false}`), stops trapping focus and hides nothing, so the page behind really is the
+       page — and the backdrop below is this component's own, drawn precisely so it can stop where
+       the header starts. What follows from it is handled in page.tsx: the header's chain carries
+       the open selection with it, and a card behind this dialog is out of a pointer's reach but
+       still in the accessibility tree. */
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+      {/* The backdrop, and the reason it is not `inset-0`. It darkens and blurs everything BELOW
+          the sticky header — `top-14` is that header's own `h-14` in app/layout.tsx, the same
+          relationship MiningStatusBar's `top-14` already depends on — and nothing above it, so the
+          one control this dialog went non-modal for stays lit, unblurred and usable while the rest
+          of the page is visibly and actually out of play. `bg-background/60 backdrop-blur-sm` is
+          the share-link resolving overlay's language in page.tsx, deliberately: same app, same
+          meaning. That overlay keeps `inset-0` and keeps covering the header, which is a different
+          statement — nothing on the page is usable while a link resolves.
+
+          `z-45`: above the page content and the mining status bar (`z-40`) so it really blocks
+          them, below this dialog's content and the header (both `z-50`) so it covers neither, and
+          below the chain selector's popover (`z-50` in ui/select.tsx) so the header's control
+          opens over it rather than under it. Tailwind v4 generates this from the bare integer;
+          the built stylesheet was checked rather than assumed, because a dropped class here fails
+          silently and invisibly to every test in jsdom.
+
+          Its click closes — the one dismissal-by-pointer this dialog has, and what earns it is
+          that there is nothing on this sheet to reach for, so a click on it cannot be a reach for
+          anything else. Not while busy, for exactly the reasons Escape and the X are refused for
+          that window: a send in flight has nowhere else to report itself inline.
+
+          `aria-hidden`, and a div rather than a button: it is the pointer's shorthand for
+          "close", and it takes nothing away from a keyboard or screen reader user, who still has
+          Escape, the X and the footer button. Inside DialogPortal so it mounts and unmounts with
+          the dialog and lands in the same portal layer, before the content and therefore under
+          it. */}
+      <DialogPortal>
+        <div
+          data-slot="deploy-dialog-backdrop"
+          aria-hidden="true"
+          className="fixed inset-x-0 top-14 bottom-0 z-45 bg-background/60 backdrop-blur-sm"
+          onClick={() => {
+            if (!busy) onOpenChange(false)
+          }}
+        />
+      </DialogPortal>
       {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
           inline, and closing it unmounts the dialog outright — page.tsx renders it only while a
           candidate is selected, keyed on that candidate's address, and clears the selection when
-          it closes. So the *accidental* dismissals are blocked: Escape and the X while busy, and
-          interaction outside always.
+          it closes. So the *accidental* dismissals are blocked: Escape and the X while busy,
+          Radix's own "interaction outside" always, and the backdrop's click while busy.
 
-          "Outside" is the one that changed meaning with the overlay. There is no longer a sheet
-          of dark glass out there whose only possible purpose is "dismiss this" — there is the
-          live page, whose controls the user is now invited to use, and the chain selector in
-          particular is the entire point of this change. Dismissing on a pointerdown or a focus
-          move outside would mean reaching for the header closed the result it was meant to
-          re-aim, and tabbing off the last control did the same. So it never dismisses, busy or
-          not: a strictly stronger rule than the `busy`-only guard it replaces, and one that does
-          not silently depend on which chain-selector internals happen to sit in this layer's
-          stack. Clicking another result card still replaces what is on screen — that goes through
-          page.tsx's `selectFromGrid` and its `key`, not through a dismissal.
+          Radix's `onInteractOutside` still never dismisses, and that is not the same rule as "a
+          click outside never dismisses" any more. It fires for the header, for a focus move off
+          the last control and for the backdrop alike, and telling them apart there would mean
+          depending on which chain-selector internals happen to sit in this layer's stack — so
+          reaching for the header (the entire point of this dialog being non-modal) or tabbing out
+          cannot throw away the result that reach was for. The sheet of dark glass whose only
+          possible purpose is "dismiss this" carries that meaning on its own click handler
+          instead, above, where it is unambiguous and where the header is exempt by construction
+          rather than by a special case. Activating another result card still replaces what is on
+          screen — the backdrop takes the pointer route to the grid away (a mouse click there lands
+          on the backdrop and closes this), and Tab never went that way in the first place: Radix's
+          FocusScope keeps `loop` on for a non-modal dialog too, so Tab cycles inside this content
+          rather than walking out of it (measured in a browser, 120 presses). What is left is the
+          accessibility tree — nothing behind is `aria-hidden`, `inert` or pointer-events-none, so
+          an assistive technology's virtual cursor can still focus a card and activate it. That
+          goes through page.tsx's `selectFromGrid` and its `key`, not through a dismissal.
 
           The deliberate, warned footer button below stays live on purpose: a wallet that never
           settles its promise (the popup closed without a response) would otherwise trap the user
