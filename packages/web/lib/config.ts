@@ -100,6 +100,24 @@ export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
+/**
+ * Whether one owner entry is an address this app can mine for. Exported so the form can gate its
+ * submit button per row WITHOUT growing a second address check: validateMineConfig below is the
+ * definition, and it answers this question by calling exactly this. Two predicates that agree
+ * today is how a button ends up enabled over an address the validator then rejects — or, worse,
+ * disabled over one it would have accepted, with nothing on screen to fix.
+ *
+ * Trims, because the validator does: leading whitespace off a paste is not a malformed address.
+ */
+export function isOwnerAddress(value: string): boolean {
+  return ADDRESS_PATTERN.test(value.trim())
+}
+
+/** The one wording for "that is not an address", so the row and the submit say the same thing. */
+export function ownerAddressError(value: string): string {
+  return `"${value.trim()}" is not a valid address.`
+}
+
 export function validateMineConfig(input: {
   owners: string[]
   threshold: number
@@ -112,9 +130,9 @@ export function validateMineConfig(input: {
   if (owners.length === 0) {
     errors.owners = 'Add at least one owner address.'
   } else {
-    const invalid = owners.find((owner) => !ADDRESS_PATTERN.test(owner))
+    const invalid = owners.find((owner) => !isOwnerAddress(owner))
     if (invalid) {
-      errors.owners = `"${invalid}" is not a valid address.`
+      errors.owners = ownerAddressError(invalid)
     } else {
       const seen = new Set<string>()
       const duplicate = owners.find((owner) => {

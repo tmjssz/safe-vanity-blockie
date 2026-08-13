@@ -20,7 +20,7 @@ describe('ConfigSection', () => {
         onStartOver={vi.fn()}
       />,
     )
-    expect(screen.getByLabelText(/owners/i)).toBeDefined()
+    expect(screen.getByLabelText(/^owner 1$/i)).toBeDefined()
     expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
   })
 
@@ -36,7 +36,7 @@ describe('ConfigSection', () => {
     expect(screen.getByText(/1 owner/i)).toBeDefined()
     expect(screen.getByText(/threshold 1/i)).toBeDefined()
     expect(screen.getByText(/sepolia/i)).toBeDefined()
-    expect(screen.queryByLabelText(/owners/i)).toBeNull()
+    expect(screen.queryByLabelText(/^owner 1$/i)).toBeNull()
   })
 
   it('pluralises the owner count', () => {
@@ -78,7 +78,7 @@ describe('ConfigSection', () => {
   // now: it is asserted where it is rendered (test/page.test.tsx, on the link prefill) and only
   // its absence from the form is checked here.
   it('seeds the form from a decoded share link, field for field', () => {
-    const owners = `${CONFIG.owners[0]}, 0x${'22'.repeat(20)}`
+    const owners = [CONFIG.owners[0], `0x${'22'.repeat(20)}`]
     render(
       <ConfigSection
         config={undefined}
@@ -89,9 +89,16 @@ describe('ConfigSection', () => {
       />,
     )
 
-    expect((screen.getByLabelText(/owners/i) as HTMLInputElement).value).toBe(owners)
-    expect((screen.getByLabelText(/threshold/i) as HTMLInputElement).value).toBe('2')
+    // One field per owner, each holding its own entry in the link's order — the assertion the
+    // joined string could not make. A link with two owners that arrived as one box of text, or as
+    // two boxes in the other order, is a different Safe.
+    expect((screen.getByLabelText(/^owner 1$/i) as HTMLInputElement).value).toBe(owners[0])
+    expect((screen.getByLabelText(/^owner 2$/i) as HTMLInputElement).value).toBe(owners[1])
+    expect(screen.queryByLabelText(/^owner 3$/i)).toBeNull()
     // Radix renders each Select as a combobox, so this reads the trigger's displayed value.
+    // Threshold is one of them now, so it is read the same way rather than as an input's value.
+    expect(screen.getByRole('combobox', { name: /threshold/i }).textContent).toContain('2')
+    expect(screen.getByText(/out of 2 signers/i)).toBeDefined()
     expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toContain('1.3.0')
     expect(screen.queryByRole('combobox', { name: /chain/i })).toBeNull()
   })
@@ -105,14 +112,14 @@ describe('ConfigSection', () => {
     render(
       <ConfigSection
         config={undefined}
-        initial={{ owners: CONFIG.owners[0], threshold: 1, safeVersion: '1.4.1' }}
+        initial={{ owners: [CONFIG.owners[0]], threshold: 1, safeVersion: '1.4.1' }}
         chainId={137}
         onSubmit={onSubmit}
         onStartOver={vi.fn()}
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^start$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 }))
   })

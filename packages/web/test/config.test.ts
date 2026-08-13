@@ -3,6 +3,8 @@ import {
   DEFAULT_FACE_FILTERS,
   SUPPORTED_CHAINS,
   chainSwitchDiscardsResults,
+  isOwnerAddress,
+  ownerAddressError,
   safeSingletonFor,
   validateMineConfig,
 } from '../lib/config'
@@ -135,6 +137,36 @@ describe('validateMineConfig', () => {
     const { config, errors } = validateMineConfig(input({ chainId: Infinity }))
     expect(config).toBeUndefined()
     expect(errors.chainId).toMatch(/not supported/)
+  })
+})
+
+// ConfigForm disables "Start" while any owner it has been given is malformed, which means the form
+// now asks the address question BEFORE validateMineConfig gets a chance to answer it. These pin
+// that there is only one answer: a second, subtly different check in the component is how a button
+// ends up disabled over an address the validator would have accepted (nothing to fix, no way
+// forward) or enabled over one it then rejects.
+describe('isOwnerAddress', () => {
+  it('accepts exactly what validateMineConfig accepts', () => {
+    for (const owner of [OWNER_A, OWNER_B, OWNER_A.toLowerCase(), `  ${OWNER_A}  `]) {
+      expect(isOwnerAddress(owner)).toBe(true)
+      expect(validateMineConfig(input({ owners: [owner] })).errors.owners).toBeUndefined()
+    }
+  })
+
+  it('rejects exactly what validateMineConfig rejects', () => {
+    for (const owner of ['0xnope', '', '0x', OWNER_A.slice(0, -1), `${OWNER_A}00`, 'not an address']) {
+      expect(isOwnerAddress(owner)).toBe(false)
+      // The empty string is the one that is not a MALFORMED address — the validator drops it and
+      // complains that there are no owners at all, which is the same "cannot start" either way,
+      // and is why the form treats "given" and "counts toward N" as one question.
+      expect(validateMineConfig(input({ owners: [owner] })).errors.owners).toBeDefined()
+    }
+  })
+
+  it('words its complaint exactly as validateMineConfig does', () => {
+    expect(validateMineConfig(input({ owners: ['0xnope'] })).errors.owners).toBe(
+      ownerAddressError('0xnope'),
+    )
   })
 })
 

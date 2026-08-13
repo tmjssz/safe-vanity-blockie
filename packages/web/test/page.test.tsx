@@ -244,7 +244,7 @@ vi.mock('../components/ConfigForm', () => ({
     chainId,
     onSubmit,
   }: {
-    initial?: { owners?: string; threshold?: number; safeVersion?: string }
+    initial?: { owners?: string[]; threshold?: number; safeVersion?: string }
     chainId: number
     onSubmit: (config: unknown) => void
   }) => (
@@ -1444,7 +1444,9 @@ describe('Page', () => {
     expect(
       JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
     ).toEqual({
-      owners: CONFIG.owners.join(', '),
+      // The array, not a joined string: the form has one field per owner now, so this is what
+      // lands in them, entry for entry and in order.
+      owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
     })
@@ -1463,6 +1465,25 @@ describe('Page', () => {
     // singleton class from the one the link named — quietly, on a screen that has just emptied
     // everything else. Changing chain is what the header is for; a reset is not.
     expect(shownChain()).toContain('Polygon')
+  })
+
+  // CONFIG has one owner, so the test above cannot tell an entry being dropped or reordered from
+  // it arriving intact. This one carries three, and pins them as an ordered array — the owners are
+  // the address-determining input, and a link whose second and third owners swapped on the way to
+  // the form reproduces a different Safe under the same blockie the link promised, with nothing on
+  // screen to say so. (That the array becomes one FIELD PER OWNER is ConfigForm's and
+  // ConfigSection's to prove: this suite mocks the form.)
+  it('hands a multi-owner link to the form as an ordered array, entry for entry', async () => {
+    const owners = ['0x' + '11'.repeat(20), '0x' + '22'.repeat(20), '0x' + '33'.repeat(20)]
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({ owners, threshold: 2, safeVersion: '1.4.1', chainId: 137 }),
+    })
+
+    render(<Page />)
+
+    expect(
+      JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
+    ).toEqual({ owners, threshold: 2, safeVersion: '1.4.1' })
   })
 
   // The link is read at RENDER, not seeded once at mount. This subtree reaches its first client
@@ -1493,7 +1514,7 @@ describe('Page', () => {
     expect(
       JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
     ).toEqual({
-      owners: CONFIG.owners.join(', '),
+      owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
     })

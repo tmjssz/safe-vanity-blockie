@@ -173,7 +173,10 @@ function HomeContent() {
   const chainId = picked ?? linked?.chainId ?? DEFAULT_CHAIN_ID
   const initial = linked
     ? {
-        owners: linked.owners.join(', '),
+        // The array the link decoded, not a joined string: the form has one field per owner, and
+        // re-splitting a flattened list on the way in is a chance for an entry to be dropped or
+        // reordered — which is a different Safe address, silently.
+        owners: linked.owners,
         threshold: linked.threshold,
         safeVersion: linked.safeVersion,
       }
