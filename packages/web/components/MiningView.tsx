@@ -88,13 +88,35 @@ export function MiningView({
     setStatusBarSlot(document.getElementById(MINING_STATUS_BAR_SLOT_ID))
   }, [])
 
-  // Identifies "the same run" across a pause/resume cycle: constants/faceSpec/workers are
+  // The three constants a worker actually mines with, as values. Everything below keys off these
+  // rather than off `constants.data`, and that is the whole reason a chain switch is free.
+  //
+  // `useSafeConstants` re-reads whenever the config object changes, which the header's chain
+  // picker does under a live search; for the six chains that share a Safe singleton the read
+  // comes back EQUAL IN VALUE but as a new object. Keyed on the object, the effect below would
+  // treat that as a different run, tear the pool down and empty a leaderboard whose addresses are
+  // every bit as valid as they were — the exact opposite of what switching chains promises. Keyed
+  // on the values, the switch does not even re-run the effect: the run is untouched, and a switch
+  // that genuinely does change the constants (the mainnet boundary) still restarts, because then
+  // these strings really do change.
+  //
+  // The values are also precisely what is handed to `start()` below — nothing else in `data`
+  // reaches a worker — so this is the honest identity of a run, not a cheaper approximation of it.
+  const { initializerHash, factory, initCodeHash } = constants.data?.constantsHex ?? {}
+
+  // Identifies "the same run" across a pause/resume cycle: the constants/faceSpec/workers are
   // exactly the inputs that genuinely invalidate a run in progress (see below), so if none of
   // them changed since the last time this effect actually started mining, un-pausing is a
   // resume of that run rather than a fresh one. Left untouched while paused, so a config/face
   // change made while paused (e.g. via FacePicker, still visible next to a selected result) is
   // correctly detected as "different" once mining resumes.
-  const runIdentityRef = useRef<{ data: unknown; faceSpec: FaceSpec; workers: number } | null>(null)
+  const runIdentityRef = useRef<{
+    initializerHash?: string
+    factory?: string
+    initCodeHash?: string
+    faceSpec: FaceSpec
+    workers: number
+  } | null>(null)
 
   // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast are
   // deliberately excluded: they're a display filter over already-mined candidates, not
@@ -114,10 +136,12 @@ export function MiningView({
 
     const sameRun =
       runIdentityRef.current !== null &&
-      runIdentityRef.current.data === constants.data &&
+      runIdentityRef.current.initializerHash === initializerHash &&
+      runIdentityRef.current.factory === factory &&
+      runIdentityRef.current.initCodeHash === initCodeHash &&
       runIdentityRef.current.faceSpec === faceSpec &&
       runIdentityRef.current.workers === workers
-    runIdentityRef.current = { data: constants.data, faceSpec, workers }
+    runIdentityRef.current = { initializerHash, factory, initCodeHash, faceSpec, workers }
 
     start({
       constantsHex: constants.data.constantsHex,
@@ -130,7 +154,7 @@ export function MiningView({
       start: sameRun ? state.nextStart : undefined,
     })
     return stop
-  }, [constants.data, faceSpec, start, stop, workers, paused])
+  }, [initializerHash, factory, initCodeHash, faceSpec, start, stop, workers, paused])
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.
   useEffect(() => {
@@ -145,7 +169,11 @@ export function MiningView({
     if (state.error) toast.error(state.error)
   }, [state.error])
 
-  if (constants.loading)
+  // Only while there is nothing to mine with. A re-read provoked by a chain switch keeps the
+  // constants already in hand (see use-safe-constants), and replacing a live run's status bar and
+  // leaderboard with this placeholder for the length of an RPC round trip would discard on screen
+  // exactly what the switch is supposed to preserve.
+  if (constants.loading && !constants.data)
     return <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
   if (constants.error)
     return (

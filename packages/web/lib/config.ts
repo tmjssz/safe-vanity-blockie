@@ -14,6 +14,38 @@ export const SUPPORTED_CHAINS = [
   { id: 100, name: 'Gnosis' },
 ] as const
 
+/** The chain the header starts on, and what an unseeded config is mined for. */
+export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
+
+/**
+ * Which Safe singleton protocol-kit deploys through on a given chain: `Safe.sol` on mainnet,
+ * `SafeL2.sol` everywhere else. That default is deliberately left alone — every chain then gets
+ * its own conventional, properly-indexed deployment — and this function is where the consequence
+ * is written down.
+ *
+ * It is the ONLY thing about a chain that reaches the address. Measured against live RPCs on all
+ * seven supported chains: the proxy factory (0x4e1DCf7AD…) and the initializer hash (owners,
+ * threshold and version, and nothing else) are identical everywhere, and the initCodeHash takes
+ * exactly two values — one for mainnet, one shared by sepolia, polygon, arbitrum, optimism, base
+ * and gnosis. Forcing `isL1SafeSingleton` both ways swaps them, which is what identifies the
+ * singleton rather than the chain as the cause.
+ */
+export function safeSingletonFor(chainId: number): 'Safe.sol' | 'SafeL2.sol' {
+  return chainId === 1 ? 'Safe.sol' : 'SafeL2.sol'
+}
+
+/**
+ * Whether moving a search from one chain to another changes the addresses it has already found —
+ * i.e. whether the results on screen have to be discarded rather than carried across.
+ *
+ * True only when the two chains deploy through different singletons, so switching among the six
+ * non-mainnet chains is free and every mined address stays exactly as valid as it was; crossing
+ * the mainnet boundary in either direction is not.
+ */
+export function chainSwitchDiscardsResults(from: number, to: number): boolean {
+  return safeSingletonFor(from) !== safeSingletonFor(to)
+}
+
 export interface MineConfig {
   owners: string[]
   threshold: number

@@ -4,7 +4,6 @@ import { useState } from 'react'
 import {
   type ConfigErrors,
   type MineConfig,
-  SUPPORTED_CHAINS,
   SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
 } from '../lib/config'
@@ -14,15 +13,21 @@ import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 export interface ConfigFormProps {
-  initial?: Partial<{ owners: string; threshold: number; safeVersion: string; chainId: number }>
+  initial?: Partial<{ owners: string; threshold: number; safeVersion: string }>
+  /**
+   * The chain chosen in the page header. It is still one of the four inputs the address is derived
+   * from and still travels in the submitted config and the share link — it is simply no longer
+   * edited here, because unlike owners, threshold and version it can be changed after a run has
+   * started without invalidating anything (see `chainSwitchDiscardsResults`).
+   */
+  chainId: number
   onSubmit: (config: MineConfig) => void
 }
 
-export function ConfigForm({ initial, onSubmit }: ConfigFormProps) {
+export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [owners, setOwners] = useState(initial?.owners ?? '')
   const [threshold, setThreshold] = useState(initial?.threshold ?? 1)
   const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? '1.4.1')
-  const [chainId, setChainId] = useState(initial?.chainId ?? 1)
   const [errors, setErrors] = useState<ConfigErrors>({})
 
   const submit = (event: React.FormEvent) => {
@@ -94,26 +99,15 @@ export function ConfigForm({ initial, onSubmit }: ConfigFormProps) {
         )}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="chainId">Chain</Label>
-        <Select value={String(chainId)} onValueChange={(value) => setChainId(Number(value))}>
-          <SelectTrigger id="chainId" aria-label="Chain">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SUPPORTED_CHAINS.map((chain) => (
-              <SelectItem key={chain.id} value={String(chain.id)}>
-                {chain.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {errors.chainId && (
-          <p role="alert" className="text-sm text-destructive">
-            {errors.chainId}
-          </p>
-        )}
-      </div>
+      {/* The chain is picked in the header, so there is no field to hang this under — but
+          validateMineConfig still judges it (an unsupported or zkSync-family chain), and a config
+          rejected for a reason the form does not show is a submit button that silently does
+          nothing. */}
+      {errors.chainId && (
+        <p role="alert" className="text-sm text-destructive">
+          {errors.chainId}
+        </p>
+      )}
 
       <Button type="submit">Continue</Button>
     </form>

@@ -8,6 +8,15 @@ import { chainById } from './wagmi'
 /**
  * Reads chainId and the three CREATE2 constants once per config. Everything protocol-kit
  * touches stays on the main thread; workers receive plain hex.
+ *
+ * Keyed on the config OBJECT, so a caller that rebuilds it re-reads. The one config change that
+ * happens under a live search is the header's chain picker, and for that the read is genuine — the
+ * new chain's own RPC, its own singleton — while the answer, for the six chains that share a
+ * singleton, comes back identical in value. Which is why what is already in hand is kept for the
+ * length of the read (below) rather than being replaced by a loading state: the caller keeps
+ * mining on constants that are still true instead of watching its worker pool torn down and the
+ * grid replaced by a placeholder for an RPC round trip. What it must NOT do is outlive a failure —
+ * see the catch.
  */
 export function useSafeConstants(config: MineConfig | undefined): {
   data?: SafeSetup
@@ -24,7 +33,9 @@ export function useSafeConstants(config: MineConfig | undefined): {
       return
     }
     let cancelled = false
-    setState({ loading: true })
+    // The previous config's constants stay on offer while this read is in flight. On the first
+    // read there is nothing to keep, so this is the plain loading state it always was.
+    setState((previous) => ({ data: previous.data, loading: true }))
 
     const chain = chainById(config.chainId)
     const rpcUrl = chain.rpcUrls.default.http[0]
@@ -39,6 +50,10 @@ export function useSafeConstants(config: MineConfig | undefined): {
         if (!cancelled) setState({ data, loading: false })
       })
       .catch((error: unknown) => {
+        // The kept constants go here, deliberately: they belong to a config nobody is on any
+        // more, and this hook has just failed to find out whether the current one agrees with
+        // them. Reporting the failure with no data is what stops a caller mining on for a chain
+        // whose constants were never read.
         if (!cancelled) {
           setState({
             error: error instanceof Error ? error.message : String(error),

@@ -25,12 +25,15 @@ function summarise(config: MineConfig): string {
 export function ConfigSection({
   config,
   initial,
+  chainId,
   onSubmit,
   onStartOver,
 }: {
   config: MineConfig | undefined
   /** Prefill for the form, used by `?config=…` share links. Passed straight to ConfigForm. */
   initial?: ConfigFormProps['initial']
+  /** The chain chosen in the header, which the form submits as part of the config. */
+  chainId: number
   onSubmit: (config: MineConfig) => void
   onStartOver: () => void
 }) {
@@ -43,7 +46,7 @@ export function ConfigSection({
           <CardTitle as="h2">Configure</CardTitle>
         </CardHeader>
         <CardContent>
-          <ConfigForm initial={initial} onSubmit={onSubmit} />
+          <ConfigForm initial={initial} chainId={chainId} onSubmit={onSubmit} />
         </CardContent>
       </Card>
     )
@@ -69,9 +72,13 @@ export function ConfigSection({
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Start over?</DialogTitle>
+                {/* The chain is no longer one of these fields — it is picked in the header, and
+                    switching among the chains that share a Safe singleton keeps every result, so
+                    naming it here would promise a loss that switching does not always cost. The
+                    switch that does cost it asks in its own words (see ChainSelector). */}
                 <DialogDescription>
-                  Owners, threshold, Safe version and chain determine the Safe address, so
-                  changing them will discard every result found so far and any selected result.
+                  Owners, threshold and Safe version determine the Safe address, so changing them
+                  will discard every result found so far and any selected result.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

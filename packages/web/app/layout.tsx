@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConnectButton } from '../components/ConnectButton'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Toaster } from '../components/ui/sonner'
@@ -24,6 +25,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div className="mx-auto flex h-full max-w-6xl items-center gap-4 px-4">
               <h1 className="text-lg font-semibold">Safe Vanity Blockie</h1>
               <div className="ml-auto flex items-center gap-2">
+                {/* The chain picker lands here, portaled in by the page. It is not rendered here
+                    because the chain is not a piece of chrome state: it is one of the four inputs
+                    the Safe address is derived from, so it belongs with the run, the submitted
+                    config and the reset that crossing the mainnet boundary triggers — all of which
+                    live in app/page.tsx. Same arrangement as the mining status bar, which is owned
+                    by MiningView and portaled to a slot at the top of the page.
+
+                    The consequence to know: this is empty until the page hydrates, exactly like
+                    everything else the page renders (its whole subtree sits behind a Suspense
+                    bailout for useSearchParams), so the header's right-hand group settles one
+                    control wider on hydration rather than showing a chain that cannot yet be
+                    changed. */}
+                <div id={HEADER_CHAIN_SLOT_ID} className="contents" />
                 <ThemeToggle />
                 <ConnectButton />
               </div>

@@ -4,6 +4,8 @@ import type { Candidate } from '@safe-vanity-blockie/core'
 import { Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
 import { DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
@@ -12,7 +14,9 @@ import { MiningView } from '../components/MiningView'
 import { SecurityNotice } from '../components/SecurityNotice'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import {
+  DEFAULT_CHAIN_ID,
   DEFAULT_FACE_FILTERS,
+  chainSwitchDiscardsResults,
   validateMineConfig,
   type FaceFilters,
   type MineConfig,
@@ -139,12 +143,18 @@ function HomeContent() {
   const faceSpec = useMemo(() => faceSpecFromSelection(mouths), [mouths])
 
   const linked = linkDismissed ? undefined : linkResult?.config
+  // The chain no longer travels with the other three: those are Configure's fields, this is the
+  // header's control, so it is seeded here instead of in the form. Seeded exactly the way the form
+  // seeds its own — read off `linked` at mount, once — so a share link puts the whole config on
+  // screen, chain included, or none of it. (A recipient meets the sender's chain, which is the
+  // chain the sender's dialog and CLI command name; the address itself would survive any of the
+  // six, but nothing here should quietly answer a question the link already answered.)
+  const [chainId, setChainId] = useState(() => linked?.chainId ?? DEFAULT_CHAIN_ID)
   const initial = linked
     ? {
         owners: linked.owners.join(', '),
         threshold: linked.threshold,
         safeVersion: linked.safeVersion,
-        chainId: linked.chainId,
       }
     : undefined
 
@@ -377,10 +387,13 @@ function HomeContent() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
-  // Configure is locked once submitted because owners, threshold, Safe version and chain are
-  // exactly the inputs the address is derived from: editing one silently invalidates every
-  // result on screen. So the only way back is this — an explicit, confirmed reset that throws
-  // the run away rather than pretending it survived.
+  // Configure is locked once submitted because owners, threshold and Safe version are inputs the
+  // address is derived from that cannot be changed without invalidating every result on screen.
+  // So the only way back is this — an explicit, confirmed reset that throws the run away rather
+  // than pretending it survived. The fourth such input, the chain, is the exception that now lives
+  // in the header: it reaches the address only through which Safe singleton it deploys through, so
+  // most switches change nothing and are free, and the one that does change it comes through
+  // `changeChain` below — which asks first, and then calls exactly this.
   const startOver = useCallback(() => {
     setConfig(undefined)
     // Retires every `?config=` written for the run being discarded. Their entries survive in the
@@ -403,6 +416,59 @@ function HomeContent() {
     setLinkCandidateError(undefined)
     setLinkDismissed(true)
   }, [closeSelection])
+
+  // The header's chain picker, applied. It has already asked the user where asking was required —
+  // ChainSelector holds a switch that costs results behind a confirmation, exactly as Configure
+  // holds its fields behind "Start over" — so by the time this runs the switch is allowed to
+  // happen; what is left is making the page agree with it.
+  //
+  // Three cases, and the middle one is the whole feature:
+  //
+  //   - Nothing submitted. There is no run and no results, so the chain is just a setting.
+  //   - A run, and the new chain shares its Safe singleton (any two of the six non-mainnet
+  //     chains). The factory, the initializer hash and the initCodeHash are byte-identical there,
+  //     so every address already on the leaderboard is still that Safe's address on the new chain:
+  //     the run continues, the board is kept, and only the chain the config NAMES moves. That new
+  //     config object makes useSafeConstants re-read — an honest read, against the new chain's own
+  //     RPC — and MiningView keys its restart on the constants' VALUES, so the answer coming back
+  //     equal leaves the worker pool untouched (see the comment there; it is the whole hazard).
+  //   - A run, and the new chain crosses the mainnet boundary. Different singleton, different
+  //     address for every candidate found, so the run cannot come along: this is a reset, and the
+  //     same reset "Start over" performs — history entries retired, the link put out of reach, the
+  //     dialog closed and the address bar cleared with it.
+  //
+  // The open dialog, if there is one, is deliberately left where it is. `selection` carries the
+  // config its address was derived from, and repointing it at a different chain would change what
+  // the user is about to sign after they read it — while its history entry, and the share link in
+  // it, would go on naming the chain it was opened under. Closing and reopening the card is what
+  // moves a result to the new chain, and it says so on screen both before and after.
+  const changeChain = useCallback(
+    (next: number) => {
+      setChainId(next)
+      if (!config) return
+      if (chainSwitchDiscardsResults(config.chainId, next)) {
+        startOver()
+        return
+      }
+      setConfig({ ...config, chainId: next })
+    },
+    [config, startOver],
+  )
+
+  // Where the selector is rendered: an element the layout puts in the sticky header. Resolved
+  // during the first browser render — the header is committed long before this subtree mounts —
+  // with the effect as the fallback for any mounting order that first render cannot see. Same
+  // arrangement, and same reasoning, as MiningView's status bar slot; with no slot at all (a bare
+  // `<HomeContent />`, as in unit tests) the selector renders in place.
+  const [chainSlot, setChainSlot] = useState<HTMLElement | null>(() =>
+    typeof document === 'undefined' ? null : document.getElementById(HEADER_CHAIN_SLOT_ID),
+  )
+  useEffect(() => {
+    setChainSlot(document.getElementById(HEADER_CHAIN_SLOT_ID))
+  }, [])
+  const chainSelector = (
+    <ChainSelector chainId={chainId} hasRun={Boolean(config)} onSelect={changeChain} />
+  )
 
   // Pairs the clicked card with the config it was mined under, at the moment it is clicked. Stable
   // across everything but a config change, which is what the 200 memoised result cards need from
@@ -429,6 +495,8 @@ function HomeContent() {
 
   return (
     <>
+      {chainSlot ? createPortal(chainSelector, chainSlot) : chainSelector}
+
       {/* The whole wait a link recipient sits through — the constants RPC round trip, then
           keccak's wasm init and the derivation — happens with nothing else on the page but a
           prefilled form, so without this the app looks like it did nothing with the link at all.
@@ -490,6 +558,7 @@ function HomeContent() {
         <ConfigSection
           config={config}
           initial={initial}
+          chainId={chainId}
           onSubmit={setConfig}
           onStartOver={startOver}
         />

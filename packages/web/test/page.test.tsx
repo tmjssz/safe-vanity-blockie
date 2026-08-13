@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import RootLayout from '../app/layout'
 import Page from '../app/page'
 import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
@@ -114,8 +115,11 @@ const {
 // The deploy dialog's terminal branches mirror themselves into a toast precisely because the
 // inline message dies with the component: `<Toaster />` lives in app/layout.tsx, outside every
 // subtree that can unmount here. Mocked so those calls are observable.
+// `Toaster` too, since the header test below renders the layout that mounts it: layout.test.tsx
+// is where the real renderer is exercised, and it is deliberately unmocked there.
 vi.mock('sonner', () => ({
   toast: { error: toastErrorSpy, success: toastSuccessSpy },
+  Toaster: () => null,
 }))
 
 vi.mock('wagmi', () => ({
@@ -135,6 +139,16 @@ vi.mock('@safe-vanity-blockie/safe-config', () => ({
 }))
 
 vi.mock('../lib/deploy', () => ({ buildDeploymentPlan: buildDeploymentPlanMock }))
+
+// Only the header test renders the layout, and it is about where a control ends up, not about
+// wagmi's connector discovery, a QueryClient or the wallet button's own hooks (which reach for
+// more of wagmi than the mock above provides). ConnectButton has its own suite.
+vi.mock('../app/providers', () => ({
+  Providers: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}))
+vi.mock('../components/ConnectButton', () => ({
+  ConnectButton: () => <button type="button">connect</button>,
+}))
 
 vi.mock('viem/actions', () => ({ sendTransaction: sendTransactionMock }))
 
@@ -204,18 +218,23 @@ vi.mock('../lib/deep-link', async (importOriginal) => {
 // prefill is otherwise invisible to this suite — dropping `initial` on the way to ConfigSection
 // would leave the whole file green while every `?config=` link silently stopped reproducing the
 // address it was made for.
+// `chainId` arrives as a prop now (the field itself is in the header) and the real form puts it
+// into the config it submits, so the mock does too: a test that switches the chain before
+// submitting must get a config for the chain it chose, exactly as the app does.
 vi.mock('../components/ConfigForm', () => ({
   ConfigForm: ({
     initial,
+    chainId,
     onSubmit,
   }: {
-    initial?: { owners?: string; threshold?: number; safeVersion?: string; chainId?: number }
+    initial?: { owners?: string; threshold?: number; safeVersion?: string }
+    chainId: number
     onSubmit: (config: unknown) => void
   }) => (
     <button
       type="button"
       data-initial={initial ? JSON.stringify(initial) : ''}
-      onClick={() => onSubmit(CONFIG)}
+      onClick={() => onSubmit({ ...CONFIG, chainId })}
     >
       submit-config
     </button>
@@ -342,7 +361,42 @@ const PLAN_FOR = (address: string) => ({
   transaction: { to: '0x' + '22'.repeat(20), value: '0', data: '0x' },
 })
 
+/** Opens the header's chain picker and chooses a chain by name. */
+async function chooseChain(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+): Promise<void> {
+  await user.click(screen.getByRole('combobox', { name: /^chain$/i }))
+  await user.click(await screen.findByRole('option', { name }))
+}
+
+/**
+ * The chain the header currently reads — Radix renders the trigger as a combobox. `hidden`
+ * because an open deploy dialog is modal and aria-hides the page behind it: the header is still
+ * there, and what it says is still the question.
+ */
+const shownChain = () =>
+  screen.getByRole('combobox', { name: /^chain$/i, hidden: true }).textContent
+
 describe('Page', () => {
+  // The headline of this change: the chain is no longer one of the Configure card's fields. It
+  // lives in the page header, beside the wallet button and the theme toggle, and it is there
+  // before anything is submitted — a user picks the chain they are on, not a form field they
+  // fill in once and then have to "Start over" to touch.
+  it('puts the chain selector in the page header, not in the Configure form', async () => {
+    render(
+      <RootLayout>
+        <Page />
+      </RootLayout>,
+    )
+
+    const header = await screen.findByRole('banner')
+    const chain = screen.getByRole('combobox', { name: /^chain$/i })
+    expect(header.contains(chain)).toBe(true)
+    // Visible from the start, with the default chain already named on it.
+    expect(chain.textContent).toContain('Ethereum')
+  })
+
   it('opens the deploy dialog on a result click, in one step, with everything in it', async () => {
     render(<Page />)
     const user = userEvent.setup()
@@ -1348,28 +1402,31 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
-  it('prefills the config form from a ?config= link, and drops that prefill on "Start over"', async () => {
+  it('prefills the config form and the header chain from a ?config= link, and drops that prefill on "Start over"', async () => {
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
         owners: CONFIG.owners,
         threshold: CONFIG.threshold,
         safeVersion: CONFIG.safeVersion,
-        chainId: CONFIG.chainId,
+        // Deliberately not the default chain: a prefill that quietly kept Ethereum would be
+        // invisible to this test if the link named it too.
+        chainId: 137,
       }),
     })
 
     render(<Page />)
 
-    // Every field the Safe address is derived from reaches the form, or the link cannot
-    // reproduce the address it was created for.
+    // Every field the Safe address is derived from reaches the screen, or the link cannot
+    // reproduce the address it was created for. Three of them go to the form…
     expect(
       JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
     ).toEqual({
       owners: CONFIG.owners.join(', '),
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
-      chainId: CONFIG.chainId,
     })
+    // …and the fourth to the header, which is where the chain is chosen now.
+    expect(shownChain()).toContain('Polygon')
 
     // "Start over" is a deliberate break with whatever the link asked for, so the form comes
     // back empty rather than re-seeded from it.
@@ -1615,5 +1672,140 @@ describe('Page', () => {
     })
 
     expect(miningViewPropsRef.current?.onSelect).toBe(first)
+  })
+
+  // The decoded config a `?config=` link renders, so a test can say what chain the dialog is
+  // offering rather than trusting the URL to look right.
+  const sharedChainId = () => {
+    const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
+      .config?.chainId
+  }
+
+  // The point of moving the chain into the header: it is a live control, not a locked field. A
+  // switch among the six chains that share a Safe singleton changes nothing about the addresses
+  // already found, so the run is left alone — and the config it is mining under, the summary, and
+  // the link every result offers all follow the new chain.
+  it('switches chain from the header without discarding the run, and mines and shares under the new one', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+    // The locked summary, which reads the submitted config rather than the header.
+    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Sepolia/)).toBeDefined()
+
+    await chooseChain(user, /polygon/i)
+
+    // No question, no reset: the Configure card is still locked on the same run, and mining was
+    // never handed back to the starting screen.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+    expect(shownChain()).toContain('Polygon')
+    // The submitted config moved with it — the locked summary reads the config, not the header.
+    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Polygon/)).toBeDefined()
+
+    // And a result opened now offers a link for the chain the user is on.
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(sharedChainId()).toBe(137)
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+  })
+
+  // Crossing the mainnet boundary is the one switch that changes every address on screen, so it
+  // gets the treatment editing owners gets: asked about first, and then a real reset — not a
+  // silently invalidated leaderboard.
+  it('asks before a switch that crosses the mainnet boundary, and keeps everything if declined', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const opened = window.location.href
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+
+    await chooseChain(user, /ethereum/i)
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /keep mining/i }))
+
+    // Declined: still on Sepolia, still mining, and the result's own entry is still live — Back
+    // reopens it.
+    expect(shownChain()).toContain('Sepolia')
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+    await traverse(() => window.history.back())
+    expect(window.location.href).toBe(opened)
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  it('resets the run on a confirmed mainnet crossing, exactly as "Start over" does', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const discarded = window.location.href
+    expect(discarded).toContain('config=')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+
+    await chooseChain(user, /ethereum/i)
+    await user.click(screen.getByRole('button', { name: /switch and start over/i }))
+
+    // The run is gone and the chain is the one that was asked for: an unlocked, empty Configure
+    // card on Ethereum, nothing mining.
+    expect(shownChain()).toContain('Ethereum')
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // And the discarded run's history entries are retired with it, like any other reset: its URL
+    // is still reachable (a push cannot be un-pushed) but it puts no dialog back on a page that
+    // has been reset out from under it — and it is still recognised as the app's own write, so no
+    // resolving overlay drops over it either.
+    await traverse(() => window.history.back())
+    expect(window.location.href).toBe(discarded)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(spinner()).toBeNull()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+  })
+
+  // A history entry names the config it was created under, chain included, and a chain switch does
+  // not reach back and repoint it. Landing on one restores the pair that was stored with it — the
+  // candidate AND its own config — rather than re-deriving anything against whatever the header
+  // says now. That is what keeps the dialog's "deploy this on X" honest: it names the chain the
+  // entry was made on, and the wallet gate is checked against the same one.
+  it('restores an entry with the chain it was created under, even after the header moved on', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(sharedChainId()).toBe(11155111)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+
+    await chooseChain(user, /polygon/i)
+    expect(shownChain()).toContain('Polygon')
+
+    await traverse(() => window.history.back())
+
+    // The Sepolia entry, restored as it was stored: same candidate, same config, same link. The
+    // header stays where the user put it — the two are allowed to differ, and each says which
+    // chain it means.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(sharedChainId()).toBe(11155111)
+    expect(screen.getByRole('dialog').textContent).toContain('Sepolia')
+    expect(shownChain()).toContain('Polygon')
+    // Nothing was re-derived to produce it: the pair came out of the map, not out of the URL.
+    expect(loadSafeConstantsMock).not.toHaveBeenCalled()
+    expect(spinner()).toBeNull()
   })
 })

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FACE_FILTERS, validateMineConfig } from '../lib/config'
+import {
+  DEFAULT_FACE_FILTERS,
+  SUPPORTED_CHAINS,
+  chainSwitchDiscardsResults,
+  safeSingletonFor,
+  validateMineConfig,
+} from '../lib/config'
 
 const OWNER_A = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 const OWNER_B = '0x' + '22'.repeat(20)
@@ -50,6 +56,30 @@ describe('validateMineConfig', () => {
     expect(validateMineConfig(input({ safeVersion: '1.2.0' })).errors.safeVersion).toMatch(
       /unsupported/i,
     )
+  })
+
+  // The chain reaches the address through exactly one thing: which Safe singleton protocol-kit
+  // deploys through. Measured on live RPCs across all seven supported chains — the factory and the
+  // initializer hash are identical everywhere, and the initCodeHash takes one of two values,
+  // splitting mainnet (Safe.sol) from the other six (SafeL2.sol). That is what makes a switch
+  // among the six free and a crossing of the mainnet boundary a reset, so it is pinned here rather
+  // than left implicit in whichever component happens to ask.
+  it('puts mainnet on the L1 singleton and every other supported chain on the L2 one', () => {
+    expect(safeSingletonFor(1)).toBe('Safe.sol')
+    for (const chain of SUPPORTED_CHAINS.filter((entry) => entry.id !== 1)) {
+      expect(safeSingletonFor(chain.id)).toBe('SafeL2.sol')
+    }
+  })
+
+  it('discards results only when a chain switch crosses the mainnet boundary', () => {
+    const others = SUPPORTED_CHAINS.filter((chain) => chain.id !== 1)
+    for (const from of others) {
+      expect(chainSwitchDiscardsResults(from.id, 1)).toBe(true)
+      expect(chainSwitchDiscardsResults(1, from.id)).toBe(true)
+      for (const to of others) {
+        expect(chainSwitchDiscardsResults(from.id, to.id)).toBe(false)
+      }
+    }
   })
 
   it('rejects a chain the app does not support', () => {

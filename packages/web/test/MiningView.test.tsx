@@ -11,6 +11,11 @@ const FACE_SPEC = { name: 'x', fixed: [], regions: [] }
 // Stable reference — the real useSafeConstants hook holds `data` in useState and returns the
 // same object across re-renders once loaded, so a stub that built a new literal per call would
 // misrepresent it (and mask the exact restart-loop bug this suite guards against).
+//
+// MiningView no longer keys its restart on that object's identity but on the three constants
+// inside it, so that a chain switch — which re-reads and comes back equal in value as a NEW
+// object — does not restart the run. That is a different test's job precisely because this stub
+// cannot express it: see MiningView.chain-switch.test.tsx, which drives the real hook.
 const STABLE_CONSTANTS_DATA = {
   constantsHex: { initializerHash: '0x1', factory: '0x2', initCodeHash: '0x3' },
 }
