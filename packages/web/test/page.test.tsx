@@ -1064,6 +1064,141 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
+  // The same session, on the one result the link itself names. `pushSelectionUrl` builds its param
+  // from `{...config, saltNonce}` and `validateMineConfig` emits exactly the four fields the link
+  // carries, so a recipient who submits the prefilled form unchanged re-encodes the sender's string
+  // byte for byte — and clicking that result takes the "already standing on this URL" early return.
+  // Nothing is pushed there, so nothing may be registered either: registering would hand the LINK's
+  // own history entry a selection this page never put there, and the next dialog closed would land
+  // on it and reopen this one instead of closing. (The test above never reaches the early return —
+  // CANDIDATE_A's saltNonce is '111' and the link's is '12345', so the params differ.)
+  it("does not claim the link's own entry as one it pushed when a mined result re-encodes to it", async () => {
+    // Byte-identical to what pushSelectionUrl will build for CANDIDATE_A under the submitted
+    // CONFIG, which is the whole premise: same fields, same order, same encoder.
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({ ...CONFIG, saltNonce: CANDIDATE_A.saltNonce }),
+    })
+    const linkUrl = window.location.href
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    // The link opens its own dialog; the recipient closes it and starts their own search.
+    await screen.findByRole('dialog')
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+
+    // The grid surfaces the result the link named. The address bar already says exactly this, so
+    // nothing is pushed — the entry underneath is still the link's own.
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(window.location.href).toBe(linkUrl)
+
+    await user.keyboard('{Escape}')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.href).toBe(linkUrl)
+
+    // A different result does push, so the stack is now [link, result-B]…
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    expect(window.location.href).not.toBe(linkUrl)
+
+    // …and closing B has to land back on the link with nothing open. If the link's param had been
+    // registered as app-written, this traversal would reopen candidate A's dialog on an entry this
+    // page never pushed — and its Cancel would then walk the user off the app entirely, taking the
+    // whole mining run with it.
+    await user.keyboard('{Escape}')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+    expect(window.location.href).toBe(linkUrl)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('running')).toBeDefined()
+  })
+
+  // The other half of the in-flight-back gap. A card clicked while a close is still traversing has
+  // its push deferred to the popstate — but the dialog it names can be closed inside that same gap,
+  // and then there is nothing left for the deferred push to describe. Flushing it anyway puts a
+  // result in the address bar with no dialog on screen, and marks the entry as this page's, so
+  // closing the NEXT dialog backs onto it and reopens a result the user already dismissed.
+  it('drops a deferred push when the dialog it names is closed before the traversal lands', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    // fireEvent throughout: nothing is awaited between these three, which is what keeps them all
+    // inside the window before the back traversal lands.
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    fireEvent.click(screen.getByText('select-b'))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+
+    // Nothing is open, so nothing may be named: the URL is back to the bare page.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.search).toBe('')
+
+    // And the entry bookkeeping came out of it straight: opening a result now pushes its own
+    // entry, and closing it takes that one back off rather than a stale one.
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  // "Start over" throws the run away. Its history entries outlive it — a pushed entry cannot be
+  // removed except by traversing onto it — so Forward can still reach a discarded result's URL, and
+  // what must not come back is the dialog: a live Deploy button for a result mined under a config
+  // that is no longer submitted, on a page whose Configure form is unlocked and empty.
+  //
+  // Deliberately NOT done by clearing `writtenSelections`: those params would stop being recognised
+  // as the app's own writes, and landing on one would latch it as an incoming share link — the
+  // resolving overlay over the page, and mining paused behind it. They stay in the map, marked dead.
+  it('does not reopen a discarded result on Forward after "Start over"', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const discarded = window.location.href
+    expect(discarded).toContain('config=')
+
+    // Closing puts the entry forward of the user rather than deleting it.
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+
+    await user.click(screen.getByRole('button', { name: /start over…/i }))
+    await user.click(screen.getByRole('button', { name: /^start over$/i }))
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+
+    await traverse(() => window.history.forward())
+
+    // The URL is reachable — nothing can un-push it — but the run it belonged to is gone.
+    expect(window.location.href).toBe(discarded)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // Still the app's own param, so it is not mistaken for a share link arriving now: no
+    // resolving overlay, and the page stays the unlocked starting screen it was reset to.
+    expect(spinner()).toBeNull()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+
+    // And the reset survives a Back and a second Forward across the same entry.
+    await traverse(() => window.history.back())
+    await traverse(() => window.history.forward())
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(spinner()).toBeNull()
+  })
+
   it('NEW-2 regression: changing the face while a link candidate is still reconstructing does not strand mining paused', async () => {
     const { ALL_MOUTH_NAMES } = await import('../lib/face-selection')
     searchParamsRef.current = new URLSearchParams({

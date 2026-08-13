@@ -17,12 +17,7 @@ import {
   type FaceFilters,
   type MineConfig,
 } from '../lib/config'
-import {
-  candidateFromSaltNonce,
-  decodeConfigParam,
-  encodeConfigParam,
-  shareConfigPath,
-} from '../lib/deep-link'
+import { candidateFromSaltNonce, decodeConfigParam, shareConfigPath } from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
 import { useSafeConstants } from '../lib/use-safe-constants'
 
@@ -32,6 +27,13 @@ import { useSafeConstants } from '../lib/use-safe-constants'
  */
 type Selection = { candidate: Candidate; config: MineConfig }
 
+/**
+ * A `?config=` this page wrote, and the selection it named — tagged with the run it was written
+ * during, so a reset can retire it without the param itself ceasing to be recognised as the app's
+ * own. See `writtenSelections` and `runGeneration` below.
+ */
+type WrittenEntry = { selection: Selection; generation: number }
+
 // useSearchParams() opts this subtree out of static rendering unless it is wrapped in
 // Suspense; isolating it in its own component keeps that bailout scoped instead of
 // disabling static generation for the whole page.
@@ -40,7 +42,8 @@ function HomeContent() {
   const configParam = searchParams.get('config')
 
   // Every `?config=` this session has written into the address bar, mapped to the selection it
-  // names. One fact — "did this app write it?" — answering two questions, and both matter:
+  // names and the run that selection belonged to. One fact — "did this app write it?" — answering
+  // two questions, and both matter:
   //
   //   - Reading. A param the app wrote is not a share link to reconstruct. Without this the first
   //     write would be read straight back in as one: `linkSaltNonce` becomes defined while
@@ -51,7 +54,21 @@ function HomeContent() {
   //   - Navigating. Forward onto one of these entries has to put back the dialog it names, and
   //     the selection is already here — so nothing is re-derived, no constants are re-read, and
   //     the candidate/config pairing is restored intact rather than rebuilt out of a URL.
-  const writtenSelections = useRef<Map<string, Selection>>(new Map())
+  //
+  // Entries are only ever added, never removed — see `runGeneration` for why "Start over" marks
+  // them dead instead of clearing them.
+  const writtenSelections = useRef<Map<string, WrittenEntry>>(new Map())
+  // Which run each written param belongs to. "Start over" bumps this, which retires every entry
+  // written before it: a traversal onto one of them still recognises the param as the app's own
+  // (question one above, unchanged) but restores nothing (question two), so a discarded run's
+  // dialog cannot come back on a page that has been reset out from under it.
+  //
+  // A counter rather than a `writtenSelections.clear()`, and this is the part to keep: clearing
+  // would make those params unrecognisable as self-written, so landing on one would latch it as an
+  // incoming share link — `awaitingLinkCandidate` true, the full-screen resolving overlay over the
+  // page, mining paused, until a reload. The map has to keep growing for the exclusion to keep
+  // working; only the selections behind it expire.
+  const runGeneration = useRef(0)
 
   // The link is an INPUT, and it is read exactly once. Before the address bar became something
   // this page writes, `?config=` could only change by a full navigation — which remounts — and
@@ -235,21 +252,43 @@ function HomeContent() {
       return
     }
     const shared = { ...selection.config, saltNonce: selection.candidate.saltNonce }
-    // Same pure encoder the dialog's copyable field goes through, one line below — the address
+    // The URL first, and the registry key read back OUT of it. shareConfigPath is the single place
+    // a `?config=` URL is spelled — the dialog's copyable field goes through it too, so the address
     // bar and that field are the same string, which the headline test in test/page.test.tsx pins
-    // character for character.
-    const param = encodeConfigParam(shared)
-    // Recorded BEFORE the write: the render the write provokes must already be able to tell that
-    // this param is the app's own and not a share link (see `writtenSelections`).
-    writtenSelections.current.set(param, selection)
+    // character for character. This key has to be exactly what useSearchParams() will report once
+    // the URL below is written, so it is taken from that URL rather than encoded a second time
+    // beside it: two calls agree today only because shareConfigPath happens to call
+    // encodeConfigParam, and the day that spelling gains a version marker or a second param, a
+    // separately encoded key would stop matching — silently. What breaks then is the self-write
+    // exclusion in `writtenSelections`: the app's own write is read back as a share link, and the
+    // resolving overlay drops over the dialog that caused it with mining paused behind it.
+    const path = shareConfigPath(shared)
+    const param = new URL(path, window.location.origin).searchParams.get('config') ?? ''
     // A link recipient is already standing on this exact URL. Pushing a second, identical entry
     // would make Back a no-op that leaves the dialog open — the one outcome worth avoiding here.
-    if (new URLSearchParams(window.location.search).get('config') === param) return
+    if (new URLSearchParams(window.location.search).get('config') === param) {
+      // Nothing was pushed, so there is nothing for closing this dialog to take back off. The
+      // entry under it belongs to whoever put that URL there — a share link, typically — and
+      // history.back() on it walks the user out of the app, taking the mining run with them; in a
+      // fresh tab, where it is the first entry, it traverses nowhere at all and leaves
+      // `backInFlight` stuck true, silently deferring every later push forever.
+      pushedEntry.current = false
+      return
+    }
+    // Registered only when a write actually happens, and only for the param actually written.
+    // Registering above the early return would claim the LINK's own entry as one this page pushed:
+    // the next dialog closed would traverse onto it, find a selection in the map and REOPEN that
+    // earlier dialog instead of closing — with a live Deploy button, even for a link that "Start
+    // over" had dismissed — and its Cancel would then back off the top of the stack.
+    //
+    // Recorded BEFORE the write: the render the write provokes must already be able to tell that
+    // this param is the app's own and not a share link (see `writtenSelections`).
+    writtenSelections.current.set(param, { selection, generation: runGeneration.current })
     // The App Router's patched pushState, deliberately, rather than router.push(): this is a URL
     // change and nothing else — no navigation, no RSC request, no scroll reset, and no re-render
     // of a route tree with five to eight mining workers under it — while the patch is what keeps
     // useSearchParams() reporting the truth afterwards.
-    window.history.pushState(null, '', shareConfigPath(shared))
+    window.history.pushState(null, '', path)
     pushedEntry.current = true
   }, [])
 
@@ -267,6 +306,11 @@ function HomeContent() {
     // nothing else would hand mining back until (or unless) that promise settles — and `paused`
     // is a HOST pause, which the status bar's own Resume deliberately cannot clear.
     setDeploying(false)
+    // A push waiting on an in-flight back describes the dialog that was open when the card was
+    // clicked — and this is that dialog closing. Left standing, the traversal would flush it: the
+    // address bar would name a result with no dialog on screen, `pushedEntry` would be true for it,
+    // and closing the NEXT dialog would back onto that entry and reopen a result already dismissed.
+    deferredPush.current = undefined
     if (!pushedEntry.current) return
     pushedEntry.current = false
     backInFlight.current = true
@@ -292,7 +336,13 @@ function HomeContent() {
         return
       }
       const param = new URLSearchParams(window.location.search).get('config')
-      const restored = param ? writtenSelections.current.get(param) : undefined
+      const entry = param ? writtenSelections.current.get(param) : undefined
+      // An entry from a retired run restores nothing: "Start over" threw that run away, and its
+      // URLs stay reachable (a pushed entry cannot be un-pushed) but must not put its dialog back
+      // on a page whose Configure form is now unlocked and empty. The entry itself stays in the
+      // map — see `runGeneration` — so the param is still recognised as the app's own here.
+      const restored =
+        entry && entry.generation === runGeneration.current ? entry.selection : undefined
       pushedEntry.current = Boolean(restored)
       // Whatever the URL names, including nothing: Forward puts the result back — with its own
       // config, the pairing intact — and Back closes the dialog. A link's own `?config=` is not
@@ -312,6 +362,13 @@ function HomeContent() {
   // the run away rather than pretending it survived.
   const startOver = useCallback(() => {
     setConfig(undefined)
+    // Retires every `?config=` written for the run being discarded. Their entries survive in the
+    // back/forward stack whatever this does — pushing is the only way to remove one, and it removes
+    // the wrong end — so Forward can still land on a discarded result's URL; this is what makes
+    // that a bare page rather than a live Deploy button for a result mined under a config nobody
+    // is on any more. Bumped BEFORE closeSelection below, so the popstate its history.back() queues
+    // is already reading the new generation.
+    runGeneration.current += 1
     // Clears the link candidate too, if that is what is open: `linkDismissed` below puts the link
     // out of reach for good, and a dialog still deploying its config would be the one piece of it
     // left reachable after the reset. Through closeSelection so the address bar is reset with it:
