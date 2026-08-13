@@ -15,7 +15,12 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      {/* A column at least as tall as the viewport, with <main> taking the slack, so the footer
+          sits on the bottom edge of the window when there is little to show rather than floating
+          mid-page above dead space. On a full run it is pushed below the results and reached by
+          scrolling, exactly as before — this pins it to the bottom of the *page*, not the viewport.
+          `dvh` rather than `vh` so mobile browser chrome does not leave it a bar's height short. */}
+      <body className="flex min-h-dvh flex-col">
         <Providers>
           {/* Sticky, and a fixed height so the mining bar has something exact to pin below (see
               MiningStatusBar's `top-14`). The spec puts the wallet button in the always-in-view
@@ -44,9 +49,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </div>
             </div>
           </header>
-          <main>{children}</main>
+          {/* `flex-1` is what makes the footer sit on the bottom edge on a short page: main
+              absorbs the leftover height rather than the footer being dragged up to meet the
+              content. It also keeps main tall enough for the mining bar portaled into it to have
+              somewhere to stick. */}
+          <main className="flex-1">{children}</main>
           {/* Normal document flow, below everything else — the results grid can hold 200 cards,
-              so this sits a long way down on a full run. It is not sticky and reaches for no
+              so this sits a long way down on a full run. It is not fixed and reaches for no
               z-index: nothing here is positioned, so it cannot contest the sticky header, the
               sticky mining bar, or the deploy dialog's backdrop. */}
           <Footer />
