@@ -7,13 +7,16 @@ import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
 
 // Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
 //
-// One thing to know before reading the `key` regression test below: it is deliberately NOT a
-// reproduction of anything a user can currently do. Handing the dialog a second candidate with no
-// unmount in between would leave the first candidate's `status`/`completed` state rendered above
-// the second one's address, and `key={selected.address}` is what prevents that — but see the
-// comment in page.tsx: no code path reaches that state today. The test exists so the guard cannot
-// be deleted as dead weight, and it drives the swap through the mocked MiningView, which is
-// exactly why it can reach a state the real one cannot.
+// One thing to know before reading the `key` regression test below: it reproduces a state a user
+// can now walk into. Handing the dialog a second candidate with no unmount in between leaves the
+// first candidate's `status`/`completed` state rendered above the second one's address, and
+// `key={selected.address}` is what prevents that. It used to be unreachable — a modal overlay lay
+// over the grid, so no second card could be clicked while a dialog was open — and the test existed
+// only so the guard could not be deleted as dead weight. The dialog is non-modal now and does not
+// dismiss on interaction outside, so a card behind it is an ordinary live control: "swaps to
+// another result when a card behind the open dialog is clicked" walks the same path with a real
+// click. This one keeps driving it through the mocked MiningView because it needs the swap to land
+// on a dialog whose deploy has already COMPLETED, which is the state whose leftovers matter.
 
 const CONFIG = { owners: ['0x' + '11'.repeat(20)], threshold: 1, safeVersion: '1.4.1', chainId: 1 }
 
@@ -163,15 +166,25 @@ vi.mock('@safe-global/protocol-kit', () => ({
 
 // The App Router patches window.history.pushState/replaceState so that a client-side URL write is
 // reflected by useSearchParams() — dist/client/components/app-router.js hands the new URL to
-// ACTION_RESTORE before delegating to the native method. jsdom does not, so the two lines below
-// stand in for that patch, and useSearchParams() is a real subscription rather than a snapshot.
-// Without this the suite would be testing a page whose URL writes it cannot see, which is
-// precisely the half that can go wrong.
+// ACTION_RESTORE before delegating to the native method. jsdom does not, so the lines below stand
+// in for that patch, and useSearchParams() is a real subscription rather than a snapshot. Without
+// this the suite would be testing a page whose URL writes it cannot see, which is precisely the
+// half that can go wrong.
+//
+// BOTH methods, as the App Router patches both: the page replaces rather than pushes when a chain
+// switch carries an open selection onto another chain (see `replaceSelectionUrl`), and a stand-in
+// that only mirrored pushes would leave useSearchParams() describing the pre-switch URL — a
+// disagreement production does not have.
 const nativePushState = window.history.pushState.bind(window.history)
 window.history.pushState = ((data: unknown, unused: string, url?: string | URL | null) => {
   nativePushState(data, unused, url)
   historySync.fromLocation()
 }) as typeof window.history.pushState
+const nativeReplaceState = window.history.replaceState.bind(window.history)
+window.history.replaceState = ((data: unknown, unused: string, url?: string | URL | null) => {
+  nativeReplaceState(data, unused, url)
+  historySync.fromLocation()
+}) as typeof window.history.replaceState
 window.addEventListener('popstate', () => historySync.fromLocation())
 
 vi.mock('next/navigation', async () => {
@@ -301,6 +314,9 @@ const SAFE_SETUP = {
 }
 
 beforeEach(() => {
+  // Restores the hoisted implementation above (connected, on chain 1) after any test that has
+  // pointed the wallet somewhere else — vi.fn(impl).mockReset() puts `impl` back.
+  useAccountMock.mockReset()
   searchParamsRef.current = new URLSearchParams()
   linkCandidateOverride.current = undefined
   loadSafeConstantsMock.mockReset().mockResolvedValue(SAFE_SETUP)
@@ -371,12 +387,13 @@ async function chooseChain(
 }
 
 /**
- * The chain the header currently reads — Radix renders the trigger as a combobox. `hidden`
- * because an open deploy dialog is modal and aria-hides the page behind it: the header is still
- * there, and what it says is still the question.
+ * The chain the header currently reads — Radix renders the trigger as a combobox. No
+ * `{ hidden: true }`: it used to need one because an open deploy dialog was modal and aria-hid
+ * the page behind it, so the header was readable but not reachable. The dialog is non-modal now,
+ * the header is in the accessibility tree whether or not a result is open, and this queries it as
+ * a user's screen reader would find it.
  */
-const shownChain = () =>
-  screen.getByRole('combobox', { name: /^chain$/i, hidden: true }).textContent
+const shownChain = () => screen.getByRole('combobox', { name: /^chain$/i }).textContent
 
 describe('Page', () => {
   // The headline of this change: the chain is no longer one of the Configure card's fields. It
@@ -657,13 +674,12 @@ describe('Page', () => {
     // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
     // the element position and only `key={selected.address}` forces a fresh instance.
     //
-    // NOT a reachable sequence: the real MiningView cannot call `onSelect` from behind a modal
-    // overlay, and the only other `setSelected` caller (the link-candidate effect) runs in a
-    // window where `awaitingLinkCandidate` has left the grid empty, so no dialog can be open to
-    // swap underneath. The mock can make the call the real component cannot, which is the whole
-    // point: it pins the guard so nobody deletes it as redundant, without pretending the hole is
-    // currently open. fireEvent rather than userEvent because the modal sets `pointer-events:
-    // none` on the rest of the body — a real click is precisely what this is not.
+    // A reachable sequence now, and the ordinary one: the dialog is non-modal and does not dismiss
+    // on interaction outside, so the grid behind it takes real clicks (see "swaps to another
+    // result when a card behind the open dialog is clicked", which uses userEvent for exactly
+    // that). It is driven here through the mocked MiningView because this test needs the swap to
+    // land while candidate A's deploy has already COMPLETED — the state whose leftovers are what
+    // the `key` prevents from being rendered above another address.
     fireEvent.click(screen.getByText('select-b'))
 
     // The dialog now shows candidate B, and nothing of candidate A's deploy survives: not the
@@ -750,11 +766,12 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
 
     // Nothing is mining: MiningView is not mounted at all, and the Configure form is still
-    // sitting there unsubmitted for a recipient who wants to start their own search. `hidden`
-    // because the dialog is modal and Radix aria-hides the page behind it — the form is there,
-    // and is what the recipient meets when they close the dialog.
+    // sitting there unsubmitted for a recipient who wants to start their own search — and, since
+    // the dialog stopped being modal, reachable rather than merely present. (This asked for it
+    // with `{ hidden: true }` while Radix aria-hid the page behind the dialog; dropping that is
+    // the stronger query, not a looser one.)
     expect(screen.queryByTestId('mining-view')).toBeNull()
-    expect(screen.getByRole('button', { name: 'submit-config', hidden: true })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
     // …and not the locked "1 owner · threshold 1 · …" summary, which would mean it had been
     // submitted and a search started on the recipient's behalf.
     expect(screen.queryByText(/1 owner/i)).toBeNull()
@@ -964,11 +981,12 @@ describe('Page', () => {
   //
   // That state is reachable by a real user — the test above walks straight into it by submitting
   // *during* the reconstruction (by keyboard: the overlay takes the pointer route but not focus),
-  // before any dialog exists. Only this particular ORDERING (submit after the dialog is already
-  // up) is out of reach, because the dialog is modal
-  // and the form behind it takes no clicks; userEvent refuses one outright, which is why fireEvent
-  // is used here, as in the `key` test above. So the modal is not what makes any of this safe, and
-  // nothing here may rest on it: the pairing of candidate and config is the whole guarantee.
+  // before any dialog exists. This ORDERING (submit after the dialog is already up) was out of
+  // reach while the dialog was modal and the form behind it took no clicks; it is an ordinary
+  // click now that it is not. fireEvent is kept because what this test is about is the pairing
+  // surviving the submit, not the route to it. The modal never was what made any of this safe,
+  // and nothing here rested on it: the pairing of candidate and config is the whole guarantee —
+  // which is exactly why removing the modal changed nothing below.
   // DeployDialog's `plan.address !== candidate.address` refusal would catch a drift after the
   // fact, at the wallet step; nothing should ever get that far.
   it('keeps the deploy dialog on the config its address came from when a different one is submitted underneath it', async () => {
@@ -1858,5 +1876,273 @@ describe('Page', () => {
     // Nothing was re-derived to produce it: the pair came out of the map, not out of the URL.
     expect(loadSafeConstantsMock).not.toHaveBeenCalled()
     expect(spinner()).toBeNull()
+  })
+
+  // HEADLINE 1. The chain moved into the header so it could be changed at any time — and until
+  // now "any time" excluded the one moment a user most wants it, with a result open in front of
+  // them. The deploy dialog was a Radix modal: an overlay over the whole page, focus trapped, and
+  // everything outside it `aria-hidden`. The header was there and unusable.
+  //
+  // `getByRole` without `{ hidden: true }` throughout, deliberately: that is the assertion. It
+  // ignores anything inside an `aria-hidden` subtree, so every query below fails while the dialog
+  // is modal — and the pointer click fails too, because a modal sets `pointer-events: none` on
+  // the rest of the body. Mouse and assistive technology have to reach it, not one or the other.
+  //
+  // `<Page />` bare rather than inside RootLayout, so the selector renders in place instead of
+  // being portaled into the header. What is under test here is what a modal does to everything
+  // outside it — aria-hidden and pointer-events, neither of which cares where the control sits —
+  // and the header placement itself is pinned by the first test in this file. It is also the only
+  // arrangement jsdom will run: rendering the real ChainSelector through the layout's header slot
+  // and then updating the page hangs React's commit in this environment, on `main` as much as
+  // here (a Radix Select portaled into a node the same root renders). The browser, where z-index
+  // and the overlay are the actual obstacle, is covered by the headless run instead.
+  it('lets the chain be changed from the header while the deploy dialog stays open', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    // Sepolia first, so the switch below is one of the six that costs nothing and asks nothing:
+    // what is under test here is reaching the control at all, not the confirmation a mainnet
+    // crossing puts in front of it (which has its own test below).
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByRole('dialog')).toBeDefined()
+
+    // The page behind the dialog is still a page: its controls are in the accessibility tree
+    // rather than hidden behind an overlay that only a mouse could ever have got past.
+    expect(screen.getByRole('button', { name: 'select-b' })).toBeDefined()
+    expect(screen.getByRole('combobox', { name: /^chain$/i })).toBeDefined()
+
+    await chooseChain(user, /polygon/i)
+
+    // The header moved, and the dialog is still open on the same result — using the page behind
+    // it is not a dismissal.
+    expect(shownChain()).toContain('Polygon')
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // HEADLINE 2. The consequence of headline 1, and the half that decides whether the guarantee
+  // still holds: the header and the open dialog must not be able to disagree about where the gas
+  // is spent. A switch among the six non-mainnet chains provably does not change the address
+  // (identical factory, identical initializer hash, identical initCodeHash — measured on live
+  // RPCs, see lib/config.ts), so the selection is carried across rather than left behind: the
+  // config still derives exactly the address on screen, which is what the pairing claims.
+  //
+  // Everything downstream of `selection.config.chainId` has to come with it, and this drives all
+  // four: the description sentence that names where the money goes, the wallet's wrong-chain gate,
+  // the copyable share link, and the URL in the address bar.
+  it('carries the open selection to the new chain on a same-class switch', async () => {
+    // The wallet sits on Polygon throughout. Before the switch the dialog is on Sepolia and so
+    // gated behind "Switch network to continue"; after it, the gate has to have opened by itself.
+    useAccountMock.mockReturnValue({
+      isConnected: true,
+      address: '0x' + 'cc'.repeat(20),
+      chainId: 137,
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    const address = (screen.getByRole('dialog').textContent ?? '').match(/0x[0-9a-f]{40}/i)?.[0]
+    expect(address).toBe(CANDIDATE_A.address)
+    expect(sharedChainId()).toBe(11155111)
+    expect(screen.getByRole('button', { name: /switch network to continue/i })).toBeDefined()
+
+    await chooseChain(user, /polygon/i)
+
+    // The address on screen has not moved — it cannot, which is the entire reason this is allowed
+    // to happen at all.
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    // …and everything that names a chain now names the new one.
+    expect(sharedChainId()).toBe(137)
+    expect(screen.getByRole('dialog').textContent).toContain('Polygon')
+    expect(screen.getByRole('dialog').textContent).not.toContain('Sepolia')
+    // The wrong-chain comparison is made against the carried config, so the gate opens and the
+    // button that spends the gas appears — on the chain the header is showing.
+    expect(screen.queryByRole('button', { name: /switch network to continue/i })).toBeNull()
+    expect(deployButton()).toBeDefined()
+    // The address bar is still the same string as the copyable link, and both name Polygon: a
+    // link copied out of here after the switch has to reproduce what this dialog would deploy.
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+    expect(decodeConfigParam(new URLSearchParams(window.location.search).get('config') ?? '')
+      .config?.chainId).toBe(137)
+
+    // The carry CORRECTED the entry the user is standing on rather than stacking a new one on top
+    // of it. Back therefore leaves the dialog behind entirely, instead of landing on a Sepolia
+    // copy of the same result that the header — which does not move on a traversal — would then
+    // contradict.
+    await traverse(() => window.history.back())
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.search).toBe('')
+  })
+
+  // The other half of the carry: what a switch must NOT do. Crossing the mainnet boundary changes
+  // the singleton and so every address found, including the one on screen — so it is asked about,
+  // and confirming is a real reset. Reachable with the dialog open for the first time now that the
+  // header is usable from one, which is why it is driven with the dialog open rather than closed
+  // (the closed-dialog version is above).
+  it('asks before a mainnet crossing with the dialog open: declining leaves it, confirming clears it', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const opened = window.location.href
+
+    await chooseChain(user, /ethereum/i)
+
+    // Asked, not done. (The confirmation is itself modal, so it is queried by its own text: while
+    // it is up it aria-hides the deploy dialog behind it, exactly as intended.)
+    expect(await screen.findByText(/switch to ethereum\?/i)).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /keep mining/i }))
+
+    // Declined leaves everything alone — the chain, the run, and the open dialog with its own
+    // config still paired to the candidate on screen.
+    expect(shownChain()).toContain('Sepolia')
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(sharedChainId()).toBe(11155111)
+    expect(window.location.href).toBe(opened)
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+
+    await chooseChain(user, /ethereum/i)
+    await user.click(screen.getByRole('button', { name: /switch and start over/i }))
+
+    // Confirmed is the reset "Start over" performs, and it takes the dialog with it: the address
+    // it names is not this Safe's address on Ethereum, so it cannot be carried and must not stay.
+    expect(shownChain()).toContain('Ethereum')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.search).toBe('')
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+  })
+
+  // The dismissal contract, restated for a dialog that no longer has an overlay. "Outside" used to
+  // be a sheet of dark glass whose only purpose was to be clicked; it is now the live page, and
+  // reaching for something on it — the chain selector above all — must not throw away the result
+  // that reach was for. Escape and the footer button are the deliberate ways out, and they still
+  // work.
+  it('does not dismiss the deploy dialog when the page behind it is used, and still closes on Escape', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const opened = window.location.href
+
+    // A real click on the page behind the dialog — the mining status text, which does nothing at
+    // all when clicked, so a closed dialog could only mean the click was read as a dismissal.
+    await user.click(screen.getByText('running'))
+
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    expect(window.location.href).toBe(opened)
+
+    // The deliberate route out is untouched.
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  // S1(c). The busy guards, verified against the new delivery rather than read off the old one:
+  // non-modal changes how outside interaction reaches the layer (no overlay to swallow it, no
+  // `pointer-events: none` on the body), so "an in-flight send cannot be dismissed by accident"
+  // has to be re-proved by a real click on the page and a real Escape, not by inspecting the
+  // handlers. The one deliberate, relabelled way out stays live.
+  it('S1: neither an outside click nor Escape can dismiss the deploy dialog while the sequence is in flight', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+
+    await user.click(screen.getByText('paused'))
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    // The X is gone for the same window, so the pointer has nothing accidental left either.
+    expect(screen.queryByRole('button', { name: /^close$/i })).toBeNull()
+
+    // …and the deliberate one still works, still saying what it is.
+    await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await release()
+  })
+
+  // The chain control is the one thing on the page behind an in-flight send that must NOT be
+  // live: the wallet is holding a transaction built for the chain the user read before they
+  // confirmed it, and carrying the open selection onto another chain mid-send would repoint the
+  // description, the share link and the wrong-chain gate at a chain that transaction is not on —
+  // the gate would even swap "Deploying…" for "Switch network to continue". So the selector is
+  // held still for exactly that window, and handed back the moment it settles.
+  it('holds the chain selector still while a deploy is in flight, and hands it back after', async () => {
+    const release = pendingDeploy()
+    // On the chain the run is mined for, so the deploy button is offered rather than the
+    // wrong-chain gate.
+    useAccountMock.mockReturnValue({
+      isConnected: true,
+      address: '0x' + 'cc'.repeat(20),
+      chainId: 11155111,
+    })
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /sepolia/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const chain = () => screen.getByRole('combobox', { name: /^chain$/i }) as HTMLButtonElement
+    expect(chain().disabled).toBe(false)
+
+    await user.click(deployButton())
+    expect(chain().disabled).toBe(true)
+    // Still saying which chain the transaction in flight is for.
+    expect(shownChain()).toContain('Sepolia')
+
+    await release()
+    await waitFor(() => expect(chain().disabled).toBe(false))
+    await chooseChain(user, /polygon/i)
+    expect(sharedChainId()).toBe(137)
+  })
+
+  // The consequence of the dialog no longer covering the grid, walked in through the front door:
+  // a card behind an open dialog is a live control, so clicking one swaps the dialog with no
+  // unmount in between. That is the state `key={selection.candidate.address}` exists for — the
+  // regression test above pins what it prevents; this pins that the route to it is now a single
+  // ordinary click, and that the address bar comes along.
+  it('swaps to another result when a card behind the open dialog is clicked, without closing first', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    const first = window.location.href
+
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
+    expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_A.address)
+    expect(window.location.href).toBe(
+      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
+    )
+
+    // One push, not a close and an open: Back lands on the first result's own entry rather than
+    // on a base URL a dismissal would have pushed in between.
+    await traverse(() => window.history.back())
+    expect(window.location.href).toBe(first)
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
   })
 })

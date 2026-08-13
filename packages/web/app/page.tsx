@@ -324,9 +324,32 @@ function HomeContent() {
     window.history.pushState(null, '', path)
   }, [])
 
+  // The same URL, for a selection that has been carried onto a new chain underneath an open
+  // dialog (see `changeChain`). A REPLACE, not a push: the user has not navigated anywhere — they
+  // are standing on the entry that names this result and have re-aimed it at another chain, so
+  // this is that entry, corrected. Pushing instead would leave the previous entry naming the same
+  // candidate on the old chain, and Back onto it would restore a dialog on Sepolia while the
+  // header still read Polygon — precisely the disagreement the carry exists to prevent.
+  //
+  // Only when the bar already names a result: the same rule as everywhere else here — a URL is
+  // only ever written on a path where there is something to write, and a dialog the address bar
+  // never named does not acquire one because the chain moved. Registered before the write, and
+  // only for the param actually written, for the reasons `pushSelectionUrl` sets out; the entry
+  // it replaces keeps its own (now unreachable) registration, since entries are only ever added.
+  const replaceSelectionUrl = useCallback((selection: Selection) => {
+    const shared = { ...selection.config, saltNonce: selection.candidate.saltNonce }
+    const path = shareConfigPath(shared)
+    const param = new URL(path, window.location.origin).searchParams.get('config') ?? ''
+    const current = new URLSearchParams(window.location.search).get('config')
+    if (current === null || current === param) return
+    writtenSelections.current.set(param, { selection, generation: runGeneration.current })
+    window.history.replaceState(null, '', path)
+  }, [])
+
   // Every route out of the dialog that is a USER ACTION IN THE APP goes through here — the footer
-  // button, Escape, the X, the overlay, and "Start over" — so that the URL always agrees with what
-  // is on screen. Closing by pressing the browser's own Back does NOT: the browser has already
+  // button, Escape, the X, and "Start over" — so that the URL always agrees with what is on
+  // screen. (There is no overlay in that list any more, and no dismissal by clicking outside: the
+  // dialog is non-modal, and using the page behind it is not a way out of it. See DeployDialog.) Closing by pressing the browser's own Back does NOT: the browser has already
   // changed the URL, and the popstate handler below is where that lands. Pushing there would
   // destroy the entry the user had just stepped off and strand them with no way forward.
   //
@@ -450,6 +473,17 @@ function HomeContent() {
     setPicked((previous) => previous ?? chainId)
   }, [chainId, closeSelection])
 
+  // What a chain switch is measured against: the chain whose addresses are at stake. Normally the
+  // submitted config's — the run on screen is what a crossing costs — but before anything is
+  // submitted there can still be something to lose, because a share link opens its dialog with no
+  // run at all. That result is as chain-bound as any mined one (its address holds on the six and
+  // not across the boundary), and now that the header is reachable from an open dialog it can be
+  // switched out from under it. So it is the fallback, and there is exactly one such value: it is
+  // handed to ChainSelector as the thing to ask about AND read back by `changeChain` as the thing
+  // to act on, which is the rule that comment establishes — a question put about one chain must
+  // never authorise a reset carried out against another.
+  const stakedChainId = config?.chainId ?? selection?.config.chainId
+
   // The header's chain picker, applied. It has already asked the user where asking was required —
   // ChainSelector holds a switch that costs results behind a confirmation, exactly as Configure
   // holds its fields behind "Start over" — so by the time this runs the switch is allowed to
@@ -476,22 +510,53 @@ function HomeContent() {
   //     same reset "Start over" performs — history entries retired, the link put out of reach, the
   //     dialog closed and the address bar cleared with it.
   //
-  // The open dialog, if there is one, is deliberately left where it is. `selection` carries the
-  // config its address was derived from, and repointing it at a different chain would change what
-  // the user is about to sign after they read it — while its history entry, and the share link in
-  // it, would go on naming the chain it was opened under. Closing and reopening the card is what
-  // moves a result to the new chain, and it says so on screen both before and after.
+  // THE OPEN DIALOG COMES WITH IT, and this reverses an earlier decision. It was left behind while
+  // the header was unreachable from an open dialog: a modal overlay meant the chain could not move
+  // underneath one, so "closing and reopening the card is what moves a result to the new chain"
+  // cost nothing. The dialog is non-modal now (see DeployDialog), so the chain moves while a
+  // result is on screen, and leaving `selection` where it was would mean the header saying
+  // Arbitrum over a dialog still deploying on Polygon — the disagreement this whole control exists
+  // to avoid, on the one screen where money is spent.
+  //
+  // Carrying it is safe for exactly the reason the same-class switch above is: the Safe address
+  // does not depend on the chain. Factory and initializer hash are identical everywhere and the
+  // initCodeHash takes one of two values, decided by which singleton protocol-kit picks — measured
+  // on live RPCs across all seven supported chains (lib/config.ts). So among the six the carried
+  // config still derives EXACTLY the address on screen, which is the whole content of the
+  // `{ candidate, config }` pairing: the config is not "close enough", it is still the one that
+  // produces that candidate. Nothing the dialog shows changes but the chain it names — the
+  // address, the saltNonce and the owners are all untouched — and DeployDialog's independent
+  // `plan.address !== candidate.address` refusal therefore passes for the right reason rather than
+  // by luck. A crossing is never carried: it is caught above and resets, because there the address
+  // genuinely would change.
+  //
+  // Not while a deploy is in flight, and that is what `deploying` gates the selector on rather
+  // than this branch quietly skipping: the wallet is holding a transaction built for the chain the
+  // user read before they confirmed, and repointing the description, the share link and the
+  // wrong-chain gate at a different one mid-send would describe that transaction wrongly (the gate
+  // would even replace "Deploying…" with "Switch network to continue"). The control is disabled
+  // for those seconds instead, which says so rather than ignoring the user.
   const changeChain = useCallback(
     (next: number) => {
       setPicked(next)
-      if (!config) return
-      if (chainSwitchDiscardsResults(config.chainId, next)) {
+      if (stakedChainId !== undefined && chainSwitchDiscardsResults(stakedChainId, next)) {
         startOver()
         return
       }
-      setConfig({ ...config, chainId: next })
+      if (selection && selection.config.chainId !== next) {
+        const carried = {
+          candidate: selection.candidate,
+          config: { ...selection.config, chainId: next },
+        }
+        setSelection(carried)
+        // The address bar and the copyable link are the same string, and both encode `chainId`:
+        // the entry naming this result is corrected in place so a link copied after the switch
+        // reproduces what this dialog would now deploy.
+        replaceSelectionUrl(carried)
+      }
+      if (config) setConfig({ ...config, chainId: next })
     },
-    [config, startOver],
+    [config, selection, stakedChainId, startOver, replaceSelectionUrl],
   )
 
   // Where the selector is rendered: an element the layout puts in the sticky header. Resolved
@@ -506,7 +571,16 @@ function HomeContent() {
     setChainSlot(document.getElementById(HEADER_CHAIN_SLOT_ID))
   }, [])
   const chainSelector = (
-    <ChainSelector chainId={chainId} runChainId={config?.chainId} onSelect={changeChain} />
+    <ChainSelector
+      chainId={chainId}
+      runChainId={stakedChainId}
+      // Held still for exactly as long as a transaction is in the wallet's hands — see
+      // `changeChain`. The same window MiningView is paused for, and for the same reason: the one
+      // moment a user must read an address, and the chain it is being deployed on, against a
+      // surface that is not moving.
+      disabled={deploying}
+      onSelect={changeChain}
+    />
   )
 
   // Pairs the clicked card with the config it was mined under, at the moment it is clicked. Stable
@@ -666,33 +740,25 @@ function HomeContent() {
             the toast mirror in DeployDialog — mounted in app/layout.tsx, outside every subtree
             that can unmount here — is what carries the outcome instead.
 
-            `key` guards a path that does not currently exist, and is kept deliberately as
-            defence-in-depth. What it prevents is a completed deploy of one candidate leaving
-            its "Safe deployed at 0x…" status and permanently disabled button rendered above a
-            DIFFERENT candidate's address — which needs `selection` to change from one candidate
-            to another with no unmount in between, and nothing can do that today:
+            `key` is LIVE defence, and the ordinary way to reach it is now a single click. What it
+            prevents is a completed (or in-flight) deploy of one candidate leaving its "Safe
+            deployed at 0x…" status and permanently disabled button rendered above a DIFFERENT
+            candidate's address — which needs `selection` to change from one candidate to another
+            with no unmount in between. That used to be unreachable, because a modal overlay lay
+            over the grid and no second card could be clicked while a dialog was open. The dialog
+            is non-modal now, and it deliberately does not dismiss on interaction outside (see
+            DeployDialog): a card behind it is a live control, so clicking one runs
+            `selectFromGrid` straight into this element position with the previous candidate's
+            dialog still mounted. Every other `setSelection` caller stays as it was —
+            `onOpenChange(false)` clears and unmounts; the link-candidate effect is one-shot and
+            runs in a window where the grid is empty; the popstate reconciliation hands over
+            either `undefined` or the selection its entry names — and the carry in `changeChain`
+            keeps the same candidate, so it re-renders this dialog rather than replacing it, which
+            is exactly what it must do.
 
-              - every user route out of the dialog runs `onOpenChange(false)` below, which
-                clears `selection` and unmounts it; a modal overlay is what stops a second card
-                from being clicked while one is open;
-              - the link-candidate effect above cannot land on an open dialog: before a submit
-                there is no MiningView and so no card to click at all, and a recipient who
-                submits while it is still in flight gets a MiningView held paused by
-                `awaitingLinkCandidate` for precisely that window, so the grid has no candidates
-                either. Either way there is nothing for `selection` to be already set to, and
-                `linkCandidateAttempted` then makes it one-shot;
-              - the popstate reconciliation is the third and last `setSelection` caller, and what
-                it can hand this component is either `undefined` (which unmounts it, not a swap)
-                or the selection the entry it landed on names. A swap would need a traversal FROM
-                an entry naming this dialog straight ONTO one naming another, and the two can
-                never be neighbours: a card can only be clicked with no dialog open, so the entry
-                a card click pushes always sits on top of one that opens nothing — a base entry
-                pushed by a close, or a result's entry whose run has since been retired — and
-                pushing discards whatever was forward of it.
-
-            So this is one `setSelection` caller away from mattering, and it costs nothing.
-            Deleting it does not fail anything a user can currently do — see the regression
-            test in test/page.test.tsx, which drives the swap through a mocked MiningView. */}
+            So it is no longer a guard against a hypothetical: the regression test in
+            test/page.test.tsx pins the state it protects, and the "clicking a card behind the
+            open dialog swaps it cleanly" test walks in through the front door. */}
         {selection && (
           <DeployDialog
             key={selection.candidate.address}

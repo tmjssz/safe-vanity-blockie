@@ -67,24 +67,51 @@ export function DeployDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    /* NON-MODAL, and that is a deliberate reversal. As a modal this dialog laid a `z-50` overlay
+       over the whole viewport, trapped focus and `aria-hidden`-ed everything behind it — which
+       includes the sticky header, and therefore the chain selector. The chain could not be
+       changed without closing the result first. Raising the header above the overlay instead
+       would have let a mouse through while leaving the control invisible to keyboard and screen
+       reader users, which is worse than not offering it at all; non-modal is the honest version:
+       Radix drops the overlay entirely, stops trapping focus and hides nothing, so the page
+       behind really is the page. What follows from it is handled in page.tsx — a card behind this
+       dialog is now clickable, and the header's chain now carries the open selection with it. */
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
           inline, and closing it unmounts the dialog outright — page.tsx renders it only while a
           candidate is selected, keyed on that candidate's address, and clears the selection when
-          it closes. So the three *accidental* dismissals — Escape, the overlay, the X — are
-          blocked outright. The deliberate, warned footer button below stays live on purpose: a
-          wallet that never settles its promise (the popup closed without a response) would
-          otherwise trap the user in this dialog forever, and an unclosable dialog is a worse
-          failure than a knowingly abandoned one. The toast mirror below is what carries the
-          outcome once the inline copy has gone with the dialog. */}
+          it closes. So the *accidental* dismissals are blocked: Escape and the X while busy, and
+          interaction outside always.
+
+          "Outside" is the one that changed meaning with the overlay. There is no longer a sheet
+          of dark glass out there whose only possible purpose is "dismiss this" — there is the
+          live page, whose controls the user is now invited to use, and the chain selector in
+          particular is the entire point of this change. Dismissing on a pointerdown or a focus
+          move outside would mean reaching for the header closed the result it was meant to
+          re-aim, and tabbing off the last control did the same. So it never dismisses, busy or
+          not: a strictly stronger rule than the `busy`-only guard it replaces, and one that does
+          not silently depend on which chain-selector internals happen to sit in this layer's
+          stack. Clicking another result card still replaces what is on screen — that goes through
+          page.tsx's `selectFromGrid` and its `key`, not through a dismissal.
+
+          The deliberate, warned footer button below stays live on purpose: a wallet that never
+          settles its promise (the popup closed without a response) would otherwise trap the user
+          in this dialog forever, and an unclosable dialog is a worse failure than a knowingly
+          abandoned one. Browser Back is the other way out, and page.tsx reconciles it. The toast
+          mirror below is what carries the outcome once the inline copy has gone with the dialog.
+
+          The height cap leaves room for the header rather than the 1rem the shadcn default takes:
+          centred, `100dvh-7rem` cannot reach under the layout's `h-14` sticky bar at any viewport
+          height, so the control this dialog exists to leave usable is never covered by it. Below
+          that the content scrolls inside the dialog, as it already did. */}
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+        className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-2xl"
         showCloseButton={!busy}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault()
         }}
         onInteractOutside={(event) => {
-          if (busy) event.preventDefault()
+          event.preventDefault()
         }}
       >
         <DialogHeader>
@@ -136,7 +163,7 @@ export function DeployDialog({
             `break-all` for the same reason the address above uses it. Subordinate to the blockie
             and the address by size and weight — those remain the thing being verified. */}
         <div className="flex flex-col gap-2 rounded-lg border p-4">
-          <h3 className="text-sm font-medium">The config this address comes from</h3>
+          <h3 className="text-sm font-medium">Safe config</h3>
           <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
             <dt className="text-muted-foreground">Owners</dt>
             <dd className="flex min-w-0 flex-col gap-1">
@@ -152,12 +179,14 @@ export function DeployDialog({
             </dd>
             <dt className="text-muted-foreground">Safe version</dt>
             <dd>{config.safeVersion}</dd>
-            <dt className="text-muted-foreground">Network</dt>
-            {/* By name, never a raw id: `chainName` is the same lookup the description above
-                uses. The fallback cannot be reached from a validated config — validateMineConfig
-                rejects any chain not in SUPPORTED_CHAINS — but printing nothing at all would be
-                the worst possible outcome on this screen. */}
-            <dd>{chainName ?? `Chain ${config.chainId}`}</dd>
+            {/* No chain row. These three are what the ADDRESS is derived from and what a user
+                cannot change without invalidating it; the chain is not one of them — the same
+                address is this Safe's address on all six non-mainnet chains (measured; see
+                lib/config.ts), and it is a live control in the header that can move while this
+                dialog is open. Listing it here as though it were a property of the config would
+                have made it the one line in this block that changes under the reader. Where the
+                gas goes is still named, once, in the description above — which is the sentence
+                about spending money, and which follows the header. */}
           </dl>
         </div>
 

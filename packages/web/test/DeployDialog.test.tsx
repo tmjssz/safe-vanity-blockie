@@ -107,7 +107,7 @@ describe('DeployDialog', () => {
   // Rendered with a config that shares nothing with the fixture used everywhere else in this file
   // (nor with the connected account), so the assertions can only pass if the block reads this
   // component's own `config` prop.
-  it('names the config it deploys with: owners in full, threshold, Safe version and chain', async () => {
+  it('names the config it deploys with: owners in full, threshold and Safe version', async () => {
     const senders = {
       owners: ['0x' + '44'.repeat(20), '0x' + '55'.repeat(20)],
       threshold: 2,
@@ -121,13 +121,69 @@ describe('DeployDialog', () => {
     for (const owner of senders.owners) expect(screen.getByText(owner)).toBeDefined()
     expect(screen.getByText('2 of 2')).toBeDefined()
     expect(screen.getByText('1.3.0')).toBeDefined()
-    // By name, not id 137.
-    expect(screen.getAllByText(/Polygon/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/137/)).toBeNull()
 
     // And nothing of the config this file's other tests use leaked in from anywhere else.
     expect(screen.queryByText(config.owners[0] as string)).toBeNull()
     expect(screen.queryByText('1.4.1')).toBeNull()
+  })
+
+  // The list is "Safe config" now, and the chain is not in it. These three fields are what the
+  // ADDRESS is derived from and what cannot change without invalidating it; the chain is neither —
+  // the same address is this Safe's address on all six non-mainnet chains, and it is a live header
+  // control that can move while this dialog is open, so listing it here would have made it the one
+  // line in the block that changes under the reader. Where the money goes is still named, once, in
+  // the description above.
+  it('titles the summary "Safe config" and leaves the chain out of it, keeping it in the description', async () => {
+    await renderDialog({
+      config: {
+        owners: ['0x' + '44'.repeat(20)],
+        threshold: 1,
+        safeVersion: '1.3.0' as const,
+        chainId: 137,
+      },
+    })
+
+    const summary = screen.getByRole('heading', { name: /^safe config$/i })
+    expect(screen.queryByText(/the config this address comes from/i)).toBeNull()
+    // Not a row in the list…
+    expect(summary.parentElement?.textContent).not.toMatch(/network/i)
+    expect(summary.parentElement?.textContent).not.toMatch(/polygon/i)
+    // …but still said, by name and not as id 137, in the sentence about spending gas.
+    const description = screen.getByText(/spends gas/i)
+    expect(description.textContent).toMatch(/Polygon/)
+    expect(screen.queryByText(/137/)).toBeNull()
+  })
+
+  // Non-modal, and this is what that has to mean: the page behind stays in the accessibility tree
+  // (Radix `hideOthers` would have aria-hidden it), there is no overlay over it, and interacting
+  // with it is not a dismissal. That last one is a deliberate reversal — with the overlay gone,
+  // "outside" is the live page, and reaching for the header's chain selector must not throw away
+  // the result that reach was for. Escape stays the deliberate way out.
+  it('leaves the page behind it usable: nothing hidden, no overlay, and no dismissal on an outside click', async () => {
+    const onOpenChange = vi.fn()
+    const { DeployDialog } = await import('../components/DeployDialog')
+    render(
+      <div>
+        <button type="button">behind the dialog</button>
+        <DeployDialog
+          open
+          candidate={candidate}
+          config={config}
+          onOpenChange={onOpenChange}
+          onDeployStart={vi.fn()}
+          onDeploySettled={vi.fn()}
+        />
+      </div>,
+    )
+
+    const behind = screen.getByRole('button', { name: /behind the dialog/i })
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull()
+
+    await userEvent.click(behind)
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    await userEvent.keyboard('{Escape}')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('pauses mining the moment a deploy is initiated', async () => {

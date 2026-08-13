@@ -31,8 +31,11 @@ export interface ChainSelectorProps {
   /** The chain the header shows, and the one a pick is compared against for being a no-op. */
   chainId: number
   /**
-   * The chain the run on screen was mined for — the submitted config's — or undefined when nothing
-   * is submitted and there is nothing a switch could cost.
+   * The chain whose addresses a switch is measured against: the run on screen, if there is one,
+   * and otherwise the open result's — a share link opens a dialog with no run behind it, and that
+   * result is as chain-bound as any mined one. Undefined when there is neither, and so nothing a
+   * switch could cost. The page decides which it is (see `stakedChainId` there); this control only
+   * asks about it.
    *
    * This, and NOT the chain above, is what the question is asked about, because it is what the
    * answer acts on: the page discards the run when the submitted config's chain and the new one
@@ -49,9 +52,18 @@ export interface ChainSelectorProps {
    * not this control's; it decides only whether to ask first.
    */
   onSelect: (chainId: number) => void
+  /**
+   * Held still while a deploy transaction is in the wallet's hands. The deploy dialog is non-modal
+   * — the whole point of this control living in the header — so without this the chain could move
+   * while a send is in flight, and the open dialog's description, share link and wrong-chain gate
+   * would follow it away from the transaction the user actually confirmed. Disabled rather than
+   * silently ignored: a select that snaps back with no explanation is worse than one that is
+   * visibly unavailable for the few seconds it takes.
+   */
+  disabled?: boolean
 }
 
-export function ChainSelector({ chainId, runChainId, onSelect }: ChainSelectorProps) {
+export function ChainSelector({ chainId, runChainId, disabled, onSelect }: ChainSelectorProps) {
   // The chain the user picked that is waiting on a confirmation, and the dialog's own open state:
   // one value, because a pending switch and an open dialog are the same fact.
   const [pending, setPending] = useState<number | undefined>()
@@ -77,7 +89,7 @@ export function ChainSelector({ chainId, runChainId, onSelect }: ChainSelectorPr
 
   return (
     <>
-      <Select value={String(chainId)} onValueChange={choose}>
+      <Select value={String(chainId)} onValueChange={choose} disabled={disabled}>
         {/* Labelled rather than captioned: the header has no room for a field label, and the
             trigger already displays the chain's name as its value. */}
         <SelectTrigger id="header-chain" size="sm" aria-label="Chain">
