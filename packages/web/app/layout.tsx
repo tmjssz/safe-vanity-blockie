@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConnectButton } from '../components/ConnectButton'
+import { Footer } from '../components/Footer'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Toaster } from '../components/ui/sonner'
 import { Providers } from './providers'
@@ -44,6 +45,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
           </header>
           <main>{children}</main>
+          {/* Normal document flow, below everything else — the results grid can hold 200 cards,
+              so this sits a long way down on a full run. It is not sticky and reaches for no
+              z-index: nothing here is positioned, so it cannot contest the sticky header, the
+              sticky mining bar, or the deploy dialog's backdrop. */}
+          <Footer />
           {/* Mounted once, here, so every toast.* call from anywhere in the tree — including
               server-rendered pages before hydration finishes — has a renderer to land in. */}
           <Toaster />
