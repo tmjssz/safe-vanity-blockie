@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ConfigSection } from '../components/ConfigSection'
 
+// ConfigForm reads the connected account to prefill owner 1. Nothing here is about the wallet, so
+// it answers "disconnected" throughout — without this the form renders with no WagmiProvider.
+vi.mock('wagmi', () => ({ useAccount: () => ({ address: undefined, isConnected: false }) }))
+
 const CONFIG = {
   owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
   threshold: 1,

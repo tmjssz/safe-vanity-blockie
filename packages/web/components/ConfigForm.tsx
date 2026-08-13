@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { useAccount } from 'wagmi'
 import {
   type ConfigErrors,
   isOwnerAddress,
@@ -60,6 +61,36 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [threshold, setThreshold] = useState(initial?.threshold ?? 1)
   const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? '1.4.1')
   const [errors, setErrors] = useState<ConfigErrors>({})
+
+  // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
+  // for, and the one they would otherwise paste from the header they just clicked.
+  //
+  // It can only ever fill a BLANK. Owners are part of the Safe address, so writing over an answer
+  // already on screen would change which Safe is mined with nothing to say so; the guard lives
+  // inside the updater rather than in this effect body precisely so it judges the rows React
+  // holds, not whatever this closure captured — a value typed between render and effect still
+  // wins. Returning `rows` untouched is a real no-op: React bails out on an identical reference.
+  //
+  // Keyed on the address alone, which settles three cases at once and is why none of them needs
+  // bookkeeping of its own:
+  //
+  //   - Connected before this mounted (wagmi's silent reconnect on load) — the address is simply
+  //     already here on the first pass, and a returning user meets a filled form.
+  //   - The wallet switches account. This re-runs, finds row 0 occupied, and declines. The first
+  //     address stands, as it does against anything else already typed.
+  //   - The user clears the field. The address has NOT changed, so this does not re-run and the
+  //     field stays empty. Watching the field instead would make owner 1 impossible to empty for
+  //     as long as a wallet is connected. Disconnecting and reconnecting is a different address
+  //     value (undefined and back), so that does fill it again — a new connection, a new blank.
+  const { address } = useAccount()
+  useEffect(() => {
+    if (!address) return
+    setOwners((rows) => {
+      const first = rows[0]
+      if (!first || first.value.trim().length > 0) return rows
+      return [{ ...first, value: address }, ...rows.slice(1)]
+    })
+  }, [address])
 
   const fieldPrefix = useId()
   const ownerFieldId = (index: number) => `${fieldPrefix}-owner-${index + 1}`
