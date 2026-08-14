@@ -39,7 +39,13 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        // Dimmed with the theme's own background and blurred, rather than a flat black wash: the
+        // page behind reads as out of play instead of merely darkened. It matches the backdrop
+        // DeployDialog paints for itself (it is non-modal, so Radix renders none for it), which
+        // is what makes every dialog in the app look like the same dialog. Set here rather than
+        // per call site because "consistent" cannot be maintained by six components remembering
+        // to pass the same class.
+        "fixed inset-0 z-50 bg-background/60 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props}
@@ -49,18 +55,15 @@ function DialogOverlay({
 
 function DialogContent({
   className,
-  overlayClassName,
   children,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
-  /** Styling for the backdrop, which this component renders and would otherwise hide. */
-  overlayClassName?: string
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay className={overlayClassName} />
+      <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

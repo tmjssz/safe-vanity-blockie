@@ -2,6 +2,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Button } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { cn } from '../lib/utils'
 
@@ -12,6 +18,31 @@ describe('cn', () => {
 
   it('drops falsy values', () => {
     expect(cn('p-2', false, undefined, 'text-sm')).toBe('p-2 text-sm')
+  })
+})
+
+// Every dialog in the app dims and blurs the page behind it, the way the deploy dialog's own
+// backdrop does. It lives in the primitive rather than at each call site because "consistent"
+// cannot be maintained by five components remembering to pass the same class.
+describe('the dialog backdrop', () => {
+  it('dims with the theme background and blurs, rather than a flat black wash', async () => {
+    const user = userEvent.setup()
+    render(
+      <Dialog>
+        <DialogTrigger>open</DialogTrigger>
+        <DialogContent>
+          <DialogTitle>title</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'open' }))
+    await screen.findByRole('dialog')
+
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')!
+    expect(overlay.className).toMatch(/backdrop-blur/)
+    expect(overlay.className).toMatch(/bg-background\/60/)
+    expect(overlay.className).not.toMatch(/bg-black/)
   })
 })
 

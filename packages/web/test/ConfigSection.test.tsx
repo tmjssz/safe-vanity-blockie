@@ -100,23 +100,6 @@ describe('ConfigSection', () => {
       expect(trigger.textContent).toBe('Learn more')
     })
 
-    // The deploy dialog draws its own backdrop (it is non-modal, so Radix renders none) and this
-    // one uses Radix's. Matching them is a styling choice, but the plumbing that carries it is
-    // not: DialogContent renders the overlay itself, so the class has to be threaded through a
-    // prop, and if that thread ever breaks the backdrop just silently looks wrong.
-    it('dims and blurs the page behind it, the way the deploy dialog does', async () => {
-      renderSection()
-      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
-      await screen.findByRole('dialog')
-
-      const overlay = document.querySelector('[data-slot="dialog-overlay"]')
-      expect(overlay).not.toBeNull()
-      expect(overlay?.className).toMatch(/backdrop-blur/)
-      expect(overlay?.className).toMatch(/bg-background\/60/)
-      // twMerge has to drop the default tint rather than leaving both on the element.
-      expect(overlay?.className).not.toMatch(/bg-black/)
-    })
-
     // The caveat is not another paragraph of explanation: it is the one thing in here a reader
     // must not skim past, so it is set as a warning box rather than as a fourth section heading.
     // Same treatment as the callout that appears once mining starts, so the two are recognisably

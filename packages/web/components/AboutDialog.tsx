@@ -52,14 +52,7 @@ export function AboutDialog({ trigger }: { trigger?: React.ReactNode }) {
           </Button>
         )}
       </DialogTrigger>
-      {/* The same backdrop the deploy dialog draws for itself: the page behind is dimmed with the
-          theme's own background rather than flat black, and blurred, so it reads as out of play
-          instead of merely darkened. That one is non-modal and paints its own (Radix renders no
-          overlay when `modal={false}`); this one is modal, so the class goes to Radix's. */}
-      <DialogContent
-        overlayClassName="bg-background/60 backdrop-blur-sm"
-        className="max-h-[85dvh] overflow-y-auto sm:max-w-lg"
-      >
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>About this app</DialogTitle>
           <DialogDescription className="sr-only">

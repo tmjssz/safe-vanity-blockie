@@ -268,6 +268,21 @@ describe('MiningStatusBar', () => {
       expect(onStartOver).not.toHaveBeenCalled()
     })
 
+    // One of the four dialogs that used to get the plain black wash while the deploy dialog and
+    // the About dialog were blurred. The backdrop is the primitive's now, so this is the check
+    // that the shared default actually reaches a dialog nobody styled by hand.
+    it('dims and blurs the page behind its confirmation', async () => {
+      const user = userEvent.setup()
+      renderBar({ resultCount: 80 })
+
+      await user.click(screen.getByRole('button', { name: /start over/i }))
+      await screen.findByRole('dialog')
+
+      const overlay = document.querySelector('[data-slot="dialog-overlay"]')!
+      expect(overlay.className).toMatch(/backdrop-blur/)
+      expect(overlay.className).not.toMatch(/bg-black/)
+    })
+
     it('discards only once the question is answered', async () => {
       const onStartOver = vi.fn()
       const user = userEvent.setup()
