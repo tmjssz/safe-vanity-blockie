@@ -1,12 +1,14 @@
 'use client'
 
-import { Check } from 'lucide-react'
+import { Check, Info } from 'lucide-react'
 import { useState } from 'react'
 import type { FaceFilters } from '../lib/config'
+import { contrastPairForDistance, MAX_RGB_DISTANCE, rgbCss } from '../lib/contrast-preview'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
 import { TargetPreview } from './TargetPreview'
-import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { HintPopover } from './ui/hint-popover'
 import { Label } from './ui/label'
 import { Slider } from './ui/slider'
 import { Switch } from './ui/switch'
@@ -16,6 +18,32 @@ export interface FacePickerProps {
   onChange: (mouthNames: string[]) => void
   filters: FaceFilters
   onFiltersChange: (filters: FaceFilters) => void
+}
+
+/** The slider's ceiling: `MAX_RGB_DISTANCE` rounded up to a whole number a label can carry. */
+const CONTRAST_MAX = Math.ceil(MAX_RGB_DISTANCE)
+
+/**
+ * The explanations that used to be paragraphs in the card body, one press away instead.
+ *
+ * Each is read once and then never again, but it sat between the reader and the controls on every
+ * visit for the rest of the session. Behind an icon it costs a press the first time and nothing
+ * after that. HintPopover opens on hover, click and keyboard focus, so this is not a hover-only
+ * affordance that a touch user cannot reach.
+ */
+function Explains({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <HintPopover
+      label={`About ${label}`}
+      side="top"
+      align="start"
+      className="text-muted-foreground transition-colors hover:text-foreground"
+      contentClassName="max-w-xs"
+      content={children}
+    >
+      <Info className="size-3.5" aria-hidden="true" />
+    </HintPopover>
+  )
 }
 
 export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePickerProps) {
@@ -35,105 +63,157 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
     onChange([...value, name])
   }
 
+  const allAccepted = ALL_MOUTH_NAMES.every((name) => value.includes(name))
+  const [dark, light] = contrastPairForDistance(filters.minContrast)
+
   return (
-    <div className="space-y-4">
-      {/* One heading for the group: the previews *are* the control now, so the old
-          "Accepted expressions" legend and the separate "Target patterns" h3 described the same
-          thing twice. h3 nests correctly under the card's h2 title. */}
-      <h3 id="accepted-expressions" className="text-sm font-medium">
-        Accepted expressions
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        Each candidate is credited with its best-fitting expression, so accepting more of them finds
-        a good face sooner.
-      </p>
-      <p className="text-sm text-muted-foreground">
-        Click a shape to accept or reject that expression. Each is what the miner is aiming at, not
-        a blockie of any real address, since none exists yet.
-      </p>
-      {/* A wrapping row: five 64px previews fit side by side on a wide card and reflow to two or
-          three per line on a phone, rather than forcing the card to scroll sideways. */}
-      <div role="group" aria-labelledby="accepted-expressions" className="flex flex-wrap gap-2">
-        {ALL_MOUTH_NAMES.map((name) => {
-          const selected = value.includes(name)
-          return (
-            // role="checkbox" on a real <button> is what Radix's own Checkbox renders, so this
-            // stays a toggle for assistive tech — and its accessible name is the caption below
-            // the preview, which is why the preview itself is decorative here.
-            <button
-              key={name}
-              type="button"
-              role="checkbox"
-              aria-checked={selected}
-              onClick={() => toggle(name)}
-              className={cn(
-                'flex cursor-pointer flex-col items-center gap-2 rounded-lg p-1.5 transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                // Ring plus a filled, ticked caption — the same pairing a selected ResultCard
-                // uses — so the accepted set is legible without relying on colour alone.
-                selected ? 'ring-2 ring-primary' : 'opacity-60 hover:opacity-100',
-              )}
-            >
-              <TargetPreview mouthName={name} decorative />
-              <Badge variant={selected ? 'default' : 'outline'} className="gap-1">
-                {selected && (
-                  <Check data-slot="expression-selected-mark" className="size-3" aria-hidden />
-                )}
-                {name}
-              </Badge>
-            </button>
-          )
-        })}
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Switch
-          id="two-color-only"
-          checked={filters.twoColor}
-          onCheckedChange={(checked) => onFiltersChange({ ...filters, twoColor: checked })}
-        />
-        <Label htmlFor="two-color-only">Two colours only</Label>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the common case
-        to want. Turning it off makes more candidates qualify, but some will show a third colour.
-      </p>
-
-      <div className="flex max-w-xs flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-4">
-          {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
-              rather than a <label for>, which cannot address a thumb. */}
-          <span id="min-contrast-label" className="text-sm font-medium">
-            Minimum contrast
-          </span>
-          {/* A slider with no readout is unusable for a value this precise. */}
-          <span
-            data-testid="min-contrast-value"
-            className="font-mono text-sm tabular-nums text-muted-foreground"
+    // Two columns on a wide card: the tiles need the room, the two colour controls do not. They
+    // stack on a narrow one with the expressions first, because that is the filter people come
+    // here to change. `1.4fr` rather than an even split so five tiles fill their column instead
+    // of leaving half of it empty, which is what a single full-width row of them did.
+    <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[1.4fr_1fr]">
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          {/* h3 nests correctly under the card's h2 title. */}
+          <h3 id="face-expressions" className="text-sm font-medium">
+            Face expressions
+          </h3>
+          <Explains label="face expressions">
+            Click a shape to accept or reject that expression. Each is what the miner is aiming at,
+            not a blockie of any real address, since none exists yet.
+          </Explains>
+          {/* Rejecting is one click per expression; getting back is one click total. Disabled
+              rather than hidden while there is nothing to reset, so the row does not reflow the
+              heading sideways the first time an expression is rejected. */}
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="ml-auto h-auto p-0"
+            disabled={allAccepted}
+            onClick={() => onChange([...ALL_MOUTH_NAMES])}
           >
-            {filters.minContrast}
-          </span>
+            All
+          </Button>
         </div>
-        {/* Fully controlled from `filters.minContrast` — no local echo. The number input this
-            replaced needed one to survive multi-digit typing; a slider has no such failure mode,
-            and the echo could only ever drift from what the miner filters by. */}
-        <Slider
-          aria-labelledby="min-contrast-label"
-          min={0}
-          max={442}
-          step={1}
-          value={[filters.minContrast]}
-          onValueChange={([next]) => onFiltersChange({ ...filters, minContrast: next })}
-        />
-      </div>
-      <p className="text-sm text-muted-foreground">
-        The RGB distance required between the two blockie colours. 0 accepts any pair, 442 is black
-        against white.
-      </p>
+
+        <div role="group" aria-labelledby="face-expressions" className="grid grid-cols-5 gap-2">
+          {ALL_MOUTH_NAMES.map((name) => {
+            const accepted = value.includes(name)
+            return (
+              // role="checkbox" on a real <button> is what Radix's own Checkbox renders, so this
+              // stays a toggle for assistive tech — and its accessible name is the caption below
+              // the preview, which is why the preview itself is decorative here.
+              <button
+                key={name}
+                type="button"
+                role="checkbox"
+                aria-checked={accepted}
+                onClick={() => toggle(name)}
+                className={cn(
+                  'relative flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-2 transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  // Inverted from what this used to do. Everything starts accepted, so the
+                  // remarkable state is the rejected one: accepted tiles are simply normal, and
+                  // rejection is what the eye should catch. Ringing all five by default made the
+                  // whole row shout and left "rejected" as the quiet absence of a ring.
+                  accepted
+                    ? 'border-border bg-muted/40'
+                    : 'border-border/40 opacity-45 hover:opacity-70',
+                )}
+              >
+                {accepted && (
+                  <Check
+                    data-slot="expression-selected-mark"
+                    className="absolute top-1 right-1 size-3 text-primary"
+                    aria-hidden="true"
+                  />
+                )}
+                <TargetPreview mouthName={name} size={40} decorative />
+                <span className={cn('text-xs', !accepted && 'text-muted-foreground')}>{name}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">Colours</h3>
+
+        <div className="flex items-center gap-2 border-b pb-3">
+          <Label htmlFor="two-color-only">Two colours only</Label>
+          <Explains label="two colours only">
+            A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the common
+            case to want. Turning it off makes more candidates qualify, but some will show a third
+            colour.
+          </Explains>
+          <Switch
+            id="two-color-only"
+            className="ml-auto"
+            checked={filters.twoColor}
+            onCheckedChange={(checked) => onFiltersChange({ ...filters, twoColor: checked })}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
+                rather than a <label for>, which cannot address a thumb. */}
+            <span id="min-contrast-label" className="text-sm font-medium">
+              Minimum contrast
+            </span>
+            <Explains label="minimum contrast">
+              The RGB distance required between the two blockie colours.
+            </Explains>
+            <div className="ml-auto flex items-center gap-2">
+              {/* The number says how far apart; these say what that looks like. They are greys
+                  because that is the only axis where an exact pair exists at every value the
+                  slider can reach — see lib/contrast-preview. */}
+              <span aria-hidden="true" className="flex overflow-hidden rounded-sm border">
+                <span
+                  data-slot="contrast-swatch"
+                  className="size-4"
+                  style={{ backgroundColor: rgbCss(dark) }}
+                />
+                <span
+                  data-slot="contrast-swatch"
+                  className="size-4"
+                  style={{ backgroundColor: rgbCss(light) }}
+                />
+              </span>
+              {/* A slider with no readout is unusable for a value this precise. */}
+              <span
+                data-testid="min-contrast-value"
+                className="w-10 text-right font-mono text-sm tabular-nums"
+              >
+                {filters.minContrast}
+              </span>
+            </div>
+          </div>
+          {/* Fully controlled from `filters.minContrast` — no local echo. The number input this
+              replaced needed one to survive multi-digit typing; a slider has no such failure mode,
+              and the echo could only ever drift from what the miner filters by. */}
+          <Slider
+            aria-labelledby="min-contrast-label"
+            min={0}
+            max={CONTRAST_MAX}
+            step={1}
+            value={[filters.minContrast]}
+            onValueChange={([next]) => onFiltersChange({ ...filters, minContrast: next })}
+          />
+          {/* What the ends of the track mean, in place of the sentence that used to say it. At the
+              track's own ends, so they are read as a scale rather than as prose about one. */}
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>0 · any pair</span>
+            <span>{CONTRAST_MAX} · black on white</span>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

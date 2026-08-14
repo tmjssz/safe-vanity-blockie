@@ -38,14 +38,33 @@ describe('FaceSection', () => {
     expect(props.onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
   })
 
+  // Renamed from "Face": that named the expression tiles alone and left the two colour filters
+  // looking like strays in a card about something else.
+  //
   // Was a Collapsible, starting open. The collapse existed to keep ~600px of picker from sitting
   // between the caveat and the results all session — but scrolling past it costs nothing, and a
   // control that only ever hides something the user can already scroll past is a control that
   // does not need to exist. S4's other half stands: the title is a real h2, which is what the
   // FacePicker's h3 underneath it hangs off.
+  // Opposite the title rather than under it: it is the premise the tiles are read against, so it
+  // wants to be taken in with the heading rather than found below it.
+  it('carries the crediting rule beside the title', () => {
+    renderSection()
+    const header = document.querySelector('[data-slot="card-header"]')!
+    const title = header.querySelector('[data-slot="card-title"]')!.getBoundingClientRect()
+    const note = document.querySelector('[data-slot="card-action"]')!
+
+    expect(note.textContent).toMatch(/credited with their best-fitting expression/i)
+    // jsdom has no layout, so this pins the structural fact that produces the side-by-side: the
+    // note is in the header's action column, not stacked in its description row.
+    expect(title).toBeDefined()
+    expect(header.contains(note)).toBe(true)
+    expect(header.querySelector('[data-slot="card-description"]')).toBeNull()
+  })
+
   it('shows its options with nothing to open, under a real heading', () => {
     renderSection()
-    expect(screen.getByRole('heading', { level: 2, name: /^face$/i })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: /^pattern filter$/i })).toBeDefined()
     expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /show or hide the face options/i })).toBeNull()
   })
@@ -75,7 +94,7 @@ describe('FaceSection', () => {
   // operable, which is the same code path a keyboard user takes.
   it('reports a contrast change', async () => {
     const props = renderSection({ filters: { twoColor: true, minContrast: 150 } })
-    const slider = screen.getByLabelText(/minimum contrast/i)
+    const slider = screen.getByRole('slider', { name: /minimum contrast/i })
     slider.focus()
     await userEvent.keyboard('{ArrowRight}')
     expect(props.onFiltersChange).toHaveBeenLastCalledWith(

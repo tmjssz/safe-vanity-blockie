@@ -166,17 +166,20 @@ describe('FacePicker', () => {
       expect(checkedNames()).toEqual(['smile', 'frown', 'neutral'])
     })
 
-    // Colour alone would leave the accepted set invisible to anyone who cannot see the ring
-    // colour — the selected ResultCard pairs its ring with a badge, and so does this.
-    it('marks a selected preview with more than colour', () => {
+    // Colour alone would leave the accepted set invisible to anyone who cannot see it, so the
+    // state is carried by a mark as well: a check on the accepted tiles, absent on the rejected.
+    // The emphasis is inverted from what it was — every expression starts accepted, so the
+    // notable state is the rejected one, and it is the rejected tile that is dimmed rather than
+    // the accepted one that is ringed.
+    it('marks an accepted tile with more than colour, and dims a rejected one', () => {
       renderPicker({ value: ['smile'] })
-      const selected = tile('smile')
-      expect(selected.querySelector('[data-slot="expression-selected-mark"]')).not.toBeNull()
-      expect(selected.className).toMatch(/ring-2/)
+      const accepted = tile('smile')
+      expect(accepted.querySelector('[data-slot="expression-selected-mark"]')).not.toBeNull()
 
-      const unselected = tile('frown')
-      expect(unselected.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
-      expect(unselected.className).not.toMatch(/ring-2/)
+      const rejected = tile('frown')
+      expect(rejected.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
+      expect(rejected.className).toMatch(/opacity-/)
+      expect(accepted.className).not.toMatch(/opacity-/)
     })
 
     // Inside a tile that is already named after its expression, the preview's own
@@ -192,7 +195,7 @@ describe('FacePicker', () => {
 
     it('never labels the expression section or its tiles a blockie or identicon', () => {
       renderPicker({ value: ['smile'] })
-      const heading = screen.getByRole('heading', { name: /accepted expressions/i })
+      const heading = screen.getByRole('heading', { name: /face expressions/i })
       expect(heading.textContent).not.toMatch(/blockie|identicon/i)
       for (const entry of screen.getAllByRole('checkbox')) {
         expect(entry.textContent).not.toMatch(/blockie|identicon/i)
@@ -200,11 +203,99 @@ describe('FacePicker', () => {
       }
     })
 
-    it('still says what the shapes are, and what they are not', () => {
+    // The explanation is still there, one press away, rather than as a paragraph the card has to
+    // carry for every reader who has already understood it. What must not happen is it being
+    // dropped in the move.
+    it('still says what the shapes are, and what they are not, behind the info control', async () => {
       renderPicker({ value: ['smile'] })
       expect(
-        screen.getByText(/not a blockie of any real address, since none exists yet/i),
+        screen.queryByText(/not a blockie of any real address, since none exists yet/i),
+      ).toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: /about face expressions/i }))
+
+      expect(
+        await screen.findByText(/not a blockie of any real address, since none exists yet/i),
       ).toBeDefined()
+    })
+
+    it('keeps the other two explanations reachable too', async () => {
+      const user = userEvent.setup()
+      renderPicker({ value: ['smile'] })
+
+      await user.click(screen.getByRole('button', { name: /about two colours only/i }))
+      expect(await screen.findByText(/no cell uses the spot colour/i)).toBeDefined()
+      await user.keyboard('{Escape}')
+
+      await user.click(screen.getByRole('button', { name: /about minimum contrast/i }))
+      expect(
+        await screen.findByText(/RGB distance required between the two blockie colours/i),
+      ).toBeDefined()
+    })
+  })
+
+  // Every expression starts accepted, so a user who has rejected several needs one gesture back
+  // rather than five. It is offered only when it would do something.
+  describe('the "All" reset', () => {
+    it('is disabled while every expression is already accepted', () => {
+      renderPicker({ value: [...ALL_MOUTH_NAMES] })
+      expect((screen.getByRole('button', { name: /^all$/i }) as HTMLButtonElement).disabled).toBe(
+        true,
+      )
+    })
+
+    it('re-accepts everything once something has been rejected', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const all = screen.getByRole('button', { name: /^all$/i }) as HTMLButtonElement
+      expect(all.disabled).toBe(false)
+
+      await userEvent.click(all)
+
+      expect(onChange).toHaveBeenCalledWith([...ALL_MOUTH_NAMES])
+    })
+  })
+
+  describe('the contrast preview', () => {
+    const swatches = () => document.querySelectorAll('[data-slot="contrast-swatch"]')
+
+    it('shows a pair of swatches beside the value', () => {
+      renderPicker({ filters: { twoColor: true, minContrast: 120 } })
+      expect(swatches()).toHaveLength(2)
+    })
+
+    // The pair is the answer to "how different is 120?", so it has to move with the number rather
+    // than being a fixed decoration next to it.
+    it('separates the swatches further as the contrast rises', () => {
+      const { unmount } = render(
+        <FacePicker
+          value={['smile']}
+          onChange={vi.fn()}
+          filters={{ twoColor: true, minContrast: 40 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      const low = [...swatches()].map((s) => (s as HTMLElement).style.backgroundColor)
+      unmount()
+
+      render(
+        <FacePicker
+          value={['smile']}
+          onChange={vi.fn()}
+          filters={{ twoColor: true, minContrast: 400 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      const high = [...swatches()].map((s) => (s as HTMLElement).style.backgroundColor)
+
+      expect(low).not.toEqual(high)
+      expect(low[0]).not.toBe('')
+    })
+
+    // These replaced the sentence that used to explain the scale, so they carry its content now.
+    it('anchors both ends of the scale', () => {
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+      expect(screen.getByText(/0 · any pair/i)).toBeDefined()
+      expect(screen.getByText(/442 · black on white/i)).toBeDefined()
     })
   })
 
