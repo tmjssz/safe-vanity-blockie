@@ -88,6 +88,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -106,6 +107,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -122,6 +124,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -154,6 +157,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -168,6 +172,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -181,6 +186,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -201,6 +207,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -214,6 +221,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -227,6 +235,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={{ twoColor: true, minContrast: 120 }}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -246,6 +255,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -261,6 +271,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={{ twoColor: true, minContrast: 442 }}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -282,6 +293,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -296,6 +308,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -313,6 +326,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -324,6 +338,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -337,6 +352,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -346,6 +362,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )

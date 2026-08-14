@@ -277,15 +277,30 @@ vi.mock('../components/FacePicker', () => ({
 // and that one can fire while a dialog is already open — the path the `key` guards.
 const miningViewPropsRef = {
   current: undefined as
-    | { paused?: boolean; onSelect: (candidate: unknown) => void }
+    | {
+        config?: { chainId: number }
+        paused?: boolean
+        onPauseToggle?: () => void
+        onSelect: (candidate: unknown) => void
+      }
     | undefined,
 }
 vi.mock('../components/MiningView', () => ({
-  MiningView: (props: { paused?: boolean; onSelect: (candidate: unknown) => void }) => {
+  MiningView: (props: {
+    config?: { chainId: number }
+    paused?: boolean
+    onPauseToggle?: () => void
+    onSelect: (candidate: unknown) => void
+  }) => {
     miningViewPropsRef.current = props
     return (
-      <div data-testid="mining-view">
+      <div data-testid="mining-view" data-chain={props.config?.chainId}>
         <p>{props.paused ? 'paused' : 'running'}</p>
+        {/* Stands in for the status bar's Pause/Resume, which the real MiningView renders. The
+            state behind it lives in the page now, so this is how a test reaches it. */}
+        <button type="button" onClick={() => props.onPauseToggle?.()}>
+          toggle-mining
+        </button>
         <button type="button" onClick={() => props.onSelect(CANDIDATE_A)}>
           select-a
         </button>
@@ -653,6 +668,44 @@ describe('Page', () => {
     expect(screen.queryByText('paused')).toBeNull()
 
     await release()
+  })
+
+  // Moved here from test/MiningView.test.tsx along with the state it is about. `pausedByUser` is
+  // the page's now, because two controls set it — the status bar's Pause and the Configure card's
+  // Stop — and the semantics only make sense where both can see it.
+  //
+  // While the HOST is pausing (a deploy in flight), both controls can only read as "resume", so
+  // pressing one is the obvious thing to do. It must not silently arm a second, user-owned pause
+  // that outlives the host's: mining would stay stopped once the deploy settled, and the user
+  // would have to press again with nothing on screen explaining why the first press did nothing.
+  it('does not arm a second pause when resume is pressed while a deploy holds mining', async () => {
+    const release = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+
+    await release()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+  })
+
+  it('stops and restarts mining from the one flag both controls share', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.getByText('running')).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+    expect(screen.getByText('paused')).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+    expect(screen.getByText('running')).toBeDefined()
   })
 
   it('does not carry a previous deploy status/completed state onto a newly selected candidate (missing `key` regression)', async () => {
@@ -1522,28 +1575,35 @@ describe('Page', () => {
 
     // And what is actually mined is the chain the link named, not the default it opened on.
     await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
-    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Polygon/)).toBeDefined()
+    // Read off what the run was actually handed rather than off a summary line: the card no
+    // longer renders one, and this is the value that decides which Safe gets mined.
+    expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
   })
 
-  it('locks the config once submitted and restores the form when starting over', async () => {
+  // Rewritten for the card that stays. Submitting no longer REPLACES the form with a summary —
+  // the form is where the Stop control lives, so it remains mounted and locks its fields instead
+  // (asserted in ConfigForm's own tests, since the form is mocked here). What the page still owns
+  // is the run itself and the way back out of it.
+  it('keeps the form mounted once submitted, and discards the run when starting over', async () => {
     render(<Page />)
 
-    // Before submitting, the config form is present.
     expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+    expect(screen.queryByRole('button', { name: /start over…/i })).toBeNull()
 
     await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
 
-    // Once submitted the form is replaced by a locked summary.
-    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
-    expect(screen.getByText(/1 owner/i)).toBeDefined()
+    // A run exists, and the form is still on screen above it.
+    expect(screen.getByTestId('mining-view')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
 
     // Starting over asks first, and only resets once confirmed.
     await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
-    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
+    expect(screen.getByTestId('mining-view')).toBeDefined()
 
     await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
-    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
-    expect(screen.queryByText(/1 owner/i)).toBeNull()
+    expect(screen.queryByTestId('mining-view')).toBeNull()
+    expect(screen.queryByRole('button', { name: /start over…/i })).toBeNull()
   })
 
   // S1(a). Escape, the X and a backdrop click all unmount DialogContent, and every terminal
@@ -1782,7 +1842,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     const view = screen.getByTestId('mining-view')
     // The locked summary, which reads the submitted config rather than the header.
-    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Sepolia/)).toBeDefined()
+    expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('11155111')
 
     await chooseChain(user, /polygon/i)
 
@@ -1797,10 +1857,10 @@ describe('Page', () => {
     // cannot see it either, because it rerenders the component directly. This is the only place the
     // page's own decision to keep it mounted is pinned.
     expect(screen.getByTestId('mining-view')).toBe(view)
-    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
     expect(shownChain()).toContain('Polygon')
-    // The submitted config moved with it — the locked summary reads the config, not the header.
-    expect(screen.getByText(/1 owner · threshold 1 · Safe 1\.4\.1 · Polygon/)).toBeDefined()
+    // The submitted config moved with it. Read off MiningView, which is what actually mines it —
+    // the Configure card no longer collapses to a summary line that could be read instead.
+    expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
 
     // And a result opened now offers a link for the chain the user is on.
     await user.click(screen.getByRole('button', { name: 'select-a' }))

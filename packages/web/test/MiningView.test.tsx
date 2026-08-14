@@ -124,6 +124,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -140,6 +141,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -159,6 +161,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -183,6 +186,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -207,6 +211,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -241,6 +246,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -271,6 +277,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -296,6 +303,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -321,6 +329,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -344,6 +353,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -363,6 +373,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -379,6 +390,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 250 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -396,6 +408,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -406,6 +419,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -423,6 +437,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -439,6 +454,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -450,6 +466,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -469,6 +486,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -479,6 +497,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -494,6 +513,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -517,6 +537,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -548,6 +569,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -569,6 +591,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -590,6 +613,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -615,6 +639,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -635,6 +660,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -642,25 +668,25 @@ describe('MiningView', () => {
     expect(container.contains(screen.getByText(/4,200/))).toBe(true)
   })
 
-  it('resumes when the host stops pausing, even if Resume was pressed while it was', async () => {
+  // What this component still owns after the pause state moved to the page: obeying `paused`, and
+  // reporting the press. The decision of what a press MEANS while the host is also pausing is no
+  // longer here — it is asserted in test/page.test.tsx, where the flag now lives, because the
+  // Configure card offers the same action and both have to reach the same state.
+  it('stops and resumes the same run as `paused` moves', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, scanned: 4200 }
 
-    // Mining is held paused by the host — a deploy in flight, or a share link's saltNonce still
-    // being reconstructed. The bar can only read "Resume" here, so pressing it is the obvious
-    // thing to do, and it must not silently arm a *second* pause that outlives the host's one.
     const { rerender } = render(
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
     expect(startSpy).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: /resume/i }))
 
     rerender(
       <MiningView
@@ -668,33 +694,46 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
-
     expect(startSpy).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(stopSpy).toHaveBeenCalled()
   })
 
-  it('still pauses and resumes on demand when the host is not pausing', async () => {
+  it('reports a press of the bar control instead of deciding for itself', async () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+    const onPauseToggle = vi.fn()
 
     render(
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={onPauseToggle}
         onSelect={vi.fn()}
       />,
     )
-    expect(startSpy).toHaveBeenCalledTimes(1)
 
     await userEvent.click(screen.getByRole('button', { name: /pause/i }))
-    expect(stopSpy).toHaveBeenCalled()
-    expect(startSpy).toHaveBeenCalledTimes(1)
 
-    await userEvent.click(screen.getByRole('button', { name: /resume/i }))
-    expect(startSpy).toHaveBeenCalledTimes(2)
+    expect(onPauseToggle).toHaveBeenCalledOnce()
+    // It does not pause itself: the flag is the page's, and a component that also stopped locally
+    // would be a second source of truth for the state the Configure card reads.
+    expect(stopSpy).not.toHaveBeenCalled()
   })
 
   // Clicking a card is the whole deploy flow now, so the hop from this component's `onSelect`
@@ -709,6 +748,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -729,6 +769,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -752,6 +793,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -772,6 +814,7 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
         onSelect={vi.fn()}
       />,
     )

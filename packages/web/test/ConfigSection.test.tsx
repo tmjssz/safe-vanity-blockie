@@ -14,60 +14,78 @@ const CONFIG = {
   chainId: 11155111,
 }
 
+const SUBTITLE =
+  'Owners, threshold and version determine the address. Changing any of them re-rolls every result.'
+
+/**
+ * Every case here renders the same card and differs in one or two props. The helper keeps each
+ * test to the prop it is actually about, and means the next required prop is added in one place
+ * rather than eleven.
+ */
+function renderSection(overrides: Partial<Parameters<typeof ConfigSection>[0]> = {}) {
+  return render(
+    <ConfigSection
+      config={undefined}
+      chainId={CONFIG.chainId}
+      miningPaused={false}
+      onSubmit={vi.fn()}
+      onToggleMining={vi.fn()}
+      onStartOver={vi.fn()}
+      {...overrides}
+    />,
+  )
+}
+
+const ownerField = (n: number) =>
+  screen.getByLabelText(new RegExp(`^owner ${n}$`, 'i')) as HTMLInputElement
+
 describe('ConfigSection', () => {
-  it('shows the form while no config is set', () => {
-    render(
-      <ConfigSection
-        config={undefined}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
-    expect(screen.getByLabelText(/^owner 1$/i)).toBeDefined()
+  // Exact copy, because this is the one line that tells a user why the fields lock and why a
+  // result set can vanish. It sits under the heading rather than beside the owners list: it is a
+  // property of every field in the card, not a footnote to one of them.
+  it('states under the heading what determines the address', () => {
+    renderSection()
+    expect(screen.getByText(SUBTITLE)).toBeDefined()
+  })
+
+  it('shows the form, and no way to start over, before anything is submitted', () => {
+    renderSection()
+    expect(ownerField(1)).toBeDefined()
     expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
   })
 
-  it('collapses to a one-line summary once a config is set', () => {
-    render(
-      <ConfigSection
-        config={CONFIG}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
-    expect(screen.getByText(/1 owner/i)).toBeDefined()
-    expect(screen.getByText(/threshold 1/i)).toBeDefined()
-    expect(screen.getByText(/sepolia/i)).toBeDefined()
-    expect(screen.queryByLabelText(/^owner 1$/i)).toBeNull()
+  // Replaces "collapses to a one-line summary once a config is set". The card no longer swaps
+  // itself for a précis: the Stop control lives in the form, so the form has to still be there,
+  // and leaving the fields on screen means the config being mined is legible directly rather than
+  // reconstructed from a summary line. What used to be expressed by REPLACING the fields is now
+  // expressed by locking them.
+  it('keeps the form on screen once a config is set, with its fields locked', () => {
+    renderSection({ config: CONFIG, initial: { owners: CONFIG.owners } })
+
+    expect(ownerField(1).value).toBe(CONFIG.owners[0])
+    expect(ownerField(1).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: /^stop mining$/i })).toBeDefined()
+    // The reason the fields are locked stays on screen with them.
+    expect(screen.getByText(SUBTITLE)).toBeDefined()
   })
 
-  it('pluralises the owner count', () => {
-    render(
-      <ConfigSection
-        config={{ ...CONFIG, owners: [CONFIG.owners[0], '0x' + '22'.repeat(20)], threshold: 2 }}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
-    expect(screen.getByText(/2 owners/i)).toBeDefined()
+  it('unlocks the fields once mining is stopped', () => {
+    renderSection({ config: CONFIG, initial: { owners: CONFIG.owners }, miningPaused: true })
+    expect(ownerField(1).disabled).toBe(false)
+    expect(screen.getByRole('button', { name: /^start mining$/i })).toBeDefined()
+  })
+
+  it('offers to start over only once there is a run to discard', () => {
+    renderSection({ config: CONFIG })
+    expect(screen.getByRole('button', { name: /start over…/i })).toBeDefined()
   })
 
   it('warns that starting over discards results, and only resets on confirmation', async () => {
     const onStartOver = vi.fn()
-    render(
-      <ConfigSection
-        config={CONFIG}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={onStartOver}
-      />,
-    )
+    renderSection({ config: CONFIG, onStartOver })
 
     await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
-    expect(screen.getByText(/discard/i)).toBeDefined()
+    expect(screen.getByText(/will discard every result found so far/i)).toBeDefined()
     expect(onStartOver).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
@@ -83,24 +101,15 @@ describe('ConfigSection', () => {
   // its absence from the form is checked here.
   it('seeds the form from a decoded share link, field for field', () => {
     const owners = [CONFIG.owners[0], `0x${'22'.repeat(20)}`]
-    render(
-      <ConfigSection
-        config={undefined}
-        initial={{ owners, threshold: 2, safeVersion: '1.3.0' }}
-        chainId={11155111}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
+    renderSection({ initial: { owners, threshold: 2, safeVersion: '1.3.0' }, chainId: 11155111 })
 
     // One field per owner, each holding its own entry in the link's order — the assertion the
     // joined string could not make. A link with two owners that arrived as one box of text, or as
     // two boxes in the other order, is a different Safe.
-    expect((screen.getByLabelText(/^owner 1$/i) as HTMLInputElement).value).toBe(owners[0])
-    expect((screen.getByLabelText(/^owner 2$/i) as HTMLInputElement).value).toBe(owners[1])
+    expect(ownerField(1).value).toBe(owners[0])
+    expect(ownerField(2).value).toBe(owners[1])
     expect(screen.queryByLabelText(/^owner 3$/i)).toBeNull()
     // Radix renders each Select as a combobox, so this reads the trigger's displayed value.
-    // Threshold is one of them now, so it is read the same way rather than as an input's value.
     expect(screen.getByRole('combobox', { name: /threshold/i }).textContent).toContain('2')
     expect(screen.getByText(/out of 2 signers/i)).toBeDefined()
     expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toContain('1.3.0')
@@ -108,60 +117,40 @@ describe('ConfigSection', () => {
   })
 
   // The chain it is handed still reaches the submitted config, even though it is no longer one of
-  // this card's fields — the locked summary above reads it back off the config, so a chain dropped
-  // between the header and the form would show up there as the wrong network, on a link that
-  // names it, on the CLI command, and at the wallet.
+  // this card's fields — a chain dropped between the header and the form would show up as the
+  // wrong network on a link that names it, on the CLI command, and at the wallet.
   it('submits the chain it was given by the header', async () => {
     const onSubmit = vi.fn()
-    render(
-      <ConfigSection
-        config={undefined}
-        initial={{ owners: [CONFIG.owners[0]], threshold: 1, safeVersion: '1.4.1' }}
-        chainId={137}
-        onSubmit={onSubmit}
-        onStartOver={vi.fn()}
-      />,
-    )
+    renderSection({
+      initial: { owners: [CONFIG.owners[0]], threshold: 1, safeVersion: '1.4.1' },
+      chainId: 137,
+      onSubmit,
+    })
 
-    await userEvent.click(screen.getByRole('button', { name: /^start$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^start mining$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 }))
   })
 
+  it('halts the run from the card rather than resubmitting it', async () => {
+    const onToggleMining = vi.fn()
+    const onSubmit = vi.fn()
+    renderSection({ config: CONFIG, onToggleMining, onSubmit })
+
+    await userEvent.click(screen.getByRole('button', { name: /^stop mining$/i }))
+
+    expect(onToggleMining).toHaveBeenCalledOnce()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   // S4. CardTitle renders a <div> by default, so Configure, Face and Deploy were invisible to
   // heading navigation on a page whose whole premise is reading an address carefully.
-  it('exposes its title as a real heading, in both the form and the locked state', () => {
-    const { unmount } = render(
-      <ConfigSection
-        config={undefined}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
+  it('exposes its title as a real heading, running or not', () => {
+    const { unmount } = renderSection()
     expect(screen.getByRole('heading', { level: 2, name: /^configure$/i })).toBeDefined()
     unmount()
 
-    render(
-      <ConfigSection
-        config={CONFIG}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
+    renderSection({ config: CONFIG })
     expect(screen.getByRole('heading', { level: 2, name: /^configure$/i })).toBeDefined()
-  })
-
-  it('explains why the config is locked, since owners determine the address', () => {
-    render(
-      <ConfigSection
-        config={CONFIG}
-        chainId={CONFIG.chainId}
-        onSubmit={vi.fn()}
-        onStartOver={vi.fn()}
-      />,
-    )
-    expect(screen.getByText(/determine the safe address/i)).toBeDefined()
   })
 })

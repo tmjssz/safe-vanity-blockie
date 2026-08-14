@@ -144,6 +144,11 @@ function HomeContent() {
   // screen emptied. Nothing of the link's is reachable through it: it is a number in the chrome
   // the user can change at will, not the decoded config.
   const [linkDismissed, setLinkDismissed] = useState(false)
+  // The user's own "stop mining", held here rather than inside MiningView because there are now
+  // two controls for it in two different subtrees — the sticky status bar's Pause, and the
+  // Configure card's Stop. Two pieces of state would be two things to keep in step; one piece
+  // read by both cannot disagree with itself.
+  const [pausedByUser, setPausedByUser] = useState(false)
 
   // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
   // only an actual change to the accepted expressions should do that.
@@ -287,6 +292,20 @@ function HomeContent() {
   const awaitingLinkCandidate =
     Boolean(linkSaltNonce) && !linkCandidateSettled && !constantsForLink.error
   const linkConstantsError = linkSaltNonce ? constantsForLink.error : undefined
+
+  // The host's own reasons to hold mining, which are not the user's and must not be cleared by
+  // them: a deploy transaction in flight, and a share link still being reconstructed.
+  const pausedByHost = deploying || awaitingLinkCandidate
+  const miningPaused = pausedByHost || pausedByUser
+  // While the host is the one pausing, both controls necessarily read "start"/"Resume" — and the
+  // only honest meaning a click can have then is "run as soon as you are allowed to", never "and
+  // also pause again on my behalf". Treating it as a plain toggle would set `pausedByUser` from a
+  // click that changed nothing on screen, so mining would stay stopped once the host's reason
+  // cleared and the user would have to press again with no explanation. This way every click
+  // moves toward running. (Moved up from MiningView with the state it reads.)
+  const toggleMining = useCallback(() => {
+    setPausedByUser((previous) => (pausedByHost ? false : !previous))
+  }, [pausedByHost])
 
   // Both halves of the address bar — opening a result and closing it — are now pushes, and
   // nothing this page does to history is asynchronous. There is no `backInFlight`/`deferredPush`
@@ -490,6 +509,22 @@ function HomeContent() {
     // each other, so `previous` is that `next` and the pick stands.
     setPicked((previous) => previous ?? chainId)
   }, [chainId, closeSelection])
+
+  // Starting a search. With a run already on screen this is a RESTART, and the results below
+  // belong to the config that produced them — so the old run is discarded exactly as "Start over"
+  // discards it, history entries and share link included, rather than leaving a leaderboard of
+  // Safes mined for a config nobody is on any more. The form only submits when it is idle or when
+  // its fields have been edited away from the run (a plain resume goes through `toggleMining`
+  // instead), so this cannot fire on a press that was only meant to continue.
+  const submitConfig = useCallback(
+    (next: MineConfig) => {
+      if (config) startOver()
+      setConfig(next)
+      // A fresh run is never born stopped, whatever the previous one was left at.
+      setPausedByUser(false)
+    },
+    [config, startOver],
+  )
 
   // What a chain switch is measured against: the chain whose addresses are at stake. Normally the
   // submitted config's — the run on screen is what a crossing costs — but before anything is
@@ -747,7 +782,9 @@ function HomeContent() {
           config={config}
           initial={initial}
           chainId={chainId}
-          onSubmit={setConfig}
+          miningPaused={miningPaused}
+          onSubmit={submitConfig}
+          onToggleMining={toggleMining}
           onStartOver={startOver}
         />
 
@@ -799,7 +836,8 @@ function HomeContent() {
               config={config}
               faceSpec={faceSpec}
               filters={filters}
-              paused={deploying || awaitingLinkCandidate}
+              paused={miningPaused}
+              onPauseToggle={toggleMining}
               onSelect={selectFromGrid}
             />
           </>

@@ -22,7 +22,7 @@ const WALLET = '0x' + '99'.repeat(20)
 /** The nth owner field, by the accessible name a screen reader hears. */
 const ownerField = (n: number) =>
   screen.getByLabelText(new RegExp(`^owner ${n}$`, 'i')) as HTMLInputElement
-const startButton = () => screen.getByRole('button', { name: /^start$/i })
+const startButton = () => screen.getByRole('button', { name: /^start mining$/i })
 const addOwner = () => screen.getByRole('button', { name: /add another owner/i })
 /** Radix renders the threshold Select as a combobox, not a native select. */
 const thresholdTrigger = () => screen.getByRole('combobox', { name: /threshold/i })
@@ -42,6 +42,144 @@ async function chooseThreshold(
   await user.click(thresholdTrigger())
   await user.click(await screen.findByRole('option', { name: String(value) }))
 }
+
+const SUBMITTED = {
+  owners: [OWNER],
+  threshold: 1,
+  safeVersion: '1.4.1' as const,
+  chainId: 1,
+}
+
+/**
+ * The card stays on screen for the whole run now, so its one button carries three jobs. Which one
+ * it is doing has to be legible from the button alone: a control that submits in one state and
+ * halts in another, looking the same in both, is the sort of thing that costs a long run.
+ */
+describe('ConfigForm while a run exists', () => {
+  const stopButton = () => screen.getByRole('button', { name: /^stop mining$/i })
+
+  it('offers Stop while mining is running', () => {
+    render(
+      <ConfigForm chainId={1} onSubmit={vi.fn()} submittedConfig={SUBMITTED} onToggleMining={vi.fn()} />,
+    )
+    expect(stopButton()).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^start mining$/i })).toBeNull()
+  })
+
+  it('halts rather than resubmitting when Stop is pressed', async () => {
+    const onSubmit = vi.fn()
+    const onToggleMining = vi.fn()
+    render(
+      <ConfigForm
+        chainId={1}
+        onSubmit={onSubmit}
+        submittedConfig={SUBMITTED}
+        onToggleMining={onToggleMining}
+      />,
+    )
+
+    await userEvent.click(stopButton())
+
+    expect(onToggleMining).toHaveBeenCalledOnce()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  // Resuming is not starting: the run, the leaderboard and the scanned totals are all still there,
+  // so this must not go back through onSubmit and mint a fresh config.
+  it('resumes rather than resubmitting when stopped and unchanged', async () => {
+    const onSubmit = vi.fn()
+    const onToggleMining = vi.fn()
+    render(
+      <ConfigForm
+        chainId={1}
+        // The fields still hold what is being mined, which is the state the page seeds them in.
+        // Without this the form describes no owners at all, which is a real edit away from the
+        // run and would rightly offer to restart rather than resume.
+        initial={{ owners: [OWNER], threshold: 1, safeVersion: '1.4.1' }}
+        onSubmit={onSubmit}
+        submittedConfig={SUBMITTED}
+        miningPaused
+        onToggleMining={onToggleMining}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /^start mining$/i }))
+
+    expect(onToggleMining).toHaveBeenCalledOnce()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('locks the fields while mining is running', () => {
+    render(
+      <ConfigForm chainId={1} onSubmit={vi.fn()} submittedConfig={SUBMITTED} onToggleMining={vi.fn()} />,
+    )
+    expect(ownerField(1).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /add another owner/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('unlocks the fields once mining is stopped', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        onSubmit={vi.fn()}
+        submittedConfig={SUBMITTED}
+        miningPaused
+        onToggleMining={vi.fn()}
+      />,
+    )
+    expect(ownerField(1).disabled).toBe(false)
+  })
+
+  // The hazard the old "Start over?" dialog existed to prevent, in the state that now replaces it:
+  // edits are possible while stopped, and the results on screen belong to the config as submitted.
+  // So the button says what pressing it costs, before it is pressed.
+  describe('when the stopped config has been edited', () => {
+    async function editOwner() {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      render(
+        <ConfigForm
+          chainId={1}
+          initial={{ owners: [OWNER], threshold: 1, safeVersion: '1.4.1' }}
+          onSubmit={onSubmit}
+          submittedConfig={SUBMITTED}
+          miningPaused
+          onToggleMining={vi.fn()}
+        />,
+      )
+      await user.click(addOwner())
+      await user.type(ownerField(2), OWNER_C)
+      return { user, onSubmit }
+    }
+
+    it('says that starting will discard the results', async () => {
+      await editOwner()
+      expect(screen.getByText(/discards? the results found so far/i)).toBeDefined()
+    })
+
+    it('submits the edited config rather than resuming the old one', async () => {
+      const { user, onSubmit } = await editOwner()
+      await user.click(screen.getByRole('button', { name: /^start mining$/i }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ owners: [OWNER, OWNER_C] }),
+      )
+    })
+
+    it('says nothing about discarding while the config is untouched', () => {
+      render(
+        <ConfigForm
+          chainId={1}
+          initial={{ owners: [OWNER], threshold: 1, safeVersion: '1.4.1' }}
+          onSubmit={vi.fn()}
+          submittedConfig={SUBMITTED}
+          miningPaused
+          onToggleMining={vi.fn()}
+        />,
+      )
+      expect(screen.queryByText(/discards? the results/i)).toBeNull()
+    })
+  })
+})
 
 describe('ConfigForm', () => {
   // Start is disabled for a malformed address, so the complaint cannot wait for a press any more —
@@ -95,16 +233,22 @@ describe('ConfigForm', () => {
     })
   })
 
-  it('warns that owners are part of the address', () => {
+  // The "changing them re-rolls every result" warning is no longer the form's to make: it moved
+  // up into the card's subtitle, where it reads as a property of the whole Configure step rather
+  // than as a footnote to the owners list. Pinned here so it cannot quietly come back to both
+  // places at once — the assertion on the real copy lives in ConfigSection's tests.
+  it('leaves the re-roll warning to the card subtitle', () => {
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-    expect(screen.getByText(/changing them re-rolls/i)).toBeDefined()
+    expect(screen.queryByText(/re-rolls every result/i)).toBeNull()
   })
 
   // The button starts a search rather than advancing a wizard — there is no second step, and the
-  // press is what locks the card and spins up the workers.
-  it('labels its submit "Start"', () => {
+  // press is what locks the card and spins up the workers. It says what it starts, because it is
+  // now the one high-emphasis control on the card and reads on its own.
+  it('labels its submit "Start mining"', () => {
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
     expect(startButton()).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /^continue$/i })).toBeNull()
   })
 
@@ -140,14 +284,54 @@ describe('ConfigForm', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  // The identicon is the app's whole subject, so the row shows the one the address it holds would
+  // produce. It has to be honest about not having one yet: deriving a blockie from a half-typed
+  // address would flicker a picture of a Safe that is not being mined.
+  describe('the owner row identicon', () => {
+    const identicon = () => document.querySelector('[data-slot="owner-identicon"]')
+    const placeholder = () => document.querySelector('[data-slot="owner-identicon-placeholder"]')
+
+    it('shows a placeholder while the row is empty', () => {
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(placeholder()).not.toBeNull()
+      expect(identicon()).toBeNull()
+    })
+
+    it('shows a placeholder while the address is incomplete', async () => {
+      const user = userEvent.setup()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.type(ownerField(1), '0xabc')
+      expect(placeholder()).not.toBeNull()
+      expect(identicon()).toBeNull()
+    })
+
+    it('renders the identicon once the address is valid', async () => {
+      const user = userEvent.setup()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.type(ownerField(1), OWNER)
+
+      const rendered = identicon()
+      expect(rendered).not.toBeNull()
+      expect(rendered?.querySelector('svg')).not.toBeNull()
+      // Decorative: the address is spelled out in the input beside it, and the picture says
+      // nothing a screen reader can use.
+      expect(rendered?.getAttribute('aria-hidden')).toBe('true')
+      expect(placeholder()).toBeNull()
+    })
+  })
+
   describe('owner rows', () => {
-    it('starts with exactly one owner field, which cannot be removed', () => {
+    // Disabled rather than absent, which is a change: a control that disappears at N=1 and
+    // reappears at N=2 shifts the row's width under the pointer heading for it. There is still
+    // always at least one owner — validateMineConfig rejects an empty list — so the button is
+    // there to say the rule, not to break it.
+    it('starts with exactly one owner field, whose remove button is present but disabled', () => {
       render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
       expect(ownerField(1)).toBeDefined()
       expect(screen.queryByLabelText(/^owner 2$/i)).toBeNull()
-      // There is always at least one owner, so the first row has nothing to remove it with.
-      expect(screen.queryByRole('button', { name: /remove owner/i })).toBeNull()
+      const remove = screen.getByRole('button', { name: /^remove owner 1$/i })
+      expect((remove as HTMLButtonElement).disabled).toBe(true)
     })
 
     // The whole point of the rework: what is typed into the rows is what is mined. An entry
@@ -209,7 +393,10 @@ describe('ConfigForm', () => {
       expect(ownerField(3)).toBeDefined()
       expect(screen.getByRole('button', { name: /^remove owner 2$/i })).toBeDefined()
       expect(screen.getByRole('button', { name: /^remove owner 3$/i })).toBeDefined()
-      expect(screen.queryByRole('button', { name: /^remove owner 1$/i })).toBeNull()
+      // Row 1 is removable once it is not the only row: with three owners there is nothing
+      // special about the first, and being unable to drop it forces a retype to reorder.
+      const first = screen.getByRole('button', { name: /^remove owner 1$/i }) as HTMLButtonElement
+      expect(first.disabled).toBe(false)
     })
 
     // The button that had focus is gone; without this, focus falls to <body> and a keyboard user
@@ -504,7 +691,16 @@ describe('ConfigForm', () => {
     it('never inserts or removes an element when a row starts complaining', async () => {
       const user = userEvent.setup()
       const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      const count = () => container.querySelectorAll('*').length
+      // Everything outside an <svg>. The invariant being measured is "nothing on this row moves",
+      // and element count is the only proxy for it jsdom can offer (it has no layout, so every
+      // getBoundingClientRect is zeros). Identicon internals have to be excluded or the proxy
+      // stops tracking the invariant: a row going valid swaps a dashed placeholder for a blockie,
+      // which is dozens of <rect>s in place of none — while occupying the identical 32px box, so
+      // it moves nothing at all. Counting them would fail a test about layout for a reason that
+      // is not about layout. The wrapper span is still counted on both sides, so a swap that DID
+      // add or drop a box still trips this.
+      const count = () =>
+        Array.from(container.querySelectorAll('*')).filter((el) => !el.closest('svg')).length
 
       // Owner 1 stays malformed and untouched throughout, so the hint beside "Start" is constant
       // and every element this counts belongs to the rows themselves.
@@ -653,6 +849,69 @@ describe('ConfigForm', () => {
       rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
       expect(ownerField(1).value).toBe(WALLET)
+    })
+
+    // The auto-prefill only ever touches a blank owner 1. This action is the manual counterpart:
+    // it puts the wallet wherever there is room, including rows the prefill will never reach.
+    describe('the "Use connected wallet" action', () => {
+      const useWallet = () => screen.getByRole('button', { name: /use connected wallet/i })
+
+      it('is not offered while no wallet is connected', () => {
+        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
+      })
+
+      // Nothing to add: the prefill has already put this address in owner 1, and a second copy
+      // is a duplicate that validateMineConfig rejects. Offering it would be offering an error.
+      it('is not offered when the wallet is already an owner', () => {
+        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        expect(ownerField(1).value).toBe(WALLET)
+        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
+      })
+
+      it('fills the first empty row', async () => {
+        const user = userEvent.setup()
+        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.type(ownerField(1), OWNER)
+        await user.click(addOwner())
+
+        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.click(useWallet())
+
+        expect(ownerField(1).value).toBe(OWNER)
+        expect(ownerField(2).value).toBe(WALLET)
+      })
+
+      it('appends a row when every existing one is filled', async () => {
+        const user = userEvent.setup()
+        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.type(ownerField(1), OWNER)
+
+        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.click(useWallet())
+
+        expect(ownerField(1).value).toBe(OWNER)
+        expect(ownerField(2).value).toBe(WALLET)
+      })
+
+      it('never overwrites a filled row', async () => {
+        const user = userEvent.setup()
+        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.type(ownerField(1), OWNER)
+        await user.click(addOwner())
+        await user.type(ownerField(2), OWNER_C)
+
+        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+        await user.click(useWallet())
+
+        expect(ownerField(1).value).toBe(OWNER)
+        expect(ownerField(2).value).toBe(OWNER_C)
+        expect(ownerField(3).value).toBe(WALLET)
+      })
     })
 
     it('submits the prefilled address as the owner', async () => {

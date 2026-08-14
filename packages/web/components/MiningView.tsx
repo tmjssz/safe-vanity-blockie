@@ -50,6 +50,12 @@ export interface MiningViewProps {
    * therefore costs the user nothing — results found before it are all still there.
    */
   paused?: boolean
+  /**
+   * Halts or resumes on the user's behalf. The state behind it lives in the page, because the
+   * Configure card offers the same action from a different subtree — see `pausedByUser` there.
+   * This component renders one of the two controls; it no longer owns what they both read.
+   */
+  onPauseToggle: () => void
   /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
 }
@@ -58,25 +64,17 @@ export function MiningView({
   config,
   faceSpec,
   filters,
-  paused: pausedByHost = false,
+  paused = false,
+  onPauseToggle,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
   const { state, start, stop, setFilters } = useMiner()
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
   const { twoColor, minContrast } = filters
-  // The status bar's Pause control. Kept here rather than in the page because it is a mining
-  // concern, and because it must combine with the host's own reasons to pause (a deploy in
-  // flight, a share link still being reconstructed) rather than fight them.
-  const [pausedByUser, setPausedByUser] = useState(false)
-  const paused = pausedByHost || pausedByUser
-  // While the host is the one pausing, the bar necessarily reads "Resume" — and the only honest
-  // meaning a click can have then is "run as soon as you are allowed to", never "and also pause
-  // again on my behalf". Treating it as a plain toggle would set `pausedByUser` from a click that
-  // changed nothing on screen, so mining would stay stopped once the host's reason cleared and
-  // the user would have to press Resume a second time with no explanation. Disabling the control
-  // instead would be honest but dead; this way the click always moves toward running.
-  const togglePause = () => setPausedByUser(pausedByHost ? false : !pausedByUser)
+  // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
+  // reconstructed) and the user's own stop are combined in the page, which is where the second
+  // control for the latter lives. Nothing about pausing is decided here any more.
 
   // Resolved during the first render in the browser: the page commits the slot element before
   // this component ever mounts (it only appears once a config is submitted), so there is no
@@ -217,7 +215,7 @@ export function MiningView({
     bestScore: state.bestOverall?.score,
     bestMaxScore: state.bestOverall?.maxScore,
   }
-  const statusBar = <MiningStatusBar status={status} onPauseToggle={togglePause} />
+  const statusBar = <MiningStatusBar status={status} onPauseToggle={onPauseToggle} />
 
   return (
     <>
