@@ -152,7 +152,7 @@ export function MiningStatusBar({
     // pin underneath it and be invisible for the whole run. z-40 keeps it below the header.
     <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div data-slot="status-row" className="flex flex-wrap items-center gap-3 text-sm">
           {/* No progress bar, and the percentage is labelled: a filled track next to a bare "90.2%"
               reads as "the run is 90% done", which is not a number this search can have — the
               keyspace is 2^256 wide and nothing is being counted down. What the number actually
@@ -195,9 +195,19 @@ export function MiningStatusBar({
                   </>
                 )}
               </Button>
-              {/* One step quieter than Pause. Pausing is free and reversible; this throws the run
-                  away, and the two sitting side by side at equal weight would invite the wrong
-                  one. Available while paused too — it is the only route back to the form. */}
+            </div>
+          )}
+        </div>
+
+        {/* Both controls are hard right, one per row. Pause sits with the counters it acts on;
+            Start over sits a row below with the config it discards, and one step quieter. Side by
+            side they were a pixel apart in position and a whole run apart in consequence — and
+            Pause is pressed dozens of times where this is pressed once. */}
+        <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <ConfigSummary config={config} />
+          {started && (
+            <div className="ml-auto flex items-center">
+              {/* Available while paused too: it is the only route back to the form. */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -214,8 +224,6 @@ export function MiningStatusBar({
             </div>
           )}
         </div>
-
-        <ConfigSummary config={config} />
       </div>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>

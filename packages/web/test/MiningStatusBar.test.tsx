@@ -287,6 +287,29 @@ describe('MiningStatusBar', () => {
       expect(screen.getByRole('button', { name: /start over/i })).toBeDefined()
     })
 
+    // Two rows, both controls hard right. Pause sits with the counters it acts on; Start over
+    // sits with the config summary, a row down and away from the control a user reaches for
+    // dozens of times a run — the two are one pixel apart in consequence otherwise.
+    it('sits on the second row, under Pause rather than beside it', () => {
+      renderBar()
+
+      const pause = screen.getByRole('button', { name: /pause/i })
+      const startOver = screen.getByRole('button', { name: /start over/i })
+      const rowOf = (el: HTMLElement) => el.closest('[data-slot="status-row"]')
+
+      expect(rowOf(pause)).not.toBeNull()
+      expect(rowOf(startOver)).not.toBeNull()
+      expect(rowOf(pause)).not.toBe(rowOf(startOver))
+      // Second row, so it follows the first in document order.
+      expect(
+        rowOf(pause)!.compareDocumentPosition(rowOf(startOver)!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      // Both pushed to the right edge of their own row.
+      expect(pause.parentElement?.className).toMatch(/ml-auto/)
+      expect(startOver.parentElement?.className).toMatch(/ml-auto/)
+    })
+
     it('is hidden before a run exists, alongside the pause control', () => {
       renderBar({ status: { ...status, running: false, paused: false, scanned: 0 } })
       expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
