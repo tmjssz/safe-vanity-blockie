@@ -96,7 +96,13 @@ export interface FaceFilters {
   minContrast: number
 }
 
-export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 0 }
+/**
+ * 80 rather than 0, on a scale that runs to 442. Zero accepts a pair whose two colours differ by
+ * less than the eye reliably separates, so a face drawn in them is not a face anybody was hoping
+ * to mine — which made the first run every user sees the least useful one, with the slider left
+ * to be discovered before the results got better.
+ */
+export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 80 }
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 

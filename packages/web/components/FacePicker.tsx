@@ -222,7 +222,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium">Colours</h3>
 
-        <div className="flex items-center gap-2 border-b pb-3">
+        <div className="flex items-center gap-2">
           <Label htmlFor="two-color-only">Two colours only</Label>
           <Explains label="two colours only">
             A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the common

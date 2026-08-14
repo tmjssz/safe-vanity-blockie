@@ -513,21 +513,26 @@ describe('FacePicker', () => {
   })
 
   describe('two-colour and contrast filters', () => {
-    it('defaults to two colours on and zero minimum contrast', () => {
+    it('shows the defaults it was given', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
         screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
       ).toBe('true')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
-      ).toBe('0')
-      expect(screen.getByTestId('min-contrast-value').textContent).toBe('0')
+      ).toBe(String(DEFAULT_FACE_FILTERS.minContrast))
+      expect(screen.getByTestId('min-contrast-value').textContent).toBe(
+        String(DEFAULT_FACE_FILTERS.minContrast),
+      )
     })
 
     it('calls onFiltersChange with twoColor flipped when the switch is toggled', async () => {
       const { onFiltersChange } = renderPicker({ filters: DEFAULT_FACE_FILTERS })
       await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
-      expect(onFiltersChange).toHaveBeenCalledWith({ twoColor: false, minContrast: 0 })
+      expect(onFiltersChange).toHaveBeenCalledWith({
+        twoColor: false,
+        minContrast: DEFAULT_FACE_FILTERS.minContrast,
+      })
     })
 
     // jsdom cannot drag a slider — no layout, so no pointer geometry — but Radix's thumb is
