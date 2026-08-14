@@ -6,6 +6,7 @@ results*.json
 gallery*.html
 .superpowers/
 .next/
+.vercel/
 next-env.d.ts
 
 # `next dev` auto-generates agent instruction files. They are untrusted generated content
