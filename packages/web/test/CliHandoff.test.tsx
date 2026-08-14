@@ -136,14 +136,41 @@ describe('CliHandoff', () => {
     expect(block.textContent).toBe(npxCommandFor(config, { rpcUrl: 'https://rpc.example' }))
   })
 
-  it('puts the copy control inside the command block', async () => {
+  // Inside the block it copies, but on a row of its own beneath the command rather than floating
+  // over it: laid on top, it had to be given a lane the text could not use, which cost the
+  // command a quarter of its width on every line to keep one corner clear.
+  it('puts the copy control on its own row under the command, inside the block', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
 
     const block = (await screen.findByRole('dialog')).querySelector(
       '[data-slot="command-block"]',
     )!
-    expect(block.contains(screen.getByRole('button', { name: /copy/i }))).toBe(true)
+    const copy = screen.getByRole('button', { name: /copy/i })
+    const command = block.querySelector('pre')!
+
+    expect(block.contains(copy)).toBe(true)
+    expect(command.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // A link rather than a bordered control: it sits inside a code block, where a second box drawn
+  // around it is one frame too many.
+  it('offers the copy control as a link, not a bordered button', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const copy = screen.getByRole('button', { name: /copy/i })
+    expect(copy.getAttribute('data-variant')).toBe('link')
+  })
+
+  // With the control on its own row there is nothing to keep clear, so the command gets the whole
+  // width back. This pins the reserve being gone rather than the exact padding that replaced it.
+  it('lets the command use the full width of the block', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const command = (await screen.findByRole('dialog')).querySelector('pre')!
+    expect(command.className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
   })
 
   it('copies the command and flips the button label on success', async () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Terminal } from 'lucide-react'
+import { Check, Copy, Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import type { FaceFilters, MineConfig } from '../lib/config'
@@ -121,31 +121,41 @@ export function CliHandoff({
             searches the full set of faces; your two-colour and contrast filters still carry over
             exactly, via the flags below.
           </p>
-          {/* Wrapped rather than scrolled sideways, and the copy control sits in the block it
-              copies. One long line in a box that scrolls hid most of what was about to go on the
-              clipboard, and a button underneath left the two related things a paragraph apart.
-              `break-all` because the command is mostly hex: without it the wrap points are the
-              spaces, and a 42-character address still overflows.
+          {/* Wrapped rather than scrolled sideways: one long line in a box that scrolls hides
+              most of what is about to go on the clipboard. `break-all` because the command is
+              mostly hex, so breaking at spaces alone still overflows on a 42-character address.
 
-              What is copied is unchanged — the text is one line, wrapping is only how it is
-              drawn, so it still pastes straight into a shell. */}
-          <div data-slot="command-block" className="relative min-w-0 rounded-md bg-muted">
-            {/* `pr-36` is the button's width plus its inset plus a gap, measured rather than
-                guessed: at `pr-28` the first line of the command ran 18px underneath the button.
-                It is tied to the button's label, so a shorter one leaves more room and a longer
-                one would need this raised with it. */}
-            <pre className="max-h-48 min-w-0 overflow-y-auto p-3 pr-36 text-sm whitespace-pre-wrap break-all">
+              What is copied is unchanged — the text is one line, and wrapping is only how it is
+              drawn, so it still pastes straight into a shell.
+
+              The copy control is inside the block but on its own row beneath the command, not
+              floating over it. Laid on top it had to be given a lane the text could not use, and
+              that reserve cost the command a quarter of its width on EVERY line to keep one
+              corner clear. A row of its own costs one line once. It is a link because it sits
+              inside a code block, where a second box drawn around it is one frame too many. */}
+          <div data-slot="command-block" className="min-w-0 rounded-md bg-muted">
+            <pre className="max-h-48 min-w-0 overflow-y-auto px-3 pt-3 text-sm whitespace-pre-wrap break-all">
               <code>{command}</code>
             </pre>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="absolute top-2 right-2"
-              onClick={copy}
-            >
-              {copied ? 'Copied' : 'Copy command'}
-            </Button>
+            <div className="flex justify-end px-3 pt-1 pb-2">
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto gap-1.5 p-0 text-xs"
+                onClick={copy}
+              >
+                {/* The icon changes with the label because they are one control reporting one
+                    state: a clipboard glyph next to the word "Copied" would be describing the
+                    action that is no longer on offer. */}
+                {copied ? (
+                  <Check className="size-3" aria-hidden="true" />
+                ) : (
+                  <Copy className="size-3" aria-hidden="true" />
+                )}
+                {copied ? 'Copied' : 'Copy command'}
+              </Button>
+            </div>
           </div>
           {/* Same rule as ShareConfig: the toast fades, this Alert does not — it stays until the
               next successful copy so the fallback (select the <pre> and copy manually) is never
