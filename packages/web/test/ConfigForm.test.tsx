@@ -183,17 +183,30 @@ describe('ConfigForm', () => {
   })
 
   describe('owner rows', () => {
-    // Disabled rather than absent, which is a change: a control that disappears at N=1 and
-    // reappears at N=2 shifts the row's width under the pointer heading for it. There is still
-    // always at least one owner — validateMineConfig rejects an empty list — so the button is
-    // there to say the rule, not to break it.
-    it('starts with exactly one owner field, whose remove button is present but disabled', () => {
+    // Absent, not disabled. There is always at least one owner (validateMineConfig rejects an
+    // empty list), and a lone greyed-out cross is a control offering to do the one thing the form
+    // will not allow — on the very first thing a new user sees. The cost is that the row narrows
+    // when a second owner is added; `removeOwner` still refuses to drop the last row, so the rule
+    // holds where the state changes rather than only in the markup.
+    it('starts with exactly one owner field, with nothing offering to remove it', () => {
       render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
       expect(ownerField(1)).toBeDefined()
       expect(screen.queryByLabelText(/^owner 2$/i)).toBeNull()
-      const remove = screen.getByRole('button', { name: /^remove owner 1$/i })
-      expect((remove as HTMLButtonElement).disabled).toBe(true)
+      expect(screen.queryByRole('button', { name: /remove owner/i })).toBeNull()
+    })
+
+    it('brings the remove buttons back as soon as there is more than one row', async () => {
+      const user = userEvent.setup()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      await user.click(addOwner())
+      expect(screen.getByRole('button', { name: /^remove owner 1$/i })).toBeDefined()
+      expect(screen.getByRole('button', { name: /^remove owner 2$/i })).toBeDefined()
+
+      // …and go again when the list is back down to one.
+      await user.click(screen.getByRole('button', { name: /^remove owner 2$/i }))
+      expect(screen.queryByRole('button', { name: /remove owner/i })).toBeNull()
     })
 
     // The whole point of the rework: what is typed into the rows is what is mined. An entry

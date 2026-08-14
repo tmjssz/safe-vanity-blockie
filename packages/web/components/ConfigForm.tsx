@@ -272,22 +272,25 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
                       placeholder="0x…"
                     />
                   </div>
-                  {/* On every row, disabled on the last one standing. There is always at least
-                      one owner (validateMineConfig rejects an empty list), but expressing that by
-                      REMOVING the control means the row's width changes between one owner and
-                      two — the button appears under a pointer already moving toward the input.
-                      Disabled says the same rule and holds its ground. */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="mb-px"
-                    disabled={owners.length === 1}
-                    aria-label={`Remove owner ${index + 1}`}
-                    onClick={() => removeOwner(owner.id)}
-                  >
-                    <X aria-hidden="true" />
-                  </Button>
+                  {/* Absent while there is only one row, rather than present and disabled. There
+                      is always at least one owner (validateMineConfig rejects an empty list), and
+                      a lone greyed-out cross is a control offering the one thing the form will
+                      not allow, on the very first thing a new user sees. The cost is that the
+                      input narrows when a second owner arrives; the guarantee itself does not
+                      rest on the markup — `removeOwner` refuses to drop the last row whatever is
+                      rendered. */}
+                  {owners.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="mb-px"
+                      aria-label={`Remove owner ${index + 1}`}
+                      onClick={() => removeOwner(owner.id)}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  )}
                 </div>
                 {/* BELOW the row and always mounted, holding a line of space whether or not it has
                     anything to say. Both halves of that are load-bearing, and MEASURED in a

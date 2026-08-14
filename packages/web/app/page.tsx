@@ -781,7 +781,10 @@ function HomeContent() {
       {/* `contents` keeps this wrapper out of the layout entirely, so the sticky bar MiningView
           portals in here sticks to the top of the page rather than to a one-bar-tall box. */}
       <div id={MINING_STATUS_BAR_SLOT_ID} className="contents" />
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+      {/* `flex-1` claims main's leftover height, which is what gives the idle card somewhere to
+          be centred in. It costs nothing once a run is on screen: the content is taller than the
+          viewport by then, so there is no leftover height to distribute. */}
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
 
         {!config && !linkDismissed && linkResult?.error && (
           <Alert variant="destructive">
@@ -796,8 +799,14 @@ function HomeContent() {
             is nothing to do with them until the run is thrown away, and a locked copy of the form
             is a large piece of furniture saying so. "Start over" in the status bar brings it
             back, holding the config it was mining. */}
+        {/* `my-auto` rather than `justify-center` on the parent: auto margins centre the card in
+            whatever space is left over, and collapse to zero when there is none — so a short
+            viewport, or a link error sitting above it, pushes the card back to normal flow
+            instead of centring it off the top of the page where it cannot be scrolled to. */}
         {!config && (
-          <ConfigSection initial={initial} chainId={chainId} onSubmit={submitConfig} />
+          <div className="my-auto w-full">
+            <ConfigSection initial={initial} chainId={chainId} onSubmit={submitConfig} />
+          </div>
         )}
 
         {/* Outside the `config &&` block below, unlike everything else here: reconstructing a

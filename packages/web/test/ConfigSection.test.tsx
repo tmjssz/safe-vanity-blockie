@@ -90,7 +90,7 @@ describe('ConfigSection', () => {
   // heading navigation on a page whose whole premise is reading an address carefully.
   it('exposes its title as a real heading', () => {
     renderSection()
-    expect(screen.getByRole('heading', { level: 2, name: /^configure$/i })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: /^safe configuration$/i })).toBeDefined()
   })
 
   // The card is the idle state and nothing else: the page unmounts it the moment a run starts, so

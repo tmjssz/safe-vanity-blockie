@@ -56,8 +56,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {/* `flex-1` is what makes the footer sit on the bottom edge on a short page: main
               absorbs the leftover height rather than the footer being dragged up to meet the
               content. It also keeps main tall enough for the mining bar portaled into it to have
-              somewhere to stick. */}
-          <main className="flex-1">{children}</main>
+              somewhere to stick.
+
+              A column flex container as well, so the page's own wrapper can claim that leftover
+              height instead of collapsing to its content — which is what lets the idle Configure
+              card sit in the middle of the screen rather than under the header. */}
+          <main className="flex flex-1 flex-col">{children}</main>
           {/* Normal document flow, below everything else — the results grid can hold 200 cards,
               so this sits a long way down on a full run. It is not fixed and reaches for no
               z-index: nothing here is positioned, so it cannot contest the sticky header, the

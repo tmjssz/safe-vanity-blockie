@@ -30,7 +30,7 @@ export function ConfigSection({
     // and the eye has to travel the width of the page between a label and its field.
     <Card className={CARD_WIDTH}>
       <CardHeader>
-        <CardTitle as="h2">Configure</CardTitle>
+        <CardTitle as="h2">Safe configuration</CardTitle>
         {/* Under the heading, not beside the owners list. It is true of every field on this card,
             and it is the reason the card is gone for the duration of a run — so it belongs to the
             step, not to one of its fields. */}
