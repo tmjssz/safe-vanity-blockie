@@ -393,6 +393,24 @@ describe('FacePicker', () => {
     describe('Reset', () => {
       const resetButton = () => screen.getByRole('button', { name: /^reset$/i })
 
+      // Three controls in one row, three weights: Select all is plain text, this is outlined, and
+      // Apply is filled. Reset does something to the form rather than only to the selection, so it
+      // reads as a control; only Apply has consequences for the run, so only Apply is solid.
+      it('is outlined, between the plain text of Select all and the filled Apply', async () => {
+        renderPicker({ value: ['smile', 'frown'] })
+        await userEvent.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+
+        expect(screen.getByRole('button', { name: /^reset$/i }).getAttribute('data-variant')).toBe(
+          'outline',
+        )
+        expect(screen.getByRole('button', { name: /^select all$/i }).getAttribute('data-variant')).toBe(
+          'link',
+        )
+        expect(screen.getByRole('button', { name: /^apply$/i }).getAttribute('data-variant')).toBe(
+          'default',
+        )
+      })
+
       it('is offered only while something is staged', async () => {
         renderPicker({ value: ['smile', 'frown'] })
         expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()

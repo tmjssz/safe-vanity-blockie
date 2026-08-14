@@ -151,12 +151,13 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
             {pending && (
               <>
                 {/* The way out that costs nothing: Apply restarts the search, this only drops
-                    edits that never took effect, so it asks no question. */}
+                    edits that never took effect, so it asks no question. Outlined rather than
+                    plain text — it acts on the form, where Select all beside it only widens the
+                    selection — but not filled, because only Apply has consequences for the run. */}
                 <Button
                   type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+                  variant="outline"
+                  size="xs"
                   onClick={() => {
                     // The complaint belongs to the draft being discarded, so it goes with it.
                     setError(undefined)
