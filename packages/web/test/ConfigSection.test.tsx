@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ConfigSection } from '../components/ConfigSection'
@@ -14,8 +14,7 @@ const CONFIG = {
   chainId: 11155111,
 }
 
-const SUBTITLE =
-  'Owners, threshold and version determine the address. Changing any of them re-rolls every result.'
+const SUBTITLE = 'Find a Safe address whose identicon renders as a face.'
 
 /**
  * Every case here renders the same card and differs in one or two props. The helper keeps each
@@ -32,12 +31,137 @@ const ownerField = (n: number) =>
   screen.getByLabelText(new RegExp(`^owner ${n}$`, 'i')) as HTMLInputElement
 
 describe('ConfigSection', () => {
-  // Exact copy, because this is the one line that tells a user why the fields lock and why a
-  // result set can vanish. It sits under the heading rather than beside the owners list: it is a
-  // property of every field in the card, not a footnote to one of them.
-  it('states under the heading what determines the address', () => {
+  // The card is the whole of the starting screen, so its subtitle is where a first-time visitor
+  // finds out what the app does at all. It replaced a line about the fields re-rolling results,
+  // which described the card as it was when it stayed mounted through a run: idle means no
+  // results on screen now, so that warning was about something no longer reachable from here.
+  it('says what the app does, under the heading', () => {
     renderSection()
     expect(screen.getByText(SUBTITLE)).toBeDefined()
+  })
+
+  // One sentence cannot carry the mechanism, the counterfactual address and the phishing caveat,
+  // and a card that opened with all three would bury the form. The detail is one click away
+  // instead — and the caveat in particular has nowhere else to live on this screen, since the
+  // callout that carries it only appears once a run starts.
+  describe('the "Learn more" dialog', () => {
+    it('is closed until asked for', () => {
+      renderSection()
+      expect(screen.getByRole('button', { name: /learn more/i })).toBeDefined()
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('explains how the search works', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+
+      const dialog = await screen.findByRole('dialog')
+      const text = dialog.textContent ?? ''
+      expect(text).toMatch(/salt nonce/i)
+      expect(text).toMatch(/owners, threshold/i)
+    })
+
+    it('says that searching deploys nothing', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+
+      const text = (await screen.findByRole('dialog')).textContent ?? ''
+      expect(text).toMatch(/nothing is deployed/i)
+    })
+
+    it('says the search runs on your own machine', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+
+      const text = (await screen.findByRole('dialog')).textContent ?? ''
+      expect(text).toMatch(/browser/i)
+      expect(text).toMatch(/worker threads/i)
+    })
+
+    // The one place this warning appears before a run exists. The callout that normally carries
+    // it is deliberately withheld until mining starts, so without this the first screen says
+    // nothing at all about a matching identicon proving nothing.
+    it('carries the phishing caveat, which nothing else on the idle screen does', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+
+      const text = (await screen.findByRole('dialog')).textContent ?? ''
+      expect(text).toMatch(/cosmetic/i)
+      expect(text).toMatch(/phishing vector/i)
+      expect(text).toMatch(/verify the full address/i)
+    })
+
+    // The footer offers the same dialog from an info icon, so the trigger is a prop rather than
+    // baked in. The card's own trigger is the default, and this pins that it stays a text link
+    // rather than silently becoming whatever the last caller passed.
+    it('is opened from a text link, not an icon, on the card', () => {
+      renderSection()
+      const trigger = screen.getByRole('button', { name: /learn more/i })
+      expect(trigger.textContent).toBe('Learn more')
+    })
+
+    // The deploy dialog draws its own backdrop (it is non-modal, so Radix renders none) and this
+    // one uses Radix's. Matching them is a styling choice, but the plumbing that carries it is
+    // not: DialogContent renders the overlay itself, so the class has to be threaded through a
+    // prop, and if that thread ever breaks the backdrop just silently looks wrong.
+    it('dims and blurs the page behind it, the way the deploy dialog does', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+      await screen.findByRole('dialog')
+
+      const overlay = document.querySelector('[data-slot="dialog-overlay"]')
+      expect(overlay).not.toBeNull()
+      expect(overlay?.className).toMatch(/backdrop-blur/)
+      expect(overlay?.className).toMatch(/bg-background\/60/)
+      // twMerge has to drop the default tint rather than leaving both on the element.
+      expect(overlay?.className).not.toMatch(/bg-black/)
+    })
+
+    // The caveat is not another paragraph of explanation: it is the one thing in here a reader
+    // must not skim past, so it is set as a warning box rather than as a fourth section heading.
+    // Same treatment as the callout that appears once mining starts, so the two are recognisably
+    // the same warning rather than two differently-worded ones.
+    it('sets the cosmetic caveat apart as a warning box', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+      const dialog = await screen.findByRole('dialog')
+
+      const alert = dialog.querySelector('[data-slot="alert"]')
+      expect(alert).not.toBeNull()
+      expect(alert?.textContent).toMatch(/a matching identicon is cosmetic/i)
+      expect(alert?.textContent).toMatch(/phishing vector/i)
+      expect(alert?.className).toMatch(/amber/)
+      expect(alert?.querySelector('svg')).not.toBeNull()
+
+      // The other three sections stay plain prose — a dialog of four warning boxes warns about
+      // nothing.
+      expect(dialog.querySelectorAll('[data-slot="alert"]')).toHaveLength(1)
+    })
+
+    // Static copy, not an event. Armed as a live region inside a dialog that has just been opened
+    // and announced, it would read the caveat out a second time on top of the dialog itself.
+    it('does not arm the caveat as a live region', async () => {
+      renderSection()
+      await userEvent.click(screen.getByRole('button', { name: /learn more/i }))
+      const dialog = await screen.findByRole('dialog')
+
+      expect(dialog.querySelector('[role="alert"]')).toBeNull()
+      expect(dialog.querySelector('[data-slot="alert"]')?.getAttribute('role')).toBe('note')
+    })
+
+    it('closes again without touching the form', async () => {
+      const onSubmit = vi.fn()
+      const user = userEvent.setup()
+      renderSection({ onSubmit })
+
+      await user.click(screen.getByRole('button', { name: /learn more/i }))
+      await screen.findByRole('dialog')
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(ownerField(1)).toBeDefined()
+    })
   })
 
 

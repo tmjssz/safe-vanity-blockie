@@ -144,9 +144,46 @@ describe('Footer', () => {
     })
   })
 
+  // The footer must not carry the caveat as standing text: echoing it in chrome is what turns it
+  // into scenery, which is the one thing this warning cannot afford. Behind the About dialog is a
+  // different matter — that is asked for, not passively displayed.
   it('does not repeat the phishing caveat already carried by the SecurityNotice alert', () => {
     render(<Footer />)
     expect(screen.queryByText(/phishing/i)).toBeNull()
+  })
+
+  // The same explanation the idle Configure card offers, reachable from every route — including
+  // the ones where that card is gone, which is every route once mining has started.
+  describe('the About entry', () => {
+    const aboutButton = () => screen.getByRole('button', { name: /about this app/i })
+
+    it('offers an info control that opens nothing until pressed', () => {
+      render(<Footer />)
+      expect(aboutButton()).toBeDefined()
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('opens the same explanation the Configure card links to', async () => {
+      render(<Footer />)
+      await userEvent.click(aboutButton())
+
+      const text = (await screen.findByRole('dialog')).textContent ?? ''
+      expect(text).toMatch(/about this app/i)
+      expect(text).toMatch(/salt nonce/i)
+      expect(text).toMatch(/nothing is deployed/i)
+      expect(text).toMatch(/phishing vector/i)
+    })
+
+    it('closes again on Escape', async () => {
+      const user = userEvent.setup()
+      render(<Footer />)
+
+      await user.click(aboutButton())
+      await screen.findByRole('dialog')
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
   })
 
   it('does not suggest the unpublished npx command', () => {

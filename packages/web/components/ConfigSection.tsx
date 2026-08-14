@@ -1,6 +1,7 @@
 'use client'
 
 import type { MineConfig } from '../lib/config'
+import { AboutDialog } from './AboutDialog'
 import { ConfigForm, type ConfigFormProps } from './ConfigForm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 
@@ -31,12 +32,14 @@ export function ConfigSection({
     <Card className={CARD_WIDTH}>
       <CardHeader>
         <CardTitle as="h2">Safe configuration</CardTitle>
-        {/* Under the heading, not beside the owners list. It is true of every field on this card,
-            and it is the reason the card is gone for the duration of a run — so it belongs to the
-            step, not to one of its fields. */}
+        {/* This card is the whole of the starting screen, so its subtitle is where a first-time
+            visitor learns what the app does at all. It replaced a line about the fields re-rolling
+            every result, which described the card as it was when it stayed mounted through a run:
+            idle means no results on screen now, so that warning pointed at something no longer
+            reachable from here. What determines the address is still said — in the dialog, along
+            with everything else a sentence cannot hold. */}
         <CardDescription>
-          Owners, threshold and version determine the address. Changing any of them re-rolls every
-          result.
+          Find a Safe address whose identicon renders as a face. <AboutDialog />
         </CardDescription>
       </CardHeader>
       <CardContent>

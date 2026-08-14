@@ -1,7 +1,10 @@
+import { Info } from 'lucide-react'
 import { buildVersionHref, formatBuildVersion } from '../lib/build-info'
 import { cn } from '../lib/utils'
 import packageJson from '../package.json'
+import { AboutDialog } from './AboutDialog'
 import { PrivacyNote } from './PrivacyNote'
+import { Button } from './ui/button'
 
 const REPO_URL = 'https://github.com/tmjssz/safe-vanity-blockie'
 
@@ -71,6 +74,24 @@ export function Footer() {
             · not an official Safe product
           </p>
           <div className="flex items-center gap-4 text-sm">
+            {/* The same explanation the Configure card links to, reachable from anywhere. That
+                matters most where the card is not: it is unmounted for the whole of a run, so
+                without this the only route to "what is this app" disappears the moment someone
+                starts using it. Grouped with the shield because both are icon-only affordances
+                that open a panel of prose. */}
+            <AboutDialog
+              trigger={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="About this app"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Info aria-hidden="true" />
+                </Button>
+              }
+            />
             <PrivacyNote />
             <a href={`${REPO_URL}/blob/main/LICENSE`} {...EXTERNAL_LINK_PROPS}>
               MIT
