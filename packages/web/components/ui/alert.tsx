@@ -11,6 +11,14 @@ const alertVariants = cva(
         default: "bg-card text-card-foreground",
         destructive:
           "bg-card text-destructive *:data-[slot=alert-description]:text-destructive [&>svg]:text-current",
+        // A standing caution, not an error. Amber rather than the destructive red because nothing
+        // has gone wrong when one of these is on screen, and a permanent red panel on a working
+        // screen is the fastest way to teach someone to stop seeing it. Both palettes are written
+        // out rather than left to a `dark:` inversion of one, so each is deliberate. Lives here
+        // rather than as classes at the call site because two places show the same warning and
+        // they have to stay recognisably the same warning.
+        warning:
+          "border-amber-500/30 bg-amber-500/5 text-amber-900 *:data-[slot=alert-description]:text-amber-900/80 [&_strong]:text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/5 dark:text-amber-100 dark:*:data-[slot=alert-description]:text-amber-100/70 dark:[&_strong]:text-amber-100",
       },
     },
     defaultVariants: {
