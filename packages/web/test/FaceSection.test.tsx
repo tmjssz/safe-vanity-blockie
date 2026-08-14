@@ -17,9 +17,19 @@ function renderSection(overrides: Partial<Parameters<typeof FaceSection>[0]> = {
 }
 
 describe('FaceSection', () => {
-  it('summarises the accepted expressions', () => {
+  // The header carried a badge listing the accepted expressions. It existed so the collapsed card
+  // still said what was accepted; with the card always open, the toggles themselves are the answer
+  // — each is labelled and each shows its own checked state, a few pixels below where the badge
+  // was restating them.
+  it('leaves the accepted expressions to the toggles rather than restating them', () => {
     renderSection()
-    expect(screen.getByText(/smile, frown/i)).toBeDefined()
+    expect(screen.queryByText('smile, frown')).toBeNull()
+
+    // Still legible, from the controls that set it.
+    const smile = screen.getByRole('checkbox', { name: /smile/i }) as HTMLInputElement
+    expect(smile.getAttribute('aria-checked') ?? String(smile.checked)).toBe('true')
+    const neutral = screen.getByRole('checkbox', { name: /neutral/i }) as HTMLInputElement
+    expect(neutral.getAttribute('aria-checked') ?? String(neutral.checked)).toBe('false')
   })
 
   it('stays editable — expression changes apply without a reset', async () => {
@@ -28,19 +38,16 @@ describe('FaceSection', () => {
     expect(props.onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
   })
 
-  // S4/S6. The section is a Collapsible now, but it starts open — the picker has to stay
-  // discoverable — and its title is a real h2, which also repairs the FacePicker h3 underneath it
-  // that previously hung off a non-heading.
-  it('starts open, with its title as a real heading, and collapses on demand', async () => {
+  // Was a Collapsible, starting open. The collapse existed to keep ~600px of picker from sitting
+  // between the caveat and the results all session — but scrolling past it costs nothing, and a
+  // control that only ever hides something the user can already scroll past is a control that
+  // does not need to exist. S4's other half stands: the title is a real h2, which is what the
+  // FacePicker's h3 underneath it hangs off.
+  it('shows its options with nothing to open, under a real heading', () => {
     renderSection()
     expect(screen.getByRole('heading', { level: 2, name: /^face$/i })).toBeDefined()
     expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
-
-    await userEvent.click(screen.getByRole('button', { name: /show or hide the face options/i }))
-
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    // The one-line summary survives the collapse, as Configure's does.
-    expect(screen.getByText(/smile, frown/i)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /show or hide the face options/i })).toBeNull()
   })
 
   // The previews are the expression control now, so there is one per expression rather than one
