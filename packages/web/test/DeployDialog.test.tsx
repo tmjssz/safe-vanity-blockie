@@ -93,6 +93,46 @@ describe('DeployDialog', () => {
     expect(screen.getByText(/cosmetic/i)).toBeDefined()
   })
 
+  // The same warning box the About dialog and the results callout use: amber rather than the
+  // default tint, one flowing sentence rather than a title stacked over a description. Met three
+  // times in one session, it has to be recognisably one warning rather than three that happen to
+  // start with the same words.
+  it('draws the caveat as the app\'s warning box', async () => {
+    await renderDialog()
+    const note = screen.getByRole('note')
+    expect(note.className).toMatch(/amber/)
+    expect(note.querySelector('[data-slot="alert-title"]')).toBeNull()
+    expect(note.querySelector('strong')?.textContent).toMatch(/a matching identicon is cosmetic/i)
+  })
+
+  // Each owner beside the identicon its address produces: this is the screen where a Safe is
+  // paid for, and the owner set is what determines control of it. A reader who recognises their
+  // own blockie has a check that reading 42 hex characters does not give them.
+  it('draws each owner with its own identicon', async () => {
+    const senders = {
+      owners: ['0x' + '44'.repeat(20), '0x' + '55'.repeat(20)],
+      threshold: 2,
+      safeVersion: '1.3.0' as const,
+      chainId: 137,
+    }
+    await renderDialog({ config: senders })
+
+    const identicons = document.querySelectorAll('[data-slot="owner-identicon"]')
+    expect(identicons).toHaveLength(senders.owners.length)
+    for (const node of identicons) {
+      expect(node.getAttribute('aria-hidden')).toBe('true')
+      expect(node.querySelector('svg')).not.toBeNull()
+    }
+  })
+
+  it('sets the Safe version apart as a badge', async () => {
+    await renderDialog({
+      config: { owners: [config.owners[0]], threshold: 1, safeVersion: '1.3.0', chainId: 1 },
+    })
+    const version = screen.getByText('1.3.0')
+    expect(version.closest('[data-slot="badge"]')).not.toBeNull()
+  })
+
   it('shows the address and saltNonce being deployed', async () => {
     await renderDialog()
     expect(screen.getByText(candidate.address)).toBeDefined()
@@ -120,7 +160,7 @@ describe('DeployDialog', () => {
     // Every owner, in full: the owner set is what determines control of the Safe, and a count is
     // nothing a user can check against an address they recognise.
     for (const owner of senders.owners) expect(screen.getByText(owner)).toBeDefined()
-    expect(screen.getByText('2 of 2')).toBeDefined()
+    expect(screen.getByText(/2 of 2 signers/i)).toBeDefined()
     expect(screen.getByText('1.3.0')).toBeDefined()
 
     // And nothing of the config this file's other tests use leaked in from anywhere else.
@@ -128,13 +168,17 @@ describe('DeployDialog', () => {
     expect(screen.queryByText('1.4.1')).toBeNull()
   })
 
-  // The list is "Safe config" now, and the chain is not in it. These three fields are what the
-  // ADDRESS is derived from and what cannot change without invalidating it; the chain is neither —
-  // the same address is this Safe's address on all six non-mainnet chains, and it is a live header
-  // control that can move while this dialog is open, so listing it here would have made it the one
-  // line in the block that changes under the reader. Where the money goes is still named, once, in
-  // the description above.
-  it('titles the summary "Safe config" and leaves the chain out of it, keeping it in the description', async () => {
+  // The chain is not in the list. These three fields are what the ADDRESS is derived from and
+  // what cannot change without invalidating it; the chain is neither — the same address is this
+  // Safe's address on all six non-mainnet chains, and it is a live header control that can move
+  // while this dialog is open, so listing it here would have made it the one line in the block
+  // that changes under the reader. Where the money goes is still named, once, in the description
+  // above.
+  //
+  // The block carries no heading of its own any more: it is three labelled rows inside a dialog
+  // whose title already says what is being deployed, and "Safe config" was a label for a thing
+  // the labels underneath it were already naming.
+  it('leaves the chain out of the config block, keeping it in the description', async () => {
     await renderDialog({
       config: {
         owners: ['0x' + '44'.repeat(20)],
@@ -144,11 +188,12 @@ describe('DeployDialog', () => {
       },
     })
 
-    const summary = screen.getByRole('heading', { name: /^safe config$/i })
+    expect(screen.queryByRole('heading', { name: /^safe config$/i })).toBeNull()
     expect(screen.queryByText(/the config this address comes from/i)).toBeNull()
     // Not a row in the list…
-    expect(summary.parentElement?.textContent).not.toMatch(/network/i)
-    expect(summary.parentElement?.textContent).not.toMatch(/polygon/i)
+    const summary = screen.getByText(/^owners$/i).closest('dl')!
+    expect(summary.textContent).not.toMatch(/network/i)
+    expect(summary.textContent).not.toMatch(/polygon/i)
     // …but still said, by name and not as id 137, in the sentence about spending gas.
     const description = screen.getByText(/spends gas/i)
     expect(description.textContent).toMatch(/Polygon/)

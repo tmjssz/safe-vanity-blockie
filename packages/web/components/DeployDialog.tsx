@@ -6,9 +6,9 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
 import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
-import { Blockie } from './Blockie'
+import { Blockie, DecorativeBlockie } from './Blockie'
 import { ShareConfig } from './ShareConfig'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import {
@@ -172,12 +172,19 @@ export function DeployDialog({
             spent, and it is the last place it can still do any good. role="note" rather than the
             Alert default, though — it is static copy that is always here, so as a live region it
             would compete permanently with the real status/error below. */}
-        <Alert role="note">
+        <Alert role="note" variant="warning">
           <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>A matching identicon is cosmetic.</AlertTitle>
+          {/* The same box the About dialog and the results callout draw, in the same amber and
+              with the lead running into the body rather than stacked above it. Met three times in
+              one session it has to read as one warning, not three that begin alike. The wording
+              stays this screen's own: "the address below", "before you confirm" — the others are
+              read while browsing, this one while about to spend. */}
           <AlertDescription>
-            Check every character of the address below before you confirm. A look-alike blockie
-            is a known phishing vector.
+            <p>
+              <strong className="font-medium">A matching identicon is cosmetic.</strong> Check
+              every character of the address below before you confirm. A look-alike blockie is a
+              known phishing vector.
+            </p>
           </AlertDescription>
         </Alert>
 
@@ -208,23 +215,41 @@ export function DeployDialog({
             "1 owner" is nothing a user can check on the one screen whose entire job is checking.
             `break-all` for the same reason the address above uses it. Subordinate to the blockie
             and the address by size and weight — those remain the thing being verified. */}
+        {/* No heading of its own: three labelled rows inside a dialog whose title already says
+            what is being deployed, and "Safe config" was a label for the thing its own labels
+            were naming. */}
         <div className="flex flex-col gap-2 rounded-lg border p-4">
-          <h3 className="text-sm font-medium">Safe config</h3>
           <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
             <dt className="text-muted-foreground">Owners</dt>
-            <dd className="flex min-w-0 flex-col gap-1">
+            <dd className="flex min-w-0 flex-col gap-1.5">
+              {/* Each owner beside the identicon its address produces. This is the screen where
+                  the Safe is paid for, and the owner set is what determines control of it: a
+                  reader who recognises their own blockie has a check that reading 42 hex
+                  characters does not give them. Decorative, since the address is right there. */}
               {config.owners.map((owner) => (
-                <code key={owner} className="break-all">
-                  {owner}
-                </code>
+                <span key={owner} className="flex min-w-0 items-start gap-2">
+                  <DecorativeBlockie
+                    address={owner}
+                    size={16}
+                    slot="owner-identicon"
+                    className="mt-0.5 size-4 rounded-sm"
+                  />
+                  <code className="break-all">{owner}</code>
+                </span>
               ))}
             </dd>
             <dt className="text-muted-foreground">Threshold</dt>
+            {/* "signers" always, including at 1 of 1: "N of M signers" is how a multisig
+                threshold is written, and it is the same phrase the status bar uses. */}
             <dd>
-              {config.threshold} of {config.owners.length}
+              {config.threshold} of {config.owners.length} signers
             </dd>
             <dt className="text-muted-foreground">Safe version</dt>
-            <dd>{config.safeVersion}</dd>
+            <dd>
+              <Badge variant="secondary" className="font-mono">
+                {config.safeVersion}
+              </Badge>
+            </dd>
             {/* No chain row. These three are what the ADDRESS is derived from and what a user
                 cannot change without invalidating it; the chain is not one of them — the same
                 address is this Safe's address on all six non-mainnet chains (measured; see
