@@ -111,9 +111,9 @@ export function CliHandoff({
           Run this search on your machine
         </Button>
       </DialogTrigger>
-      {/* Narrower than it was: with each argument on its own line the command no longer needs a
-          wide box to stay readable, and the prose above it reads better at a shorter measure. */}
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+      {/* Between the widest dialog and the default: with each argument on its own line the
+          command does not need a wide box, but at `lg` the owner list wrapped mid-address. */}
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Run this search on your machine</DialogTitle>
           <DialogDescription>
