@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
-import { CARD_WIDTH, ConfigSection } from '../components/ConfigSection'
+import { ConfigSection } from '../components/ConfigSection'
 import { DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
@@ -832,14 +832,16 @@ function HomeContent() {
         {config && (
           <>
             {/* The caveat is about how to read a result, so it appears where results do, at the
-                same measure as the Configure card above it. Before a run there is nothing on
-                screen to mistrust — and a permanent banner over an empty starting screen is the
-                fastest way to teach someone that this panel is scenery, which is the one thing
-                this warning cannot afford to become. Once up it stays up, through a stop and
-                through every result found, until "Start over" clears the run itself. */}
-            <div className={CARD_WIDTH}>
-              <SecurityNotice />
-            </div>
+                full content width the Face card and the grid use. It used to line up with the
+                Configure card's narrower measure; that card is not on screen during a run any
+                more, so the narrow column it belonged to no longer exists.
+
+                Before a run there is nothing on screen to mistrust — and a permanent banner over
+                an empty starting screen is the fastest way to teach someone that this panel is
+                scenery, which is the one thing this warning cannot afford to become. Once up it
+                stays up, through a stop and through every result found, until "Start over"
+                clears the run itself. */}
+            <SecurityNotice />
 
             <FaceSection
               mouths={mouths}

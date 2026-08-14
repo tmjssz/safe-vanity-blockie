@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Alert, AlertDescription } from './ui/alert'
 
 export function SecurityNotice() {
   return (
@@ -17,10 +17,19 @@ export function SecurityNotice() {
       className="border-amber-500/30 bg-amber-500/5 text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/5 dark:text-amber-100"
     >
       <ShieldAlert className="h-4 w-4" />
-      <AlertTitle className="font-medium">A matching identicon is cosmetic.</AlertTitle>
+      {/* One flowing sentence rather than an AlertTitle above an AlertDescription. Stacked, it
+          read as a heading with a paragraph under it, and at the full content width that left a
+          mostly empty first line above a second — a lot of vertical space for a caution that has
+          to stay legible without becoming furniture. The lead keeps its emphasis; it just does
+          not get a row of its own. */}
       <AlertDescription className="text-amber-900/80 dark:text-amber-100/70">
-        Never treat it as proof of an address. Blockie look-alikes are a known phishing vector.
-        Always verify the full address.
+        <p>
+          <strong className="font-medium text-amber-900 dark:text-amber-100">
+            A matching identicon is cosmetic.
+          </strong>{' '}
+          Never treat it as proof of an address. Blockie look-alikes are a known phishing vector.
+          Always verify the full address.
+        </p>
       </AlertDescription>
     </Alert>
   )

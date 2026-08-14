@@ -16,16 +16,20 @@ describe('SecurityNotice', () => {
     expect(text).toMatch(/phishing/i)
   })
 
-  // Split deliberately: the lead is the claim a skimming reader has to come away with, and the
-  // body is what to do about it. Run together as one paragraph the claim stops being findable.
-  it('leads with the claim and follows with what to do about it', () => {
+  // The lead is emphasised but runs INTO the body rather than sitting on its own line. Stacked as
+  // two blocks it read as a heading with a paragraph under it, which at full width left a mostly
+  // empty first line; as one flowing sentence it stays a single compact strip.
+  it('runs the emphasised lead inline into the body', () => {
     render(<SecurityNotice />)
-    expect(screen.getByText('A matching identicon is cosmetic.')).toBeDefined()
-    expect(
-      screen.getByText(
-        'Never treat it as proof of an address. Blockie look-alikes are a known phishing vector. Always verify the full address.',
-      ),
-    ).toBeDefined()
+    const lead = screen.getByText('A matching identicon is cosmetic.')
+    expect(lead.tagName).toBe('STRONG')
+
+    // One flowing block, not a title and a description in separate rows.
+    const note = screen.getByRole('note')
+    expect(note.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'A matching identicon is cosmetic. Never treat it as proof of an address. Blockie look-alikes are a known phishing vector. Always verify the full address.',
+    )
+    expect(note.querySelector('[data-slot="alert-title"]')).toBeNull()
   })
 
   // The warning is about trusting a picture, and it is read beside a grid of pictures. Amber

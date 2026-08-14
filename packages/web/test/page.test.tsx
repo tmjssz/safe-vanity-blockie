@@ -1615,6 +1615,10 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
     expect(screen.getByText(/known phishing vector/i)).toBeDefined()
 
+    // Full width, like the Face card and the grid below it, rather than the Configure card's
+    // narrow measure — the card it used to line up with is not on screen during a run.
+    const note = screen.getByRole('note')
+    expect(note.closest('[class*="max-w-[520px]"]')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.queryByText(/known phishing vector/i)).toBeNull()
