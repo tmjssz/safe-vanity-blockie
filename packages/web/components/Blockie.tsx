@@ -1,4 +1,5 @@
 import { bloSvg } from '@safe-vanity-blockie/core'
+import { memo } from 'react'
 import { cn } from '../lib/utils'
 
 export interface BlockieProps {
@@ -15,8 +16,13 @@ export interface BlockieProps {
  *
  * `data-slot` is what tests query, since a decorative element has no accessible name to find it
  * by — that is the whole point of it.
+ *
+ * Memoised, and that is load-bearing rather than tidiness: the mining status bar shows the owner's
+ * identicon and re-renders several times a second for the counters beside it, so an unmemoised
+ * version re-ran `bloSvg` on every publish to redraw a picture of an address that cannot change
+ * during a run. All four props are primitives, so the default shallow compare is exact.
  */
-export function DecorativeBlockie({
+export const DecorativeBlockie = memo(function DecorativeBlockie({
   address,
   size,
   slot,
@@ -35,7 +41,7 @@ export function DecorativeBlockie({
       dangerouslySetInnerHTML={{ __html: bloSvg(address, size) }}
     />
   )
-}
+})
 
 export function Blockie({ address, size = 64 }: BlockieProps) {
   // bloSvg emits a self-contained <svg> built from numeric HSL values and integer coordinates
