@@ -27,37 +27,6 @@ export interface ConfigFormProps {
    */
   chainId: number
   onSubmit: (config: MineConfig) => void
-  /**
-   * The config currently being mined, or undefined before anything has been started. This card
-   * stays on screen for the whole run now, so it needs to know what is running to know what its
-   * one button should do — and to tell whether the fields have since been edited away from it.
-   */
-  submittedConfig?: MineConfig
-  /** True while that run is halted. Fields unlock, and the button offers to start it again. */
-  miningPaused?: boolean
-  /** Halts a running search, or restarts a halted one. Never called when there is no run. */
-  onToggleMining?: () => void
-}
-
-/**
- * Whether the form still describes the run that is on screen. Only the three fields that derive
- * the Safe address are compared: the chain is not one of them (the same address holds across the
- * six chains sharing a Safe singleton, which is why the header can change it mid-run), so
- * including it would claim results are stale when nothing about them moved.
- */
-function describesRun(
-  owners: string[],
-  threshold: number,
-  safeVersion: string,
-  run: MineConfig,
-): boolean {
-  const typed = owners.map((value) => value.trim()).filter((value) => value.length > 0)
-  return (
-    threshold === run.threshold &&
-    safeVersion === run.safeVersion &&
-    typed.length === run.owners.length &&
-    typed.every((value, index) => value.toLowerCase() === run.owners[index]?.toLowerCase())
-  )
 }
 
 /**
@@ -77,14 +46,7 @@ function makeRows(values: string[], nextId: { current: number }): OwnerRow[] {
   return values.map((value) => ({ id: `row-${nextId.current++}`, value, touched: false }))
 }
 
-export function ConfigForm({
-  initial,
-  chainId,
-  onSubmit,
-  submittedConfig,
-  miningPaused = false,
-  onToggleMining,
-}: ConfigFormProps) {
+export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const nextRowId = useRef(0)
   // Seeded once, from the link's decoded owners — one field per entry, in order. There is always
   // at least one row: `validateMineConfig` requires at least one owner, and a form with no field
@@ -181,26 +143,6 @@ export function ConfigForm({
       : filled.some((owner) => !isOwnerAddress(owner.value))
         ? 'invalid'
         : undefined
-
-  // The three states this card can be in, and the one control that has to express all of them.
-  //
-  // `running` is what locks the fields: they derive the address every result on screen was mined
-  // for, so they cannot move underneath a live search. Stopping unlocks them, which is what makes
-  // `drifted` possible — the form can now say something the leaderboard does not. Pressing start
-  // then is a genuine restart, and `drifted` is what the warning above the button is read off, so
-  // the cost is stated before the press rather than discovered after it.
-  const running = submittedConfig !== undefined && !miningPaused
-  const drifted =
-    submittedConfig !== undefined &&
-    !describesRun(
-      owners.map((owner) => owner.value),
-      effectiveThreshold,
-      safeVersion,
-      submittedConfig,
-    )
-  // Resuming, not restarting: the run and its leaderboard are still here, so this must not go back
-  // through onSubmit and mint a config the miner would treat as a new search.
-  const resumes = submittedConfig !== undefined && miningPaused && !drifted
 
   const setOwnerValue = (id: string, value: string) => {
     setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value } : row)))
@@ -321,7 +263,6 @@ export function ConfigForm({
                       value={owner.value}
                       onChange={(event) => setOwnerValue(owner.id, event.target.value)}
                       onBlur={() => touchOwner(owner.id)}
-                      disabled={running}
                       // The row says so itself, and says so programmatically: with "Start"
                       // disabled there is no press left to produce the validator's message, so a
                       // row that merely looked wrong would leave a screen-reader user with a dead
@@ -341,7 +282,7 @@ export function ConfigForm({
                     variant="ghost"
                     size="icon-sm"
                     className="mb-px"
-                    disabled={owners.length === 1 || running}
+                    disabled={owners.length === 1}
                     aria-label={`Remove owner ${index + 1}`}
                     onClick={() => removeOwner(owner.id)}
                   >
@@ -378,13 +319,12 @@ export function ConfigForm({
             variant="link"
             size="sm"
             className="h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
-            disabled={running}
             onClick={addOwner}
           >
             <Plus aria-hidden="true" />
             Add another owner
           </Button>
-          {canUseConnectedWallet && !running && (
+          {canUseConnectedWallet && (
             <Button
               type="button"
               variant="link"
@@ -415,7 +355,7 @@ export function ConfigForm({
             // N of zero: no owner has been typed, so there is no threshold that could be honoured
             // and the control offers none. Submitting anyway is not silent — validateMineConfig
             // answers "Add at least one owner address.", which is rendered above.
-            disabled={signerCount === 0 || running}
+            disabled={signerCount === 0}
           >
             <SelectTrigger id={thresholdId} aria-label="Threshold">
               <SelectValue />
@@ -445,7 +385,7 @@ export function ConfigForm({
 
       <div className="flex flex-col gap-2">
         <Label htmlFor={safeVersionId}>Safe version</Label>
-        <Select value={safeVersion} onValueChange={setSafeVersion} disabled={running}>
+        <Select value={safeVersion} onValueChange={setSafeVersion}>
           <SelectTrigger id={safeVersionId} aria-label="Safe version">
             <SelectValue />
           </SelectTrigger>
@@ -481,47 +421,29 @@ export function ConfigForm({
           explanation has to arrive without one — here for the form as a whole, and on the rows
           themselves for the addresses at fault. */}
       {/* The single high-emphasis control on the card, full width at the bottom, so there is
-          never a question about what this card is for. The hint moves ABOVE it rather than
-          beside it: at full width there is no room alongside, and a reason placed above the
-          control it disables is read before the press rather than after it. */}
+          never a question about what this card is for. The hint sits ABOVE it rather than beside
+          it: at full width there is no room alongside, and a reason placed above the control it
+          disables is read before the press rather than after it.
+
+          There is no Stop here. The card is the idle state and the page unmounts it the moment a
+          run starts, so halting, resuming and discarding all belong to the status bar — the only
+          surface on screen while mining. */}
       <div className="flex flex-col gap-2">
-        {/* What pressing start now costs, said before it is pressed. This replaces the
-            "Start over?" confirmation for the ordinary case: the fields unlocked when mining
-            stopped, so the form can now describe a different Safe than the leaderboard below it,
-            and starting again cannot keep results that were never mined for this config. A dialog
-            asks after the fact; this is on screen from the moment the first edit lands. */}
-        {drifted && !running && (
-          <p className="text-sm text-muted-foreground">
-            Starting with these changes discards the results found so far.
-          </p>
-        )}
-        {!running && !resumes && startBlocker && (
+        {startBlocker && (
           <p id={startHintId} className="text-sm text-muted-foreground">
             {startBlocker === 'empty'
               ? 'Add an owner address to start.'
               : 'Fix the owner address marked above to start.'}
           </p>
         )}
-        {running ? (
-          // Secondary, not destructive: stopping costs nothing. The run resumes from where it
-          // halted, with the leaderboard and the scanned totals intact.
-          <Button type="button" variant="secondary" className="w-full" onClick={onToggleMining}>
-            Stop mining
-          </Button>
-        ) : resumes ? (
-          <Button type="button" className="w-full" onClick={onToggleMining}>
-            Start mining
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={startBlocker !== undefined}
-            aria-describedby={startBlocker ? startHintId : undefined}
-          >
-            Start mining
-          </Button>
-        )}
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={startBlocker !== undefined}
+          aria-describedby={startBlocker ? startHintId : undefined}
+        >
+          Start mining
+        </Button>
       </div>
     </form>
   )

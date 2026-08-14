@@ -149,6 +149,12 @@ function HomeContent() {
   // Configure card's Stop. Two pieces of state would be two things to keep in step; one piece
   // read by both cannot disagree with itself.
   const [pausedByUser, setPausedByUser] = useState(false)
+  // The last config actually submitted. It outlives `config`, which "Start over" clears, and is
+  // what refills the form when the card comes back — retyping owner addresses to change one
+  // threshold is exactly the friction that reset used to impose, and every retype of an address
+  // is a chance to mine a different Safe by typo. Safe to treat as the form's contents because
+  // the card is unmounted for the whole run: there is no window in which the two can diverge.
+  const [lastSubmitted, setLastSubmitted] = useState<MineConfig | undefined>()
 
   // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
   // only an actual change to the accepted expressions should do that.
@@ -176,6 +182,8 @@ function HomeContent() {
   // a pick of the chain the link already named, which is indistinguishable and harmless.
   const [picked, setPicked] = useState<number | undefined>()
   const chainId = picked ?? linked?.chainId ?? DEFAULT_CHAIN_ID
+  // The link wins on arrival; after "Start over" has dismissed it, the discarded run's own config
+  // is what the form is seeded from.
   const initial = linked
     ? {
         // The array the link decoded, not a joined string: the form has one field per owner, and
@@ -185,7 +193,13 @@ function HomeContent() {
         threshold: linked.threshold,
         safeVersion: linked.safeVersion,
       }
-    : undefined
+    : lastSubmitted
+      ? {
+          owners: lastSubmitted.owners,
+          threshold: lastSubmitted.threshold,
+          safeVersion: lastSubmitted.safeVersion,
+        }
+      : undefined
 
   // The link's own config as a MineConfig. Owners, threshold, Safe version and chain are all in
   // the link, so the address its saltNonce names is fully determined by the link alone — nothing
@@ -508,6 +522,9 @@ function HomeContent() {
     // plain `setPicked(chainId)` would undo the switch the user just confirmed. Queued updates see
     // each other, so `previous` is that `next` and the pick stands.
     setPicked((previous) => previous ?? chainId)
+    // Nothing is running to be paused any more, and the next run must not inherit a stop the
+    // user asked of the one before it.
+    setPausedByUser(false)
   }, [chainId, closeSelection])
 
   // Starting a search. With a run already on screen this is a RESTART, and the results below
@@ -516,15 +533,12 @@ function HomeContent() {
   // Safes mined for a config nobody is on any more. The form only submits when it is idle or when
   // its fields have been edited away from the run (a plain resume goes through `toggleMining`
   // instead), so this cannot fire on a press that was only meant to continue.
-  const submitConfig = useCallback(
-    (next: MineConfig) => {
-      if (config) startOver()
-      setConfig(next)
-      // A fresh run is never born stopped, whatever the previous one was left at.
-      setPausedByUser(false)
-    },
-    [config, startOver],
-  )
+  const submitConfig = useCallback((next: MineConfig) => {
+    setLastSubmitted(next)
+    setConfig(next)
+    // A fresh run is never born stopped, whatever the previous one was left at.
+    setPausedByUser(false)
+  }, [])
 
   // What a chain switch is measured against: the chain whose addresses are at stake. Normally the
   // submitted config's — the run on screen is what a crossing costs — but before anything is
@@ -777,15 +791,14 @@ function HomeContent() {
           </Alert>
         )}
 
-        <ConfigSection
-          config={config}
-          initial={initial}
-          chainId={chainId}
-          miningPaused={miningPaused}
-          onSubmit={submitConfig}
-          onToggleMining={toggleMining}
-          onStartOver={startOver}
-        />
+        {/* The idle state, and only the idle state. Submitting unmounts it for the whole run —
+            owners, threshold and version derive the address every result was mined for, so there
+            is nothing to do with them until the run is thrown away, and a locked copy of the form
+            is a large piece of furniture saying so. "Start over" in the status bar brings it
+            back, holding the config it was mining. */}
+        {!config && (
+          <ConfigSection initial={initial} chainId={chainId} onSubmit={submitConfig} />
+        )}
 
         {/* Outside the `config &&` block below, unlike everything else here: reconstructing a
             link's saltNonce no longer waits for a submit, so both of its failure modes happen on
@@ -847,6 +860,7 @@ function HomeContent() {
               filters={filters}
               paused={miningPaused}
               onPauseToggle={toggleMining}
+              onStartOver={startOver}
               onSelect={selectFromGrid}
             />
           </>

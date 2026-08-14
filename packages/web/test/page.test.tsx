@@ -281,6 +281,7 @@ const miningViewPropsRef = {
         config?: { chainId: number }
         paused?: boolean
         onPauseToggle?: () => void
+        onStartOver?: () => void
         onSelect: (candidate: unknown) => void
       }
     | undefined,
@@ -290,6 +291,7 @@ vi.mock('../components/MiningView', () => ({
     config?: { chainId: number }
     paused?: boolean
     onPauseToggle?: () => void
+    onStartOver?: () => void
     onSelect: (candidate: unknown) => void
   }) => {
     miningViewPropsRef.current = props
@@ -300,6 +302,9 @@ vi.mock('../components/MiningView', () => ({
             state behind it lives in the page now, so this is how a test reaches it. */}
         <button type="button" onClick={() => props.onPauseToggle?.()}>
           toggle-mining
+        </button>
+        <button type="button" onClick={() => props.onStartOver?.()}>
+          start-over
         </button>
         <button type="button" onClick={() => props.onSelect(CANDIDATE_A)}>
           select-a
@@ -1229,8 +1234,7 @@ describe('Page', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
-    await user.click(screen.getByRole('button', { name: /start over…/i }))
-    await user.click(screen.getByRole('button', { name: /^start over$/i }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
 
     await traverse(() => window.history.back())
 
@@ -1405,8 +1409,7 @@ describe('Page', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
 
-    await user.click(screen.getByRole('button', { name: /start over…/i }))
-    await user.click(screen.getByRole('button', { name: /^start over$/i }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
     // The reset pushed nothing: the bar was already bare, and stacking a second base entry would
     // put a dead step between the user and the history they actually walked.
@@ -1478,7 +1481,7 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
-  it('prefills the config form and the header chain from a ?config= link, and drops that prefill on "Start over"', async () => {
+  it('prefills the config form and the header chain from a ?config= link, and keeps the mined config on "Start over"', async () => {
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
         owners: CONFIG.owners,
@@ -1506,13 +1509,22 @@ describe('Page', () => {
     // …and the fourth to the header, which is where the chain is chosen now.
     expect(shownChain()).toContain('Polygon')
 
-    // "Start over" is a deliberate break with whatever the link asked for, so the form comes
-    // back empty rather than re-seeded from it.
+    // "Start over" is still a deliberate break with the LINK — its saltNonce, its dialog and its
+    // errors are all out of reach afterwards. What changed is what the form comes back holding:
+    // it used to come back empty, and now it comes back seeded from the config that was actually
+    // being mined. Retyping owner addresses to change one threshold was friction with a real
+    // hazard behind it, since every retype of an address is a chance to mine a different Safe by
+    // typo. Here the two happen to coincide — the recipient submitted the link's own config.
     await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
-    await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
-    await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'start-over' }))
 
-    expect(screen.getByRole('button', { name: 'submit-config' }).dataset.initial).toBe('')
+    expect(
+      JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
+    ).toEqual({
+      owners: CONFIG.owners,
+      threshold: CONFIG.threshold,
+      safeVersion: CONFIG.safeVersion,
+    })
     // The header, though, stays where it is. It is chrome rather than one of Configure's fields,
     // and dropping an unpicked header back to the default would move the user to the OTHER
     // singleton class from the one the link named — quietly, on a screen that has just emptied
@@ -1580,10 +1592,6 @@ describe('Page', () => {
     expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
   })
 
-  // Rewritten for the card that stays. Submitting no longer REPLACES the form with a summary —
-  // the form is where the Stop control lives, so it remains mounted and locks its fields instead
-  // (asserted in ConfigForm's own tests, since the form is mocked here). What the page still owns
-  // is the run itself and the way back out of it.
   // The caveat is about reading a result, so it appears where results do. Before a run there is
   // nothing to mistrust yet, and a permanent banner over an empty starting screen is the fastest
   // way to teach someone that this particular panel is scenery — which is the one thing this
@@ -1607,31 +1615,52 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
     expect(screen.getByText(/known phishing vector/i)).toBeDefined()
 
-    await user.click(screen.getByRole('button', { name: /start over…/i }))
-    await user.click(screen.getByRole('button', { name: /^start over$/i }))
+
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.queryByText(/known phishing vector/i)).toBeNull()
   })
 
-  it('keeps the form mounted once submitted, and discards the run when starting over', async () => {
+  // The Configure card IS the idle state. Once a run starts it is gone entirely rather than
+  // locked in place, and the status bar is the only control surface until Start over brings it
+  // back. (The confirmation guarding Start over lives in MiningStatusBar, which this mock stands
+  // in for, so it is asserted in that component's own suite.)
+  it('hides the Configure card for the whole run and restores it on start over', async () => {
     render(<Page />)
+    const user = userEvent.setup()
 
     expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
     expect(screen.queryByTestId('mining-view')).toBeNull()
-    expect(screen.queryByRole('button', { name: /start over…/i })).toBeNull()
 
-    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
-
-    // A run exists, and the form is still on screen above it.
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
     expect(screen.getByTestId('mining-view')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
 
-    // Starting over asks first, and only resets once confirmed.
-    await userEvent.click(screen.getByRole('button', { name: /start over…/i }))
-    expect(screen.getByTestId('mining-view')).toBeDefined()
+    // Pausing is not a way back to the form: the card stays gone.
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+    expect(screen.getByText('paused')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'submit-config' })).toBeNull()
 
-    await userEvent.click(screen.getByRole('button', { name: /^start over$/i }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.queryByTestId('mining-view')).toBeNull()
-    expect(screen.queryByRole('button', { name: /start over…/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'submit-config' })).toBeDefined()
+  })
+
+  // The card comes back holding what was mined, not empty. Retyping owner addresses to change a
+  // threshold is exactly the friction "Start over" used to impose, and every retype of an address
+  // is a chance to mine a different Safe by typo.
+  it('restores the previous config into the form after start over', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
+
+    const form = screen.getByRole('button', { name: 'submit-config' })
+    expect(JSON.parse(form.getAttribute('data-initial') || '{}')).toMatchObject({
+      owners: CONFIG.owners,
+      threshold: CONFIG.threshold,
+      safeVersion: CONFIG.safeVersion,
+    })
   })
 
   // S1(a). Escape, the X and a backdrop click all unmount DialogContent, and every terminal

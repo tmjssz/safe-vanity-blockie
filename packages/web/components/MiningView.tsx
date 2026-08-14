@@ -56,6 +56,12 @@ export interface MiningViewProps {
    * This component renders one of the two controls; it no longer owns what they both read.
    */
   onPauseToggle: () => void
+  /**
+   * Throws the run away and brings the Configure card back. Owned by the page, which is what
+   * unmounts this component; the bar only asks (and confirms first, when there is something to
+   * lose).
+   */
+  onStartOver: () => void
   /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
 }
@@ -66,6 +72,7 @@ export function MiningView({
   filters,
   paused = false,
   onPauseToggle,
+  onStartOver,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
@@ -215,7 +222,17 @@ export function MiningView({
     bestScore: state.bestOverall?.score,
     bestMaxScore: state.bestOverall?.maxScore,
   }
-  const statusBar = <MiningStatusBar status={status} onPauseToggle={onPauseToggle} />
+  const statusBar = (
+    <MiningStatusBar
+      status={status}
+      config={config}
+      // The same number the Results badge shows, so the confirmation puts exactly what the user
+      // can see at stake rather than a different, larger count they have no way to check.
+      resultCount={state.candidates.length}
+      onPauseToggle={onPauseToggle}
+      onStartOver={onStartOver}
+    />
+  )
 
   return (
     <>

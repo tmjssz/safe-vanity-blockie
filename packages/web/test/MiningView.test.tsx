@@ -125,6 +125,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -142,6 +143,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -162,6 +164,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -187,6 +190,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -212,6 +216,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -247,6 +252,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -278,6 +284,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -304,6 +311,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -330,6 +338,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: true, minContrast: 300 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -354,6 +363,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -374,6 +384,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -391,6 +402,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 250 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -409,6 +421,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -420,6 +433,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 300 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -438,6 +452,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -455,6 +470,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -467,6 +483,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -487,6 +504,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -498,6 +516,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -514,6 +533,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -538,6 +558,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -570,6 +591,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -592,6 +614,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -614,6 +637,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -640,6 +664,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -661,6 +686,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -683,6 +709,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -695,6 +722,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -707,6 +735,7 @@ describe('MiningView', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -724,6 +753,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={onPauseToggle}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -749,6 +779,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={onSelect}
       />,
     )
@@ -770,6 +801,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -794,6 +826,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 300 }}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -815,6 +848,7 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )

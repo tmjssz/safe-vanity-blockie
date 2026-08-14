@@ -130,6 +130,7 @@ describe('MiningView across a chain switch', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -151,6 +152,7 @@ describe('MiningView across a chain switch', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -187,6 +189,7 @@ describe('MiningView across a chain switch', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -205,6 +208,7 @@ describe('MiningView across a chain switch', () => {
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
         onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
