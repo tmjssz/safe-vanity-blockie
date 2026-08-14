@@ -22,6 +22,12 @@ import {
   DialogTitle,
 } from './ui/dialog'
 
+/**
+ * One deploy attempt, as a value the page can compare. Opaque on purpose: nothing may be read off
+ * it, only whether it is the same attempt that started — see `onDeploySettled`.
+ */
+export type DeployAttempt = symbol
+
 export interface DeployDialogProps {
   open: boolean
   candidate: Candidate
@@ -32,9 +38,18 @@ export interface DeployDialogProps {
    * it settles either way. The page uses them to pause mining for exactly as long as the
    * deploy is in flight: the wallet confirmation is the one moment a user must read an address
    * carefully, and it should happen against a still surface.
+   *
+   * Both carry the SAME attempt, and that is what makes the pair safe to abandon. This dialog can
+   * be dismissed mid-send — "Close and keep waiting", browser Back — and the page hands mining
+   * back at once, deliberately, while the wallet still holds the transaction; the sequence
+   * underneath keeps running and still settles. Without an identity on it, that settle would end
+   * whatever deploy happened to be in flight when it landed, which by then can be a DIFFERENT
+   * result's: mining would resume and the chain selector unlock in the middle of the second
+   * wallet confirmation, so the chain could be repointed under a transaction already built for
+   * the one it named. A settle may only ever end the attempt that started.
    */
-  onDeployStart: () => void
-  onDeploySettled: () => void
+  onDeployStart: (attempt: DeployAttempt) => void
+  onDeploySettled: (attempt: DeployAttempt) => void
 }
 
 export function DeployDialog({
@@ -326,6 +341,10 @@ export function DeployDialog({
                 if (!client || !address) return
                 setError(undefined)
                 setBusy(true)
+                // This press, and only this press. Fresh per attempt rather than per dialog: a
+                // failed deploy leaves this dialog mounted and its button live, so one instance
+                // can hold more than one attempt over its life.
+                const attempt: DeployAttempt = Symbol('deploy attempt')
                 // Hoisted so the catch block can still report them if something fails after the
                 // point they were set — a lost hash (or a lost "we don't know") after gas may
                 // already be spent is worse than an error.
@@ -335,7 +354,7 @@ export function DeployDialog({
                   setStatus('Reading Safe constants…')
                   // Mining stops here rather than when the candidate was selected: everything
                   // below reads an address the user is about to spend gas on.
-                  onDeployStart()
+                  onDeployStart(attempt)
                   const { loadSafeConstants } = await import('@safe-vanity-blockie/safe-config')
                   const { chainById } = await import('../lib/wagmi')
                   // Re-read rather than reuse anything already computed for mining: that is what
@@ -439,7 +458,7 @@ export function DeployDialog({
                   }
                 } finally {
                   setBusy(false)
-                  onDeploySettled()
+                  onDeploySettled(attempt)
                 }
               }}
             >

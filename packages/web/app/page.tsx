@@ -7,7 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
-import { DeployDialog } from '../components/DeployDialog'
+import { DeployDialog, type DeployAttempt } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
@@ -123,6 +123,41 @@ function HomeContent() {
   // is the one moment a user must read an address carefully, so that — not merely looking at a
   // result — is what stops the machine.
   const [deploying, setDeploying] = useState(false)
+  // WHICH deploy that flag is being held for, so a settle can be matched against the attempt that
+  // set it. A single boolean was not enough, because a deploy can be abandoned while it is still
+  // running: "Close and keep waiting" (and Back) unmount the dialog and hand mining back at once
+  // while the wallet keeps the transaction, and the sequence underneath still reaches its
+  // `finally`. That late settle then landed on whatever was in flight by the time it arrived —
+  // open a second result, deploy it, and the first one's settle resumed mining and re-enabled the
+  // chain selector in the middle of the second wallet confirmation, where `changeChain` could
+  // repoint that dialog's description, share link and wrong-chain gate at a chain the transaction
+  // already in the wallet was not built for. Everything the selector is disabled for during a
+  // send, walked around by a dialog that is no longer on screen.
+  //
+  // A ref, not state: nothing renders from it, and it has to be readable by a callback that fires
+  // long after the render it was created in. Cleared wherever the flag is cleared for a reason
+  // OTHER than an attempt settling, which is what disowns the abandoned one — see `abandonDeploy`.
+  const liveDeploy = useRef<DeployAttempt | undefined>(undefined)
+  const beginDeploy = useCallback((attempt: DeployAttempt) => {
+    liveDeploy.current = attempt
+    setDeploying(true)
+  }, [])
+  const settleDeploy = useCallback((attempt: DeployAttempt) => {
+    // A settle from an attempt the page has stopped waiting on says nothing about the one it is
+    // waiting on now, and must change nothing at all.
+    if (liveDeploy.current !== attempt) return
+    liveDeploy.current = undefined
+    setDeploying(false)
+  }, [])
+  // Handing mining back without an attempt having settled: the dialog has gone, so nothing on
+  // screen can report that deploy any more (the toast mirror in DeployDialog carries its outcome
+  // instead) and holding a HOST pause for it — which the status bar's own Resume cannot clear —
+  // would strand the user. Forgetting the attempt is the other half: it is why its eventual
+  // settle is a no-op rather than a stray release of whatever came next.
+  const abandonDeploy = useCallback(() => {
+    liveDeploy.current = undefined
+    setDeploying(false)
+  }, [])
   const [linkCandidateError, setLinkCandidateError] = useState<string | undefined>()
   // Distinct from `selection`: once the reconstruction attempt has settled (either way), the app
   // must never go back to "awaiting" it, even after the user later clears `selection` by closing
@@ -336,6 +371,11 @@ function HomeContent() {
     // separately encoded key would stop matching — silently. What breaks then is the self-write
     // exclusion in `writtenSelections`: the app's own write is read back as a share link, and the
     // resolving overlay drops over the dialog that caused it with mining paused behind it.
+    //
+    // It writes `config` into the URL the page is ON, so opening a result adds a parameter rather
+    // than moving the app to `/` — the same rule `closeSelection` keeps when it takes that
+    // parameter back out again, and the reason a basePath deployment is not navigated off itself
+    // by inspecting a result.
     const path = shareConfigPath(shared)
     const param = new URL(path, window.location.origin).searchParams.get('config') ?? ''
     // The user is already standing on this exact URL — a share link they opened, or a result's
@@ -422,8 +462,9 @@ function HomeContent() {
     // Belt and braces, and the only remaining place it can be done: the deploy sequence's own
     // `finally` clears this, but if the dialog is dismissed while a wallet prompt is still open,
     // nothing else would hand mining back until (or unless) that promise settles — and `paused`
-    // is a HOST pause, which the status bar's own Resume deliberately cannot clear.
-    setDeploying(false)
+    // is a HOST pause, which the status bar's own Resume deliberately cannot clear. The dismissed
+    // attempt is disowned with it, so its own settle cannot later release a different one.
+    abandonDeploy()
     const url = new URL(window.location.href)
     if (!url.searchParams.has('config')) return
     // Only `config` is dropped, rather than reaching for a bare '/': anything else in the bar
@@ -431,7 +472,7 @@ function HomeContent() {
     // there and closing a dialog is not the moment to throw it away.
     url.searchParams.delete('config')
     window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
-  }, [])
+  }, [abandonDeploy])
 
   // The other half of both pushes above, and the one place a traversal is reconciled. It listens
   // for the traversal itself rather than reacting to a changed useSearchParams(): "Back reopens
@@ -475,12 +516,13 @@ function HomeContent() {
       // Whatever the URL names, including nothing: an entry naming a result puts it back — with
       // its own config, the pairing intact — and a base entry closes the dialog.
       setSelection(restored)
-      // Same reason as closing by hand, above.
-      setDeploying(false)
+      // Same reason as closing by hand, above, and the same disowning: a traversal off a dialog
+      // mid-send abandons that attempt exactly as the footer's "Close and keep waiting" does.
+      abandonDeploy()
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [])
+  }, [abandonDeploy])
 
   // Configure is locked once submitted because owners, threshold and Safe version are inputs the
   // address is derived from that cannot be changed without invalidating every result on screen.
@@ -952,8 +994,8 @@ function HomeContent() {
               // screen — and this result stays one Back away.
               closeSelection()
             }}
-            onDeployStart={() => setDeploying(true)}
-            onDeploySettled={() => setDeploying(false)}
+            onDeployStart={beginDeploy}
+            onDeploySettled={settleDeploy}
           />
         )}
       </div>

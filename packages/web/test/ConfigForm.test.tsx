@@ -302,6 +302,72 @@ describe('ConfigForm', () => {
     })
   })
 
+  // `initial` does not necessarily exist when this form first renders. The page latches a
+  // `?config=` on FIRST SIGHT rather than capturing it on the first render — its subtree reaches
+  // that render through a Suspense bailout, with a useSearchParams() that may still be empty — so
+  // a share link can arrive a render after this mounted. The header's chain follows it either way
+  // (it is derived, not seeded); these three fields are the other three inputs the Safe address is
+  // derived from, and a form that kept its blanks under a header that had moved would send the
+  // recipient to a different Safe with nothing on screen to say so.
+  describe('a share link that arrives after the first render', () => {
+    it('fills the fields it names', () => {
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(ownerField(1).value).toBe('')
+
+      const initial = { owners: [OWNER, OWNER_B], threshold: 2, safeVersion: '1.3.0' }
+      rerender(<ConfigForm chainId={1} initial={initial} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(OWNER)
+      expect(ownerField(2).value).toBe(OWNER_B)
+      expect(thresholdTrigger().textContent).toBe('2')
+      expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toBe('1.3.0')
+    })
+
+    // The wallet prefill is not an answer to the question — it is this form guessing, and the link
+    // is the sender's actual config. Reversing that leaves a recipient mining a Safe owned by
+    // THEMSELVES under a link that promised someone else's, which is the one case where the blank
+    // field would at least have been obvious.
+    it('outranks the address the connected wallet prefilled', () => {
+      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(ownerField(1).value).toBe(WALLET)
+
+      rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(OWNER)
+    })
+
+    // And the rule the rest of this form is built on still holds: an answer already on screen is
+    // never written over.
+    it('leaves an address the user has already typed alone', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.type(ownerField(1), OWNER_C)
+
+      rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(OWNER_C)
+    })
+
+    // Once seeded it stays seeded. page.tsx builds a new `initial` object on every render, so
+    // anything keyed on its identity would re-apply it forever and undo every edit made after it
+    // landed.
+    it('does not re-apply itself over an edit made after it landed', async () => {
+      const user = userEvent.setup()
+      const initial = { owners: [OWNER], threshold: 1, safeVersion: '1.4.1' }
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      rerender(<ConfigForm chainId={1} initial={initial} onSubmit={vi.fn()} />)
+      expect(ownerField(1).value).toBe(OWNER)
+
+      await user.clear(ownerField(1))
+      await user.type(ownerField(1), OWNER_C)
+      // A fresh object with the same contents, exactly as the page hands it over on every render.
+      rerender(<ConfigForm chainId={1} initial={{ ...initial }} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(OWNER_C)
+    })
+  })
+
   describe('threshold', () => {
     // N is the number of owners ACTUALLY ENTERED — a row that has been added but not typed into is
     // not a signer, and validateMineConfig counts the same way (it filters empties before

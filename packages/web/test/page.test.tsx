@@ -485,6 +485,38 @@ describe('Page', () => {
     expect(window.location.search).toBe('')
   })
 
+  // The same rule `closeSelection` already keeps when it takes `config` back OUT of the bar:
+  // everything else there belongs to whoever put it there. Opening a result adds one parameter;
+  // it does not move the app to `/`. Under a basePath that was a navigation off the deployment
+  // (a 404 on reload, and a share link that 404s for whoever opens it), and on any deployment it
+  // silently dropped campaign parameters and the fragment.
+  it('adds ?config= to the URL it is on, keeping the path, other params and the fragment', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    act(() => {
+      window.history.replaceState(null, '', '/vanity?utm=spring#results')
+    })
+
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+    expect(window.location.pathname).toBe('/vanity')
+    expect(new URLSearchParams(window.location.search).get('utm')).toBe('spring')
+    expect(new URLSearchParams(window.location.search).get('config')).not.toBeNull()
+    expect(window.location.hash).toBe('#results')
+    // Still the one builder, so the bar and the copyable field are the same string — the property
+    // the test above pins, now that there is more in the URL than `config`.
+    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    expect(window.location.href).toBe(shared)
+
+    // And closing puts the page back exactly where it was, rather than at the root.
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(
+      '/vanity?utm=spring#results',
+    )
+  })
+
   // Trap 1. `awaitingLinkCandidate` is `Boolean(linkSaltNonce) && !linkCandidateSettled &&
   // !constantsForLink.error`, and on an ordinary mining session `linkCandidateSettled` is false
   // forever. So a `?config=` carrying a saltNonce arriving in the URL — which is exactly what
@@ -673,6 +705,46 @@ describe('Page', () => {
     expect(screen.queryByText('paused')).toBeNull()
 
     await release()
+  })
+
+  // The other half of that dismissal, and the reason `deploying` cannot be a single shared
+  // boolean. "Close and keep waiting" leaves the wallet holding A's transaction and hands mining
+  // back — deliberately, above — but A's sequence is still running, and its `finally` still calls
+  // `onDeploySettled`. If that clears the page's one flag, it clears it for whatever is in flight
+  // by the time it lands: B's wallet confirmation resumes the leaderboard underneath it and
+  // re-enables the chain selector, so `changeChain` can repoint B's dialog — its description, its
+  // share link and its wrong-chain gate — while the transaction the user is reading is already
+  // built for the chain it named. A settle may only ever end the deploy that started it.
+  it('does not hand mining back when an abandoned deploy settles under a later one', async () => {
+    const releaseA = pendingDeploy()
+    render(<Page />)
+    const user = userEvent.setup()
+    const chain = () => screen.getByRole('combobox', { name: /^chain$/i }) as HTMLButtonElement
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+    expect(screen.getByText('running')).toBeDefined()
+
+    const releaseB = pendingDeploy()
+    await user.click(screen.getByRole('button', { name: 'select-b' }))
+    await user.click(deployButton())
+    expect(screen.getByText('paused')).toBeDefined()
+    expect(chain().disabled).toBe(true)
+
+    // A settles, abandoned. B is still in the wallet's hands, so nothing on screen may move.
+    await releaseA()
+    expect(screen.getByText('paused')).toBeDefined()
+    expect(chain().disabled).toBe(true)
+
+    // And B's own settle still ends B's pause — the token is what distinguishes them, not the
+    // page having stopped listening.
+    await releaseB()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    expect(chain().disabled).toBe(false)
   })
 
   // Moved here from test/MiningView.test.tsx along with the state it is about. `pausedByUser` is

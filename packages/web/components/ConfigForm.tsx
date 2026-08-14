@@ -63,6 +63,35 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? '1.4.1')
   const [errors, setErrors] = useState<ConfigErrors>({})
 
+  // `initial` does not necessarily exist when this form first renders, and the initialisers above
+  // only ever see that first render. page.tsx latches the `?config=` link on FIRST SIGHT rather
+  // than capturing it on the first render — its subtree reaches that render through a Suspense
+  // bailout, with a useSearchParams() that can still be empty — so a share link can arrive one
+  // render after this mounted. The header's chain follows it whenever it lands (it is derived, not
+  // seeded); these are the other three inputs the Safe address is derived from, so a form that
+  // kept its blanks under a header that had moved would send the recipient to a different Safe
+  // with nothing on screen to say so — and with a wallet connected the owners field is not even
+  // blank, it holds the recipient's OWN address.
+  //
+  // Seeded ONCE. `seeded` starts true when the initialisers above already had something, and
+  // page.tsx builds a fresh `initial` object on every render, so anything keyed on that object's
+  // identity would re-apply the link forever and undo every edit made after it landed.
+  //
+  // And only into a form the user has not answered yet. The wallet prefill below is not an answer
+  // — it is this form guessing, and the link outranks it exactly as it does in the initialisers —
+  // but anything the user did is one, and this must never write over it: owners, threshold and
+  // version are what the address is derived from, so overwriting an answer already on screen
+  // changes which Safe is mined, silently. That is the same rule the prefill keeps.
+  const seeded = useRef(initial !== undefined)
+  const edited = useRef(false)
+  useEffect(() => {
+    if (!initial || seeded.current || edited.current) return
+    seeded.current = true
+    setOwners(makeRows(initial.owners?.length ? initial.owners : [''], nextRowId))
+    if (initial.threshold !== undefined) setThreshold(initial.threshold)
+    if (initial.safeVersion !== undefined) setSafeVersion(initial.safeVersion)
+  }, [initial])
+
   // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
   // for, and the one they would otherwise paste from the header they just clicked.
   //
@@ -144,7 +173,11 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         ? 'invalid'
         : undefined
 
+  // Every route by which the USER answers this form marks it answered, and nothing else does —
+  // see `edited` above. The wallet prefill is deliberately not one of them; "Use connected wallet"
+  // is, because that one was asked for.
   const setOwnerValue = (id: string, value: string) => {
+    edited.current = true
     setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value } : row)))
   }
 
@@ -162,6 +195,7 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
       : undefined
 
   const addOwner = () => {
+    edited.current = true
     setOwners((rows) => {
       const added = makeRows([''], nextRowId)
       focusRow.current = added[0].id
@@ -170,6 +204,7 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   }
 
   const removeOwner = (id: string) => {
+    edited.current = true
     setOwners((rows) => {
       // The last row is never removed — validateMineConfig rejects an empty owner list, and a
       // form with no field at all has nowhere to type one. The button says so by being disabled;
@@ -190,6 +225,7 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   // blank ANYWHERE, and makes a new row when there is no blank to use. Neither overwrites.
   const useConnectedWallet = () => {
     if (!address) return
+    edited.current = true
     setOwners((rows) => {
       const blank = rows.findIndex((row) => row.value.trim().length === 0)
       if (blank >= 0) {
@@ -359,7 +395,20 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         <div className="flex items-center gap-2">
           <Select
             value={String(effectiveThreshold)}
-            onValueChange={(value) => setThreshold(Number(value))}
+            onValueChange={(value) => {
+              // Only a real option is an answer. This control is backed by a hidden native
+              // <select>, and Radix reports that element's changes as choices: a commit that adds
+              // the option a new value names can leave it holding a value it has no option for
+              // for an instant, and the element answers with "" — which `Number` reads as 0. That
+              // is a threshold no config can have (it would clamp the display and the submit to 0
+              // and mark the form as answered by the user, locking out the share-link seed above),
+              // and nobody asked for it. Reachable exactly once: a `?config=` link landing after
+              // the first render, which seeds the owners and the threshold together.
+              const next = Number(value)
+              if (!Number.isInteger(next) || next < 1) return
+              edited.current = true
+              setThreshold(next)
+            }}
             // N of zero: no owner has been typed, so there is no threshold that could be honoured
             // and the control offers none. Submitting anyway is not silent — validateMineConfig
             // answers "Add at least one owner address.", which is rendered above.
@@ -393,7 +442,13 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor={safeVersionId}>Safe version</Label>
-        <Select value={safeVersion} onValueChange={setSafeVersion}>
+        <Select
+          value={safeVersion}
+          onValueChange={(value) => {
+            edited.current = true
+            setSafeVersion(value)
+          }}
+        >
           <SelectTrigger id={safeVersionId} aria-label="Safe version">
             <SelectValue />
           </SelectTrigger>
