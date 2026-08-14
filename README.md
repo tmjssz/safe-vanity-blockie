@@ -33,6 +33,10 @@ core and resumability.
     mise exec -- pnpm -r build
     mise exec -- pnpm --filter @safe-vanity-blockie/web dev
 
+It is hosted on Vercel: `main` is production, and every pull request gets its own preview URL. See
+[Hosting](packages/web/README.md#hosting) for the project settings and why the build command is not
+plain `next build`.
+
 ## Development
 
     mise install

@@ -32,3 +32,30 @@ and a background or mobile tab will do considerably worse.
 
 Injected wallets only, discovered via EIP-6963. No WalletConnect, so the app needs no project
 id and no secrets.
+
+## Hosting
+
+Hosted on Vercel, wired to this GitHub repo:
+
+- **Production** — every push to `main`.
+- **Preview** — every push to any other branch. Vercel comments the URL on the PR.
+
+Settings in the Vercel dashboard, set once when the project is created:
+
+| Setting | Value |
+|---|---|
+| Root Directory | `packages/web` |
+| Include files outside of the Root Directory | enabled |
+| Build Command | leave unset — `vercel.json` takes precedence |
+| Environment Variables | leave empty |
+
+Everything else is in [`vercel.json`](vercel.json), which Vercel reads from the Root Directory.
+The build command there is `pnpm --filter "@safe-vanity-blockie/web..." build` rather than the
+default `next build`, because this app consumes `core` and `safe-config` as compiled `dist/` and
+`pnpm install` does not produce it: those packages declare `prepublishOnly`, which runs on publish
+and not on install. The trailing `...` is pnpm's "and its dependencies", so the two libraries
+compile first, in topological order.
+
+There are no environment variables and no secrets. The transports use each chain's default public
+RPC and the only connector is `injected()`, with EIP-6963 discovery, so a fork deploys and runs
+with nothing configured.
