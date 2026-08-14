@@ -261,6 +261,18 @@ export function MiningView({
               <span className="sr-only"> results shown</span>
             </Badge>
           )}
+          {/* Beside the heading rather than in a row of its own between it and the grid: it is an
+              alternative to the search that is running, so it belongs next to the thing it is an
+              alternative to, and it has to be reachable without scrolling past the whole
+              leaderboard. `filters` goes with it so the copied command enforces the same standard
+              as the screen rather than the CLI's own defaults. */}
+          <div className="ml-auto">
+            <CliHandoff
+              config={config}
+              rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
+              filters={filters}
+            />
+          </div>
         </div>
         {/* The other side of `runOnScreen` above: with a run to protect, a constants failure is
             reported here, INSIDE the results section, so the bar above and every card below it stay
@@ -291,15 +303,6 @@ export function MiningView({
             <AlertDescription>{state.error}</AlertDescription>
           </Alert>
         )}
-        {/* Above the grid, not below it: it is an alternative to the search that is running, so
-            it has to be readable before scrolling past the whole leaderboard — and `filters`
-            goes with it so the copied command enforces the same standard as the screen rather
-            than the CLI's own defaults. */}
-        <CliHandoff
-          config={config}
-          rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
-          filters={filters}
-        />
         <ResultsGrid
           candidates={state.candidates}
           droppedCount={state.droppedCount}

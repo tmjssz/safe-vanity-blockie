@@ -768,6 +768,30 @@ describe('MiningView', () => {
 
   // Clicking a card is the whole deploy flow now, so the hop from this component's `onSelect`
   // out to the page is what opens the dialog — a card wired to nothing is a dead page.
+  // An alternative to the search that is running, so it belongs beside the thing it is an
+  // alternative to rather than as a row of its own between the heading and the grid.
+  it('puts the CLI handoff in the Results heading row', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByRole('heading', { level: 2, name: /^results$/i }).parentElement!
+    const handoff = screen.getByRole('button', { name: /run this search/i })
+    expect(row.contains(handoff)).toBe(true)
+    // Pushed to the right end of that row, away from the heading and its count.
+    expect(handoff.parentElement?.className ?? handoff.className).toMatch(/ml-auto/)
+  })
+
   it('reports the clicked candidate to its host', async () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }

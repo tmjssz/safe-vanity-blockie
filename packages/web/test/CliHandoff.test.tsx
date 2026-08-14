@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { CliHandoff, npxCommandFor } from '../components/CliHandoff'
@@ -50,11 +50,33 @@ describe('npxCommandFor', () => {
   })
 })
 
-// CliHandoff is now a Radix Collapsible: its content is unmounted while closed, so every test
-// below opens it via the trigger first. That is the only change from the pre-shadcn version —
-// every assertion the earlier <details>-based tests made still holds.
+// The handoff is a dialog: its content is unmounted while closed, so every test below opens it
+// via the trigger first. It was a Collapsible before that, and a <details> before that; every
+// assertion those versions made still holds, because what changed is where the detail is shown
+// rather than what it says.
 
 describe('CliHandoff', () => {
+  it('shows nothing but its trigger until asked', () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    expect(screen.getByRole('button', { name: /run this search/i })).toBeDefined()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByText(/full set of faces/i)).toBeNull()
+  })
+
+  // A dialog rather than an expander: it is a page of prose and a command to copy, and expanding
+  // it pushed the entire leaderboard down the screen to read something most users read once.
+  it('opens as a dialog, titled and dismissable', async () => {
+    const user = userEvent.setup()
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+
+    await user.click(screen.getByRole('button', { name: /run this search/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/run this search on your machine/i)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('explains why a user would want the CLI', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
@@ -100,6 +122,28 @@ describe('CliHandoff', () => {
     expect(screen.getByText(/could not copy/i)).toBeDefined()
 
     Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true })
+  })
+
+  // One long line in a box that scrolls sideways hides most of what it is about to put on the
+  // clipboard. Wrapped, the whole command is readable at a glance — and it is still a single line
+  // of text, so what gets copied is still pasteable straight into a shell.
+  it('wraps the command instead of scrolling it out of sight', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const block = (await screen.findByRole('dialog')).querySelector('pre')!
+    expect(block.className).toMatch(/whitespace-pre-wrap/)
+    expect(block.textContent).toBe(npxCommandFor(config, { rpcUrl: 'https://rpc.example' }))
+  })
+
+  it('puts the copy control inside the command block', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const block = (await screen.findByRole('dialog')).querySelector(
+      '[data-slot="command-block"]',
+    )!
+    expect(block.contains(screen.getByRole('button', { name: /copy/i }))).toBe(true)
   })
 
   it('copies the command and flips the button label on success', async () => {
