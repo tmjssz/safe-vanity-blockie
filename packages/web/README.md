@@ -38,14 +38,16 @@ id and no secrets.
 Hosted on Vercel, wired to this GitHub repo:
 
 - **Production** — every push to `main`.
-- **Preview** — every push to a pull request branch. Vercel comments the URL on the PR.
+- **Preview** — every push to any other branch. Vercel comments the URL on the PR.
 
-Two settings in the Vercel dashboard, set once when the project is created:
+Settings in the Vercel dashboard, set once when the project is created:
 
 | Setting | Value |
 |---|---|
 | Root Directory | `packages/web` |
 | Include files outside of the Root Directory | enabled |
+| Build Command | leave unset — `vercel.json` takes precedence |
+| Environment Variables | leave empty |
 
 Everything else is in [`vercel.json`](vercel.json), which Vercel reads from the Root Directory.
 The build command there is `pnpm --filter "@safe-vanity-blockie/web..." build` rather than the
@@ -55,6 +57,5 @@ and not on install. The trailing `...` is pnpm's "and its dependencies", so the 
 compile first, in topological order.
 
 There are no environment variables and no secrets. The transports use each chain's default public
-RPC and the only connector is injected MetaMask, so a fork deploys and runs with nothing
-configured. The commit SHA in the footer comes from `VERCEL_GIT_COMMIT_SHA`, which Vercel sets on
-its own builds; a local build has no SHA and shows the bare version.
+RPC and the only connector is `injected()`, with EIP-6963 discovery, so a fork deploys and runs
+with nothing configured.
