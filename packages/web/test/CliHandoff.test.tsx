@@ -20,8 +20,37 @@ describe('npxCommandFor', () => {
     expect(command).toContain('--rpc https://rpc.example')
   })
 
-  it('is a single line, so it can be pasted straight into a shell', () => {
-    expect(npxCommandFor(config, { rpcUrl: 'https://rpc.example' })).not.toContain('\n')
+  // One argument per line, so the command can be read rather than scanned. It used to be a
+  // single line for exactly one reason — that it pastes into a shell as one command — and that
+  // reason survives: every break is a backslash continuation, which is what keeps the shell
+  // treating the whole block as one invocation.
+  it('puts each argument on its own line', () => {
+    const lines = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      filters: { twoColor: true, minContrast: 80 },
+    }).split('\n')
+
+    expect(lines[0]).toBe('npx safe-vanity-blockie \\')
+    expect(lines.slice(1).map((line) => line.trim().replace(/ \\$/, ''))).toEqual([
+      `--owners ${config.owners.join(',')}`,
+      `--threshold ${config.threshold}`,
+      `--safe-version ${config.safeVersion}`,
+      '--rpc https://rpc.example',
+      '--two-color',
+      '--min-contrast 80',
+    ])
+  })
+
+  // The property the single line was protecting. Every line but the last has to end in a
+  // continuation, or a paste runs the first line on its own and the rest as unknown commands.
+  it('continues every line but the last, so a paste is still one command', () => {
+    const lines = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      filters: { twoColor: false, minContrast: 0 },
+    }).split('\n')
+
+    for (const line of lines.slice(0, -1)) expect(line.endsWith(' \\')).toBe(true)
+    expect(lines.at(-1)!.endsWith('\\')).toBe(false)
   })
 
   it('passes the two-color and min-contrast filters through, so the CLI search enforces the same standard', () => {
@@ -114,8 +143,10 @@ describe('CliHandoff', () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     fireEvent.click(screen.getByRole('button', { name: /run this search/i }))
 
+    // Read off the block rather than via getByText: the command is multi-line now, and the
+    // default matcher collapses whitespace in the element while comparing against the raw string.
     const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
-    expect(screen.getByText(command)).toBeDefined()
+    expect(document.querySelector('[data-slot="command-block"] pre')!.textContent).toBe(command)
 
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
     expect(await screen.findByRole('alert')).toBeDefined()

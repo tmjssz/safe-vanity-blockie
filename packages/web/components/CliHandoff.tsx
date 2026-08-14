@@ -19,23 +19,32 @@ import {
  * `--two-color`/`--no-two-color` and `--min-contrast` map 1:1 onto the browser's live filters
  * (packages/miner/src/args.ts) — passed through so the handed-off search enforces the same
  * standard the user was already looking at, instead of silently reverting to the CLI defaults.
+ *
+ * One argument per line, joined by backslash continuations. This was deliberately a single line
+ * before, for one reason: that it pastes into a shell as one command. The continuations are what
+ * keep that true while making the thing readable — a POSIX shell treats the block as one
+ * invocation. (A shell that does not use `\` for continuation, cmd or PowerShell, would need the
+ * lines rejoined; the previous single line pasted anywhere.)
  */
 export function npxCommandFor(
   config: MineConfig,
   options: { rpcUrl: string; filters?: FaceFilters },
 ): string {
-  const parts = [
-    'npx safe-vanity-blockie',
+  const args = [
     `--owners ${config.owners.join(',')}`,
     `--threshold ${config.threshold}`,
     `--safe-version ${config.safeVersion}`,
     `--rpc ${options.rpcUrl}`,
   ]
   if (options.filters) {
-    parts.push(options.filters.twoColor ? '--two-color' : '--no-two-color')
-    parts.push(`--min-contrast ${options.filters.minContrast}`)
+    args.push(options.filters.twoColor ? '--two-color' : '--no-two-color')
+    args.push(`--min-contrast ${options.filters.minContrast}`)
   }
-  return parts.join(' ')
+  // Every line but the last carries the continuation. Putting it on the last one too would leave
+  // the shell waiting for an argument that never comes.
+  return ['npx safe-vanity-blockie', ...args.map((arg) => `  ${arg}`)]
+    .map((line, index, all) => (index === all.length - 1 ? line : `${line} \\`))
+    .join('\n')
 }
 
 const COPY_FAILED_MESSAGE =
@@ -102,7 +111,9 @@ export function CliHandoff({
           Run this search on your machine
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+      {/* Narrower than it was: with each argument on its own line the command no longer needs a
+          wide box to stay readable, and the prose above it reads better at a shorter measure. */}
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Run this search on your machine</DialogTitle>
           <DialogDescription>
