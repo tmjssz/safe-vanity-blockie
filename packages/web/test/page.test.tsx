@@ -1652,6 +1652,26 @@ describe('Page', () => {
   // The card comes back holding what was mined, not empty. Retyping owner addresses to change a
   // threshold is exactly the friction "Start over" used to impose, and every retype of an address
   // is a chance to mine a different Safe by typo.
+  // Applying a new face spec starts the search over, and a run that starts must run. MiningView's
+  // effect returns early while paused, so without clearing the user's pause the confirmed restart
+  // would leave the board wiped and nothing mining — the worst of both.
+  it('resumes mining when a face change restarts the search from a pause', async () => {
+    const { ALL_MOUTH_NAMES } = await import('../lib/face-selection')
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+    expect(screen.getByText('paused')).toBeDefined()
+
+    // What FacePicker calls once "Restart the search" is confirmed.
+    await act(async () => {
+      facePickerPropsRef.current?.onChange(ALL_MOUTH_NAMES.slice(0, 2))
+    })
+
+    expect(screen.getByText('running')).toBeDefined()
+  })
+
   it('restores the previous config into the form after start over', async () => {
     render(<Page />)
     const user = userEvent.setup()

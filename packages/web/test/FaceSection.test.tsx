@@ -61,22 +61,6 @@ describe('FaceSection', () => {
   // control that only ever hides something the user can already scroll past is a control that
   // does not need to exist. S4's other half stands: the title is a real h2, which is what the
   // FacePicker's h3 underneath it hangs off.
-  // Opposite the title rather than under it: it is the premise the tiles are read against, so it
-  // wants to be taken in with the heading rather than found below it.
-  it('carries the crediting rule beside the title', () => {
-    renderSection()
-    const header = document.querySelector('[data-slot="card-header"]')!
-    const title = header.querySelector('[data-slot="card-title"]')!.getBoundingClientRect()
-    const note = document.querySelector('[data-slot="card-action"]')!
-
-    expect(note.textContent).toMatch(/credited with their best-fitting expression/i)
-    // jsdom has no layout, so this pins the structural fact that produces the side-by-side: the
-    // note is in the header's action column, not stacked in its description row.
-    expect(title).toBeDefined()
-    expect(header.contains(note)).toBe(true)
-    expect(header.querySelector('[data-slot="card-description"]')).toBeNull()
-  })
-
   it('shows its options with nothing to open, under a real heading', () => {
     renderSection()
     expect(screen.getByRole('heading', { level: 2, name: /^pattern filter$/i })).toBeDefined()

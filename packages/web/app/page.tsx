@@ -540,6 +540,19 @@ function HomeContent() {
     setPausedByUser(false)
   }, [])
 
+  // Applying a new set of accepted expressions. FacePicker only calls this once the user has
+  // confirmed the restart it causes — a new face spec is a different run, so the leaderboard is
+  // discarded and the search begins again.
+  //
+  // Clearing the user's pause is what makes that restart actually happen. MiningView's effect
+  // returns early while paused, so a confirmed "restart the search" from a paused run would
+  // otherwise wipe the board and start nothing: the cost paid, none of the benefit, and a status
+  // bar reading Resume over an empty grid with no sign of why.
+  const applyMouths = useCallback((next: string[]) => {
+    setMouths(next)
+    setPausedByUser(false)
+  }, [])
+
   // What a chain switch is measured against: the chain whose addresses are at stake. Normally the
   // submitted config's — the run on screen is what a crossing costs — but before anything is
   // submitted there can still be something to lose, because a share link opens its dialog with no
@@ -855,7 +868,7 @@ function HomeContent() {
             <FaceSection
               mouths={mouths}
               filters={filters}
-              onMouthsChange={setMouths}
+              onMouthsChange={applyMouths}
               onFiltersChange={setFilters}
             />
 
