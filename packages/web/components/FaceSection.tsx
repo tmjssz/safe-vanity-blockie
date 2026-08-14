@@ -49,9 +49,14 @@ export function FaceSection({
         </CardAction>
       </CardHeader>
       <CardContent>
-        {/* Unlike Configure, this never locks: expressions and filters are a scoring concern, not
-            an address concern, so the running search just keeps applying them live — do not "fix"
-            this into locking. */}
+        {/* Unlike Configure, this never locks: none of it is an address concern, so all of it
+            stays reachable while mining and the page never unmounts it — do not "fix" this into
+            locking.
+
+            The two halves differ in when they take effect, and that is not the same thing. The
+            colour filters re-filter candidates already mined, so they apply on the spot. The
+            expressions are part of the run's identity, so applying one restarts the search and
+            discards the board: those stage behind an Apply button and a warning. */}
         <FacePicker
           value={mouths}
           onChange={onMouthsChange}

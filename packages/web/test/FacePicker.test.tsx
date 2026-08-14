@@ -84,10 +84,18 @@ describe('FacePicker', () => {
     ).toHaveLength(5)
   })
 
-  it('adds an expression when its toggle is checked', async () => {
+  // Applying a face change is destructive: the run identity includes the face spec, so a new one
+  // wipes the leaderboard and resets the scanned total. It used to do that on a single click of a
+  // tile, silently. Now the click only stages.
+  it('stages an expression change instead of applying it', async () => {
     const { onChange } = renderPicker({ value: ['smile'] })
     await userEvent.click(screen.getByRole('checkbox', { name: /frown/i }))
-    expect(onChange).toHaveBeenCalledWith(['smile', 'frown'])
+
+    expect(onChange).not.toHaveBeenCalled()
+    // The tile still answers to the click: what is staged is what the tiles show.
+    expect(screen.getByRole('checkbox', { name: /^frown$/i }).getAttribute('aria-checked')).toBe(
+      'true',
+    )
   })
 
   // T7. The tests below count the checkboxes and drive onCheckedChange, which fires regardless of
@@ -235,23 +243,228 @@ describe('FacePicker', () => {
   })
 
   // Every expression starts accepted, so a user who has rejected several needs one gesture back
-  // rather than five. It is offered only when it would do something.
-  describe('the "All" reset', () => {
-    it('is disabled while every expression is already accepted', () => {
+  // rather than five. Absent rather than disabled when everything is already accepted: it shares
+  // its row with Apply and Reset, which come and go with a staged change, so a control that only
+  // greys out would be the one dead thing in a row that is otherwise never dead.
+  describe('the "Select all" reset', () => {
+    it('is not offered while every expression is already accepted', () => {
       renderPicker({ value: [...ALL_MOUTH_NAMES] })
-      expect((screen.getByRole('button', { name: /^all$/i }) as HTMLButtonElement).disabled).toBe(
-        true,
-      )
+      expect(screen.queryByRole('button', { name: /^select all$/i })).toBeNull()
     })
 
     it('re-accepts everything once something has been rejected', async () => {
       const { onChange } = renderPicker({ value: ['smile', 'frown'] })
-      const all = screen.getByRole('button', { name: /^all$/i }) as HTMLButtonElement
-      expect(all.disabled).toBe(false)
+      const all = screen.getByRole('button', { name: /^select all$/i })
 
       await userEvent.click(all)
 
-      expect(onChange).toHaveBeenCalledWith([...ALL_MOUTH_NAMES])
+      // Staged like any other selection change, not applied: it restarts the search just the same.
+      expect(onChange).not.toHaveBeenCalled()
+      for (const name of ALL_MOUTH_NAMES) {
+        expect(screen.getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') }).getAttribute('aria-checked')).toBe('true')
+      }
+      expect(screen.getByRole('button', { name: /^apply$/i })).toBeDefined()
+      // Nothing left to select, so the control that would do it stands down.
+      expect(screen.queryByRole('button', { name: /^select all$/i })).toBeNull()
+    })
+  })
+
+  // All three act on the expression selection, so they belong to its heading rather than trailing
+  // the tiles. Left to right they run from the least consequential to the most: widen the
+  // selection, discard the edit, restart the search.
+  describe('the expression controls row', () => {
+    it('keeps Select all, Reset and Apply together in the heading row, in that order', async () => {
+      renderPicker({ value: ['smile', 'frown'] })
+      await userEvent.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+
+      const row = screen.getByRole('heading', { name: /face expressions/i }).closest(
+        '[data-slot="expressions-heading-row"]',
+      )
+      expect(row).not.toBeNull()
+
+      const selectAll = screen.getByRole('button', { name: /^select all$/i })
+      const reset = screen.getByRole('button', { name: /^reset$/i })
+      const apply = screen.getByRole('button', { name: /^apply$/i })
+      for (const control of [selectAll, reset, apply]) {
+        expect(row!.contains(control)).toBe(true)
+      }
+
+      const following = Node.DOCUMENT_POSITION_FOLLOWING
+      expect(selectAll.compareDocumentPosition(reset) & following).toBeTruthy()
+      expect(reset.compareDocumentPosition(apply) & following).toBeTruthy()
+    })
+  })
+
+  // The face spec is part of a run's identity, so changing it is not a filter adjustment: it
+  // throws the leaderboard away and starts the search over. That used to happen on one click of a
+  // tile with nothing said about it.
+  describe('applying a staged selection', () => {
+    const applyButton = () => screen.getByRole('button', { name: /^apply$/i })
+
+    it('offers nothing to apply until the selection differs', () => {
+      renderPicker({ value: ['smile', 'frown'] })
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+    })
+
+    it('offers Apply once a tile has been changed', async () => {
+      renderPicker({ value: ['smile', 'frown'] })
+      await userEvent.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      expect(applyButton()).toBeDefined()
+    })
+
+    it('withdraws the offer when the selection is put back as it was', async () => {
+      const user = userEvent.setup()
+      renderPicker({ value: ['smile', 'frown'] })
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      expect(applyButton()).toBeDefined()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+    })
+
+    it('warns what applying costs before applying it', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toMatch(/restart/i)
+      expect(dialog.textContent).toMatch(/discard/i)
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('applies the staged selection once the warning is accepted', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+      await user.click(await screen.findByRole('button', { name: /restart the search/i }))
+
+      expect(onChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
+    })
+
+    it('keeps the staged selection when the warning is declined', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+      await user.click(await screen.findByRole('button', { name: /keep mining/i }))
+
+      expect(onChange).not.toHaveBeenCalled()
+      // Still staged, so a change is not silently lost by backing out of the question.
+      expect(screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked')).toBe('true')
+      expect(applyButton()).toBeDefined()
+    })
+
+    // The host applies by handing back a new `value`. Once it has, there is nothing outstanding.
+    it('stops offering Apply once the run has caught up with the selection', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(
+        <FacePicker
+          value={['smile', 'frown']}
+          onChange={vi.fn()}
+          filters={DEFAULT_FACE_FILTERS}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      expect(applyButton()).toBeDefined()
+
+      rerender(
+        <FacePicker
+          value={['smile', 'frown', 'neutral']}
+          onChange={vi.fn()}
+          filters={DEFAULT_FACE_FILTERS}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+    })
+
+    // The way out of a staged change that does not cost the run. Apply restarts the search;
+    // this only throws away edits that have not taken effect, so it asks nothing.
+    describe('Reset', () => {
+      const resetButton = () => screen.getByRole('button', { name: /^reset$/i })
+
+      it('is offered only while something is staged', async () => {
+        renderPicker({ value: ['smile', 'frown'] })
+        expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+
+        await userEvent.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        expect(resetButton()).toBeDefined()
+      })
+
+      it('puts the tiles back to what is being mined', async () => {
+        const user = userEvent.setup()
+        renderPicker({ value: ['smile', 'frown'] })
+
+        await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        await user.click(screen.getByRole('checkbox', { name: /^smile$/i }))
+        await user.click(resetButton())
+
+        expect(screen.getByRole('checkbox', { name: /^smile$/i }).getAttribute('aria-checked')).toBe('true')
+        expect(screen.getByRole('checkbox', { name: /^frown$/i }).getAttribute('aria-checked')).toBe('true')
+        expect(screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked')).toBe('false')
+      })
+
+      // Nothing was applied, so nothing restarts and there is nothing to warn about.
+      it('touches neither the run nor the user with a question', async () => {
+        const user = userEvent.setup()
+        const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+
+        await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        await user.click(resetButton())
+
+        expect(onChange).not.toHaveBeenCalled()
+        expect(screen.queryByRole('dialog')).toBeNull()
+      })
+
+      it('leaves nothing to apply or reset afterwards', async () => {
+        const user = userEvent.setup()
+        renderPicker({ value: ['smile', 'frown'] })
+
+        await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        await user.click(resetButton())
+
+        expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+        expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+      })
+
+      // The "keep at least one expression" complaint belongs to the draft that has just been
+      // thrown away, so it cannot outlive it.
+      it('clears a complaint left over from the discarded draft', async () => {
+        const user = userEvent.setup()
+        renderPicker({ value: ['smile', 'frown'] })
+
+        await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        await user.click(screen.getByRole('checkbox', { name: /^smile$/i }))
+        await user.click(screen.getByRole('checkbox', { name: /^frown$/i }))
+        await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+        expect(screen.getByRole('alert').textContent).toMatch(/at least one/i)
+
+        await user.click(resetButton())
+        expect(screen.queryByRole('alert')).toBeNull()
+      })
+    })
+
+    // The colour filters are excluded from a run's identity on purpose: they re-filter candidates
+    // already mined rather than re-mining them, so gating them behind Apply would ask the user to
+    // confirm a restart that does not happen.
+    it('leaves the colour filters applying immediately', async () => {
+      const { onFiltersChange } = renderPicker({ value: ['smile', 'frown'] })
+
+      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+
+      expect(onFiltersChange).toHaveBeenCalled()
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+      expect(screen.queryByRole('dialog')).toBeNull()
     })
   })
 

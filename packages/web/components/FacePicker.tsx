@@ -1,13 +1,22 @@
 'use client'
 
 import { Check, Info } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { contrastPairForDistance, MAX_RGB_DISTANCE, rgbCss } from '../lib/contrast-preview'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
 import { TargetPreview } from './TargetPreview'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 import { HintPopover } from './ui/hint-popover'
 import { Label } from './ui/label'
 import { Slider } from './ui/slider'
@@ -22,6 +31,15 @@ export interface FacePickerProps {
 
 /** The slider's ceiling: `MAX_RGB_DISTANCE` rounded up to a whole number a label can carry. */
 const CONTRAST_MAX = Math.ceil(MAX_RGB_DISTANCE)
+
+/**
+ * Whether two selections would mine the same thing. Compared as sets: the face spec is built from
+ * which expressions are accepted, not from the order they were clicked in, so a list that differs
+ * only in order is not a change and must not offer to restart the search over nothing.
+ */
+function sameSelection(a: string[], b: string[]): boolean {
+  return a.length === b.length && [...a].sort().every((name, i) => name === [...b].sort()[i])
+}
 
 /**
  * The explanations that used to be paragraphs in the card body, one press away instead.
@@ -48,22 +66,42 @@ function Explains({ label, children }: { label: string; children: React.ReactNod
 
 export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePickerProps) {
   const [error, setError] = useState<string | undefined>()
+  const [confirming, setConfirming] = useState(false)
+
+  // The selection being *edited*, which is not yet the selection being mined.
+  //
+  // Changing the accepted expressions changes the face spec, and the face spec is part of a run's
+  // identity (see MiningView's `sameRun`): a new one throws the leaderboard away and resets the
+  // scanned total to zero. That used to happen on a single click of a tile, silently, while the
+  // two colour filters beside it — which only re-filter candidates already mined — were equally
+  // one click and cost nothing. Two controls an inch apart, one free and one destructive, with
+  // nothing to tell them apart.
+  //
+  // So a click stages, and applying is a separate, announced act. The tiles show the draft,
+  // because the draft is what the user is choosing.
+  const [draft, setDraft] = useState(value)
+  // The host applying a selection is what ends the pending state: it hands back a new `value`,
+  // and the draft catches up to it. This also covers a `value` that changes for any other reason,
+  // rather than leaving the tiles showing a selection nothing is mining.
+  useEffect(() => setDraft(value), [value])
+
+  const pending = !sameSelection(draft, value)
 
   const toggle = (name: string) => {
-    if (value.includes(name)) {
-      if (value.length === 1) {
+    if (draft.includes(name)) {
+      if (draft.length === 1) {
         setError('Keep at least one expression: a face needs a mouth to score against.')
         return
       }
       setError(undefined)
-      onChange(value.filter((entry) => entry !== name))
+      setDraft(draft.filter((entry) => entry !== name))
       return
     }
     setError(undefined)
-    onChange([...value, name])
+    setDraft([...draft, name])
   }
 
-  const allAccepted = ALL_MOUTH_NAMES.every((name) => value.includes(name))
+  const allAccepted = ALL_MOUTH_NAMES.every((name) => draft.includes(name))
   const [dark, light] = contrastPairForDistance(filters.minContrast)
 
   return (
@@ -73,7 +111,10 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
     // of leaving half of it empty, which is what a single full-width row of them did.
     <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[1.4fr_1fr]">
       <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
+        <div
+          data-slot="expressions-heading-row"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1"
+        >
           {/* h3 nests correctly under the card's h2 title. */}
           <h3 id="face-expressions" className="text-sm font-medium">
             Face expressions
@@ -82,24 +123,59 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
             Click a shape to accept or reject that expression. Each is what the miner is aiming at,
             not a blockie of any real address, since none exists yet.
           </Explains>
-          {/* Rejecting is one click per expression; getting back is one click total. Disabled
-              rather than hidden while there is nothing to reset, so the row does not reflow the
-              heading sideways the first time an expression is rejected. */}
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="ml-auto h-auto p-0"
-            disabled={allAccepted}
-            onClick={() => onChange([...ALL_MOUTH_NAMES])}
-          >
-            All
-          </Button>
+
+          {/* Everything that acts on the selection, with its heading rather than trailing the
+              tiles. Left to right they run from the least consequential to the most: widen the
+              selection, discard the edit, restart the search. Only Apply has consequences, and it
+              is the only one that looks like it does.
+
+              Each is absent rather than disabled when it would do nothing. Two of the three come
+              and go with a staged change in any case, so a permanently present but greyed-out
+              third would be the one dead control in a row that is otherwise never dead. */}
+          <div className="ml-auto flex items-center gap-2">
+            {!allAccepted && (
+              // Rejecting is one click per expression; getting back is one click total.
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+                onClick={() => {
+                  setError(undefined)
+                  setDraft([...ALL_MOUTH_NAMES])
+                }}
+              >
+                Select all
+              </Button>
+            )}
+            {pending && (
+              <>
+                {/* The way out that costs nothing: Apply restarts the search, this only drops
+                    edits that never took effect, so it asks no question. */}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+                  onClick={() => {
+                    // The complaint belongs to the draft being discarded, so it goes with it.
+                    setError(undefined)
+                    setDraft(value)
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button type="button" size="xs" onClick={() => setConfirming(true)}>
+                  Apply
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         <div role="group" aria-labelledby="face-expressions" className="grid grid-cols-5 gap-2">
           {ALL_MOUTH_NAMES.map((name) => {
-            const accepted = value.includes(name)
+            const accepted = draft.includes(name)
             return (
               // role="checkbox" on a real <button> is what Radix's own Checkbox renders, so this
               // stays a toggle for assistive tech — and its accessible name is the caption below
@@ -140,6 +216,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
             {error}
           </p>
         )}
+
       </section>
 
       <section className="flex flex-col gap-3">
@@ -214,6 +291,36 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
           </div>
         </div>
       </section>
+
+      {/* Asked every time, without checking whether the board happens to be empty yet. Restarting
+          also throws away the nonces already scanned, so there is something to lose from the first
+          second of a run — and this control sits among filters that cost nothing, which is exactly
+          where a silent exception would be least expected. */}
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart the search with these expressions?</DialogTitle>
+            <DialogDescription>
+              The face pattern is part of what the miner searches for, so changing it starts the
+              search again from the beginning. Every result found so far is discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Keep mining</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirming(false)
+                onChange(draft)
+              }}
+            >
+              Restart the search
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

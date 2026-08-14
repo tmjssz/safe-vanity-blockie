@@ -32,9 +32,24 @@ describe('FaceSection', () => {
     expect(neutral.getAttribute('aria-checked') ?? String(neutral.checked)).toBe('false')
   })
 
-  it('stays editable — expression changes apply without a reset', async () => {
+  // Still never locks: unlike Configure, which the page unmounts for the whole run, everything
+  // here stays reachable and editable while mining. What changed is where the line falls INSIDE
+  // the card. The colour filters re-filter candidates already mined, so they still apply on the
+  // spot. The expressions are part of the run's identity — a new face spec wipes the leaderboard
+  // and resets the scanned total — so they stage behind Apply and a warning instead of doing that
+  // on one click with nothing said.
+  it('applies a colour filter on the spot, and stages an expression change', async () => {
+    const user = userEvent.setup()
     const props = renderSection()
-    await userEvent.click(screen.getByRole('checkbox', { name: /neutral/i }))
+
+    await user.click(screen.getByRole('switch', { name: /two colours only/i }))
+    expect(props.onFiltersChange).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('checkbox', { name: /neutral/i }))
+    expect(props.onMouthsChange).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /^apply$/i }))
+    await user.click(await screen.findByRole('button', { name: /restart the search/i }))
     expect(props.onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
   })
 
