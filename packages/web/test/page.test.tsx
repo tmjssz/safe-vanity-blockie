@@ -1584,6 +1584,34 @@ describe('Page', () => {
   // the form is where the Stop control lives, so it remains mounted and locks its fields instead
   // (asserted in ConfigForm's own tests, since the form is mocked here). What the page still owns
   // is the run itself and the way back out of it.
+  // The caveat is about reading a result, so it appears where results do. Before a run there is
+  // nothing to mistrust yet, and a permanent banner over an empty starting screen is the fastest
+  // way to teach someone that this particular panel is scenery — which is the one thing this
+  // warning cannot afford to become.
+  it('shows the phishing caveat only once a run exists', async () => {
+    render(<Page />)
+
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
+  })
+
+  // "Stays visible from then on": stopping mining does not take it away, because the results it
+  // is about are still on screen.
+  it('keeps the caveat up once mining stops, and drops it only on start over', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
+    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: /start over…/i }))
+    await user.click(screen.getByRole('button', { name: /^start over$/i }))
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+  })
+
   it('keeps the form mounted once submitted, and discards the run when starting over', async () => {
     render(<Page />)
 

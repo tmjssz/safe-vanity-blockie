@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
-import { ConfigSection } from '../components/ConfigSection'
+import { CARD_WIDTH, ConfigSection } from '../components/ConfigSection'
 import { DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
@@ -768,7 +768,6 @@ function HomeContent() {
           portals in here sticks to the top of the page rather than to a one-bar-tall box. */}
       <div id={MINING_STATUS_BAR_SLOT_ID} className="contents" />
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-        <SecurityNotice />
 
         {!config && !linkDismissed && linkResult?.error && (
           <Alert variant="destructive">
@@ -819,6 +818,16 @@ function HomeContent() {
             than a half-mounted search with an empty leaderboard and a status bar reading zero. */}
         {config && (
           <>
+            {/* The caveat is about how to read a result, so it appears where results do, at the
+                same measure as the Configure card above it. Before a run there is nothing on
+                screen to mistrust — and a permanent banner over an empty starting screen is the
+                fastest way to teach someone that this panel is scenery, which is the one thing
+                this warning cannot afford to become. Once up it stays up, through a stop and
+                through every result found, until "Start over" clears the run itself. */}
+            <div className={CARD_WIDTH}>
+              <SecurityNotice />
+            </div>
+
             <FaceSection
               mouths={mouths}
               filters={filters}
