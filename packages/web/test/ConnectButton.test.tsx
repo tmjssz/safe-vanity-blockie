@@ -29,17 +29,59 @@ beforeEach(() => {
 })
 
 describe('ConnectButton', () => {
-  it('when connected, shows the truncated address and disconnects on click', async () => {
+  // The chip is a menu now, not a button whose label doubled as its action. The address is the
+  // whole label: what the header answers is "which account am I on", and disconnecting is a thing
+  // you go looking for rather than something the chip has to keep announcing.
+  it('when connected, shows the truncated address as a menu trigger', () => {
     const address = '0x' + 'ab'.repeat(20)
     useAccountMock.mockReturnValue({ address, isConnected: true })
     useConnectMock.mockReturnValue({ connect: connectMock, connectors: [], isPending: false })
 
     render(<ConnectButton />)
 
-    const button = screen.getByRole('button', { name: /0xabab.*abab.*disconnect/i })
-    await userEvent.click(button)
+    const trigger = screen.getByRole('button', { name: /0xabab.*abab/i })
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
+    expect(disconnectMock).not.toHaveBeenCalled()
+  })
 
+  it('disconnects from the menu, not from the chip itself', async () => {
+    const address = '0x' + 'ab'.repeat(20)
+    useAccountMock.mockReturnValue({ address, isConnected: true })
+    useConnectMock.mockReturnValue({ connect: connectMock, connectors: [], isPending: false })
+
+    render(<ConnectButton />)
+
+    await userEvent.click(screen.getByRole('button', { name: /0xabab.*abab/i }))
+    // Opening the menu must not be the same gesture as leaving the wallet.
+    expect(disconnectMock).not.toHaveBeenCalled()
+
+    await userEvent.click(await screen.findByRole('menuitem', { name: /disconnect/i }))
     expect(disconnectMock).toHaveBeenCalledOnce()
+  })
+
+  // The chip carries the connected address, and this app's way of showing an address is its
+  // identicon. It is decorative here: the address itself is right beside it in text.
+  it('shows the account identicon in the chip, hidden from assistive tech', () => {
+    const address = '0x' + 'ab'.repeat(20)
+    useAccountMock.mockReturnValue({ address, isConnected: true })
+    useConnectMock.mockReturnValue({ connect: connectMock, connectors: [], isPending: false })
+
+    const { container } = render(<ConnectButton />)
+
+    const identicon = container.querySelector('[data-slot="account-identicon"]')
+    expect(identicon).not.toBeNull()
+    expect(identicon?.getAttribute('aria-hidden')).toBe('true')
+    expect(identicon?.querySelector('svg')).not.toBeNull()
+  })
+
+  it('spells the chip without an em dash', () => {
+    const address = '0x' + 'ab'.repeat(20)
+    useAccountMock.mockReturnValue({ address, isConnected: true })
+    useConnectMock.mockReturnValue({ connect: connectMock, connectors: [], isPending: false })
+
+    render(<ConnectButton />)
+
+    expect(document.body.textContent ?? '').not.toContain('—')
   })
 
   it('when disconnected with a wallet available, connects on click', async () => {

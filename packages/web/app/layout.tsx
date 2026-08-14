@@ -43,8 +43,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     bailout for useSearchParams), so the header's right-hand group settles one
                     control wider on hydration rather than showing a chain that cannot yet be
                     changed. */}
-                <div id={HEADER_CHAIN_SLOT_ID} className="contents" />
+                {/* Theme first, then chain, then wallet: left to right that is chrome, then the
+                    thing the address is derived from, then the account. The toggle is the least
+                    consequential control here and reads that way in the corner it is furthest
+                    from. */}
                 <ThemeToggle />
+                <div id={HEADER_CHAIN_SLOT_ID} className="contents" />
                 <ConnectButton />
               </div>
             </div>
