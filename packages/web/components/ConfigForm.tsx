@@ -347,8 +347,13 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
       </div>
 
       {/* Side by side: two narrow controls that each answer one short question, on a card only
-          520px wide. Stacked they read as two more steps than they are. */}
-      <div className="grid gap-4 sm:grid-cols-2">
+          520px wide. Stacked they read as two more steps than they are.
+
+          `my-2` on top of the form's own `gap-4` sets these two apart from the owners list above
+          and the start control below. They are a different kind of question — one answer each,
+          already filled in, rather than a list you build — and at the form's uniform spacing the
+          whole card read as one undifferentiated run of fields. */}
+      <div className="my-2 grid gap-4 sm:grid-cols-2">
       <div className="flex flex-col gap-2">
         <Label htmlFor={thresholdId}>Threshold</Label>
         <div className="flex items-center gap-2">
