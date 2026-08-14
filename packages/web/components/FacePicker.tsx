@@ -24,7 +24,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
   const toggle = (name: string) => {
     if (value.includes(name)) {
       if (value.length === 1) {
-        setError('Keep at least one expression — a face needs a mouth to score against.')
+        setError('Keep at least one expression: a face needs a mouth to score against.')
         return
       }
       setError(undefined)
@@ -48,7 +48,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
         a good face sooner.
       </p>
       <p className="text-sm text-muted-foreground">
-        Click a shape to accept or reject that expression. Each is what the miner is aiming at — not
+        Click a shape to accept or reject that expression. Each is what the miner is aiming at, not
         a blockie of any real address, since none exists yet.
       </p>
       {/* A wrapping row: five 64px previews fit side by side on a wide card and reflow to two or
@@ -100,7 +100,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
       </div>
       <p className="text-sm text-muted-foreground">
         A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the common case
-        to want — turning it off makes more candidates qualify, but some will show a third colour.
+        to want. Turning it off makes more candidates qualify, but some will show a third colour.
       </p>
 
       <div className="flex max-w-xs flex-col gap-1.5">
@@ -131,7 +131,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
         />
       </div>
       <p className="text-sm text-muted-foreground">
-        The RGB distance required between the two blockie colours — 0 accepts any pair, 442 is black
+        The RGB distance required between the two blockie colours. 0 accepts any pair, 442 is black
         against white.
       </p>
     </div>

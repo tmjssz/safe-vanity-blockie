@@ -9,7 +9,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 
 const COPY_FAILED_MESSAGE =
-  'Could not copy automatically — select the link above and copy it manually.'
+  'Could not copy automatically. Select the link above and copy it manually.'
 
 export function ShareConfig({ config }: { config: SharedConfig }) {
   const [copied, setCopied] = useState(false)
@@ -69,7 +69,7 @@ export function ShareConfig({ config }: { config: SharedConfig }) {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        The config is deterministic — deploy it whenever you like.
+        The config is deterministic, so you can deploy it whenever you like.
       </p>
       {/* A toast disappears on a timer; this stays on screen until the next successful copy, so
           a failure that needs the user to act (select-and-copy manually) is never lost. */}

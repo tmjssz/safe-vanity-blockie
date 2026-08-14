@@ -769,7 +769,7 @@ function HomeContent() {
         {linkConstantsError && (
           <Alert variant="destructive">
             <AlertDescription>
-              This link&rsquo;s saltNonce could not be reconstructed — Safe constants could not be
+              This link&rsquo;s saltNonce could not be reconstructed. Safe constants could not be
               read: {linkConstantsError}
             </AlertDescription>
           </Alert>

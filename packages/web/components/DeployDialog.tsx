@@ -176,7 +176,7 @@ export function DeployDialog({
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>A matching identicon is cosmetic.</AlertTitle>
           <AlertDescription>
-            Check every character of the address below before you confirm — a look-alike blockie
+            Check every character of the address below before you confirm. A look-alike blockie
             is a known phishing vector.
           </AlertDescription>
         </Alert>
@@ -344,7 +344,7 @@ export function DeployDialog({
                     )
                   }
 
-                  setStatus(`Sending — confirm in your wallet to deploy ${plan.address}…`)
+                  setStatus(`Sending: confirm in your wallet to deploy ${plan.address}…`)
                   // useConnectorClient() returns a plain viem Client, not one extended with wallet
                   // actions, so sendTransaction is called as a standalone action against it.
                   const { sendTransaction } = await import('viem/actions')
@@ -402,11 +402,11 @@ export function DeployDialog({
                   const message = thrown instanceof Error ? thrown.message : String(thrown)
                   if (hash) {
                     reportError(
-                      `${message} Transaction ${hash} was already sent — check its status before retrying.`,
+                      `${message} Transaction ${hash} was already sent. Check its status before retrying.`,
                     )
                   } else if (sendDispatched) {
                     reportError(
-                      `${message} The transaction may already have been broadcast — check your ` +
+                      `${message} The transaction may already have been broadcast. Check your ` +
                         "wallet's activity list before retrying.",
                     )
                   } else {

@@ -288,7 +288,7 @@ export function useMiner(): {
           setState((previous) => ({
             ...previous,
             running: false,
-            error: `Worker failed to start: ${event.message || 'unknown error'}. Reload the page — if this persists, your browser or network may be blocking the mining worker or its WASM.`,
+            error: `Worker failed to start: ${event.message || 'unknown error'}. Reload the page. If this persists, your browser or network may be blocking the mining worker or its WASM.`,
           }))
           teardown()
         }

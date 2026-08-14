@@ -257,7 +257,7 @@ export function MiningView({
             <AlertDescription className="flex flex-wrap items-center gap-2">
               <span>
                 Could not read Safe constants for this chain: {constants.error}. Mining has stopped,
-                but every result below is still here — retry, or pick a chain that answers.
+                but every result below is still here. Retry, or pick a chain that answers.
               </span>
               <Button type="button" variant="outline" size="sm" onClick={constants.reload}>
                 Try again

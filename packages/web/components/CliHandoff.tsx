@@ -32,7 +32,7 @@ export function npxCommandFor(
 }
 
 const COPY_FAILED_MESSAGE =
-  'Could not copy automatically — select the command above and copy it manually.'
+  'Could not copy automatically. Select the command above and copy it manually.'
 
 export function CliHandoff({
   config,
@@ -92,7 +92,7 @@ export function CliHandoff({
       <CollapsibleContent className="flex flex-col gap-2 pt-2">
         <p className="text-sm text-muted-foreground">
           A browser tab is throttled when it loses focus, and mobile is roughly ten times slower.
-          For a longer search, run the same config natively — it uses every core and can be resumed.
+          For a longer search, run the same config natively. It uses every core and can be resumed.
         </p>
         <p className="text-sm text-muted-foreground">
           The CLI has no builtin <code>--target</code> for a narrowed subset of expressions, so it
