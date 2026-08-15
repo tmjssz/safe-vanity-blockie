@@ -48,18 +48,29 @@ describe('parseArgs', () => {
   it('parses every documented flag', () => {
     // Overrides REQUIRED's single owner with two, since --threshold 2 needs >= 2 owners.
     const options = mine([
-      '--owners', '0x' + '11'.repeat(20) + ',0x' + '22'.repeat(20),
-      '--threshold', '2',
-      '--safe-version', '1.3.0',
-      '--target', 'smile',
+      '--owners',
+      '0x' + '11'.repeat(20) + ',0x' + '22'.repeat(20),
+      '--threshold',
+      '2',
+      '--safe-version',
+      '1.3.0',
+      '--target',
+      'smile',
       '--no-two-color',
-      '--min-contrast', '150',
-      '--workers', '3',
-      '--max-iterations', '1000000',
-      '--start', '8400000000',
-      '--keep', '5',
-      '--out', 'results.json',
-      '--gallery', 'gallery.html',
+      '--min-contrast',
+      '150',
+      '--workers',
+      '3',
+      '--max-iterations',
+      '1000000',
+      '--start',
+      '8400000000',
+      '--keep',
+      '5',
+      '--out',
+      'results.json',
+      '--gallery',
+      'gallery.html',
     ])
     expect(options).toMatchObject({
       threshold: 2,
@@ -118,9 +129,9 @@ describe('parseArgs', () => {
 
   it('rejects duplicate owners, which would make the Safe setup invalid', () => {
     const duplicate = '0x' + '11'.repeat(20)
-    expect(() => parseArgs(['--owners', `${duplicate},${duplicate}`, '--rpc', 'x'], DEFAULTS)).toThrow(
-      /duplicate owner/,
-    )
+    expect(() =>
+      parseArgs(['--owners', `${duplicate},${duplicate}`, '--rpc', 'x'], DEFAULTS),
+    ).toThrow(/duplicate owner/)
   })
 
   it('rejects an empty value for any value flag instead of silently accepting it', () => {
@@ -130,10 +141,7 @@ describe('parseArgs', () => {
       /--owners needs a value/,
     )
     expect(() =>
-      parseArgs(
-        ['deploy', '--salt', '', ...REQUIRED, '--pk', '0x' + 'ab'.repeat(32)],
-        DEFAULTS,
-      ),
+      parseArgs(['deploy', '--salt', '', ...REQUIRED, '--pk', '0x' + 'ab'.repeat(32)], DEFAULTS),
     ).toThrow(/--salt needs a value/)
   })
 
@@ -141,9 +149,9 @@ describe('parseArgs', () => {
     const PK = ['--pk', '0x' + 'ab'.repeat(32)]
 
     it('rejects a hex-prefixed salt, which silently means a tiny decimal value', () => {
-      expect(() =>
-        parseArgs(['deploy', '--salt', '0x10', ...REQUIRED, ...PK], DEFAULTS),
-      ).toThrow(/--salt must be a decimal non-negative integer/)
+      expect(() => parseArgs(['deploy', '--salt', '0x10', ...REQUIRED, ...PK], DEFAULTS)).toThrow(
+        /--salt must be a decimal non-negative integer/,
+      )
     })
 
     it('rejects a non-numeric salt', () => {
@@ -154,9 +162,9 @@ describe('parseArgs', () => {
 
     it('rejects a salt above the maximum uint256', () => {
       const tooBig = (2n ** 256n).toString()
-      expect(() =>
-        parseArgs(['deploy', '--salt', tooBig, ...REQUIRED, ...PK], DEFAULTS),
-      ).toThrow(/--salt exceeds the maximum uint256/)
+      expect(() => parseArgs(['deploy', '--salt', tooBig, ...REQUIRED, ...PK], DEFAULTS)).toThrow(
+        /--salt exceeds the maximum uint256/,
+      )
     })
 
     it('accepts a valid huge decimal salt and preserves it exactly as a string', () => {
@@ -188,18 +196,18 @@ describe('parseArgs', () => {
     })
 
     it('makes --pk optional when a deployer key default is supplied', () => {
-      const command = parseArgs(
-        ['deploy', '--salt', '1', ...REQUIRED],
-        { ...DEFAULTS, deployerKey: '0x' + 'cd'.repeat(32) },
-      )
+      const command = parseArgs(['deploy', '--salt', '1', ...REQUIRED], {
+        ...DEFAULTS,
+        deployerKey: '0x' + 'cd'.repeat(32),
+      })
       expect(command.kind === 'deploy' && command.options.privateKey).toBe('0x' + 'cd'.repeat(32))
     })
 
     it('prefers the deployer key default over an explicit --pk when both are present', () => {
-      const command = parseArgs(
-        ['deploy', '--salt', '1', ...REQUIRED, ...PK],
-        { ...DEFAULTS, deployerKey: '0x' + 'cd'.repeat(32) },
-      )
+      const command = parseArgs(['deploy', '--salt', '1', ...REQUIRED, ...PK], {
+        ...DEFAULTS,
+        deployerKey: '0x' + 'cd'.repeat(32),
+      })
       expect(command.kind === 'deploy' && command.options.privateKey).toBe('0x' + 'cd'.repeat(32))
     })
   })

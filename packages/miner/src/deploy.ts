@@ -61,7 +61,9 @@ export async function buildDeploymentPlan(options: DeployArgs): Promise<Deployme
   // order, --threshold, --safe-version, or --l1-singleton mismatch would change `setup.constants`
   // but not `address` in a way this catches.
   const keccak256 = await createKeccak256()
-  const derived = createAddressDeriver(setup.constants, keccak256).deriveBig(BigInt(options.saltNonce))
+  const derived = createAddressDeriver(setup.constants, keccak256).deriveBig(
+    BigInt(options.saltNonce),
+  )
   if (derived.toLowerCase() !== address.toLowerCase()) {
     throw new Error(
       `self-check failed for saltNonce ${options.saltNonce}: protocol-kit predicted ${address}, ` +

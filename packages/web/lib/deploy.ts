@@ -1,7 +1,11 @@
 import Safe from '@safe-global/protocol-kit'
 import type { Eip1193Provider, SafeConfig } from '@safe-global/protocol-kit'
 import type { Transaction } from '@safe-global/types-kit'
-import { createAddressDeriver, createKeccak256, type SafeConstants } from '@safe-vanity-blockie/core'
+import {
+  createAddressDeriver,
+  createKeccak256,
+  type SafeConstants,
+} from '@safe-vanity-blockie/core'
 import { verifyWithProtocolKit, type SafeSetup } from '@safe-vanity-blockie/safe-config'
 
 /**

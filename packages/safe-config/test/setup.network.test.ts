@@ -36,9 +36,9 @@ describe('loadSafeConstants', () => {
   })
 
   it('throws a clear mismatch error when the address is wrong', async () => {
-    await expect(
-      verifyWithProtocolKit(setup, '1', '0x' + '00'.repeat(20)),
-    ).rejects.toThrow(/self-check failed/)
+    await expect(verifyWithProtocolKit(setup, '1', '0x' + '00'.repeat(20))).rejects.toThrow(
+      /self-check failed/,
+    )
   })
 
   it('produces the same constants for the same config on a second call', async () => {

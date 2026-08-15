@@ -36,7 +36,13 @@ describe('createAddressDeriver', () => {
 
   it('matches viem for nonces above 2^32, where the high word matters', () => {
     const deriver = createAddressDeriver(CONSTANTS, keccak256)
-    for (const nonce of [4294967295, 4294967296, 8_400_000_000, 5254976178, Number.MAX_SAFE_INTEGER]) {
+    for (const nonce of [
+      4294967295,
+      4294967296,
+      8_400_000_000,
+      5254976178,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
       expect(deriver.derive(nonce)).toBe(expectedAddress(BigInt(nonce)))
     }
   })

@@ -6,20 +6,12 @@ export const MOUTH_BG_WEIGHT = 1
 
 /** Rows 0-4, index = row * 4 + col. 1 = the eye pixel (mirrored to column 5), 0 = background. */
 export const BASE_TARGET: readonly (0 | 1)[] = [
-  0, 0, 0, 0,
-  0, 0, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 0,
-  0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
 
 /** 8 = the eye, 5 = cells hugging it (isolation, incl. col 3 to keep the two eyes apart), 3 = plain background. */
 export const BASE_WEIGHTS: readonly number[] = [
-  3, 3, 3, 3,
-  3, 3, 5, 3,
-  3, 5, 8, 5,
-  3, 3, 5, 3,
-  3, 3, 3, 3,
+  3, 3, 3, 3, 3, 3, 5, 3, 3, 5, 8, 5, 3, 3, 5, 3, 3, 3, 3, 3,
 ]
 
 /** Rows 5-7 of the left half: r5c0..r5c3, r6c0..r6c3, r7c0..r7c3. */

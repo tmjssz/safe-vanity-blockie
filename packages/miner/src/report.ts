@@ -69,7 +69,8 @@ function regionSummary(candidate: Candidate): string {
 }
 
 export function formatLeaderboard(candidates: Candidate[], limit: number): string {
-  const header = ' # | score | 2col | contrast | expression | address                                    | saltNonce'
+  const header =
+    ' # | score | 2col | contrast | expression | address                                    | saltNonce'
   const rows = candidates.slice(0, limit).map((candidate, index) => {
     return [
       String(index + 1).padStart(2),
@@ -182,7 +183,6 @@ export function asciiFor(address: string): string[] {
   return renderAscii(bloData(address))
 }
 
-
 /** Wide enough that adjacent blockies do not read as one image. */
 const RESULT_GUTTER_WIDTH = 6
 const RESULT_GUTTER = ' '.repeat(RESULT_GUTTER_WIDTH)
@@ -245,4 +245,3 @@ export function buildResultStrip(
   }
   return lines
 }
-

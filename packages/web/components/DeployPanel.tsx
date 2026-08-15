@@ -27,12 +27,12 @@ export function DeployPanel({ config, candidate }: { config: MineConfig; candida
         <code>{candidate.address}</code> · saltNonce <code>{candidate.saltNonce}</code>
       </p>
       <p className="notice">
-        <strong>A matching identicon is cosmetic.</strong> Verify the full address before you
-        send anything — a look-alike blockie is a known phishing vector.
+        <strong>A matching identicon is cosmetic.</strong> Verify the full address before you send
+        anything — a look-alike blockie is a known phishing vector.
       </p>
       <p>
-        This config is counterfactual: the address exists whether or not you deploy, so you can
-        copy it and deploy it later, on any chain with the canonical Safe contracts.
+        This config is counterfactual: the address exists whether or not you deploy, so you can copy
+        it and deploy it later, on any chain with the canonical Safe contracts.
       </p>
       <ShareConfig config={{ ...config, saltNonce: candidate.saltNonce }} />
 

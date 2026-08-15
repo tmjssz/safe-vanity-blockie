@@ -36,9 +36,8 @@ export function CliHandoff({
     <details>
       <summary>Run this search on your machine instead</summary>
       <p className="hint">
-        A browser tab is throttled when it loses focus, and mobile is roughly ten times slower.
-        For a longer search, run the same config natively — it uses every core and can be
-        resumed.
+        A browser tab is throttled when it loses focus, and mobile is roughly ten times slower. For
+        a longer search, run the same config natively — it uses every core and can be resumed.
       </p>
       <p className="hint">
         The CLI has no builtin <code>--target</code> for a narrowed subset of expressions, so it

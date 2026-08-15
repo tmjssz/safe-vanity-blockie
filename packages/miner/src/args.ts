@@ -142,8 +142,20 @@ export function parseArgs(
   const flags = new Set<string>()
   const BOOLEAN_FLAGS = new Set(['--two-color', '--no-two-color', '--l1-singleton', '--yes'])
   const VALUE_FLAGS = new Set([
-    '--owners', '--threshold', '--safe-version', '--rpc', '--target', '--min-contrast',
-    '--workers', '--max-iterations', '--start', '--keep', '--out', '--gallery', '--salt', '--pk',
+    '--owners',
+    '--threshold',
+    '--safe-version',
+    '--rpc',
+    '--target',
+    '--min-contrast',
+    '--workers',
+    '--max-iterations',
+    '--start',
+    '--keep',
+    '--out',
+    '--gallery',
+    '--salt',
+    '--pk',
   ])
 
   for (let i = 0; i < rest.length; i++) {
@@ -224,8 +236,10 @@ export function parseArgs(
       rpcUrl,
       target: values.get('--target') ?? 'faces',
       twoColor: !flags.has('--no-two-color'),
-      minContrast: minContrastRaw === undefined ? 0 : nonNegativeInteger(minContrastRaw, '--min-contrast'),
-      workers: workersRaw === undefined ? defaults.workers : positiveInteger(workersRaw, '--workers'),
+      minContrast:
+        minContrastRaw === undefined ? 0 : nonNegativeInteger(minContrastRaw, '--min-contrast'),
+      workers:
+        workersRaw === undefined ? defaults.workers : positiveInteger(workersRaw, '--workers'),
       maxIterations:
         maxIterationsRaw === undefined
           ? Number.POSITIVE_INFINITY

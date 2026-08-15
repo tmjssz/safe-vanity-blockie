@@ -65,7 +65,10 @@ describe('Leaderboard', () => {
   it('merges another run and re-ranks', () => {
     const board = new Leaderboard(3)
     board.offer(candidate({ address: '0xa', score: 100 }))
-    board.merge([candidate({ address: '0xb', score: 130 }), candidate({ address: '0xa', score: 100 })])
+    board.merge([
+      candidate({ address: '0xb', score: 130 }),
+      candidate({ address: '0xa', score: 100 }),
+    ])
     expect(board.entries().map((entry) => entry.address)).toEqual(['0xb', '0xa'])
   })
 

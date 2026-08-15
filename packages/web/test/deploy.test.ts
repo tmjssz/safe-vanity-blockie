@@ -32,9 +32,7 @@ describe('assertDerivedAddressMatches', () => {
   })
 
   it('rejects a saltNonce that is not a decimal integer, before any derivation', async () => {
-    await expect(assertDerivedAddressMatches(CONSTANTS, '0x10', '0xabc')).rejects.toThrow(
-      /decimal/,
-    )
+    await expect(assertDerivedAddressMatches(CONSTANTS, '0x10', '0xabc')).rejects.toThrow(/decimal/)
     await expect(assertDerivedAddressMatches(CONSTANTS, '', '0xabc')).rejects.toThrow(/decimal/)
   })
 })

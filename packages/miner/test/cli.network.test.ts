@@ -17,14 +17,21 @@ describe('safe-vanity-blockie end to end', () => {
 
     const { stdout } = await run('node', [
       CLI,
-      '--owners', '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
-      '--rpc', RPC_URL,
-      '--max-iterations', '200000',
-      '--workers', '2',
-      '--keep', '5',
+      '--owners',
+      '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+      '--rpc',
+      RPC_URL,
+      '--max-iterations',
+      '200000',
+      '--workers',
+      '2',
+      '--keep',
+      '5',
       '--no-two-color',
-      '--out', out,
-      '--gallery', gallery,
+      '--out',
+      out,
+      '--gallery',
+      gallery,
     ])
 
     expect(stdout).toMatch(/self-check passed/)

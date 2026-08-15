@@ -34,7 +34,9 @@ const CANDIDATE = {
 }
 
 const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy } = vi.hoisted(() => ({
-  constantsState: { current: { loading: true } as { data?: unknown; error?: string; loading: boolean } },
+  constantsState: {
+    current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
+  },
   minerState: { current: {} as Record<string, unknown> },
   startSpy: vi.fn(),
   stopSpy: vi.fn(),
@@ -105,7 +107,9 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(startSpy).toHaveBeenCalledWith(expect.objectContaining({ twoColor: false, minContrast: 250 }))
+    expect(startSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ twoColor: false, minContrast: 250 }),
+    )
   })
 
   it('re-filters via setFilters when only the filters prop changes, without restarting the run', () => {
