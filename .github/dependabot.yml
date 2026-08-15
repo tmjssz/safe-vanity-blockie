@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # The workflows pin actions to commit SHAs, which is what makes a moved tag harmless — but a pin
+  # is a snapshot, and without this it silently ages. Dependabot rewrites both the SHA and the
+  # trailing `# v5` comment, so the pins stay current and stay readable.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      include: scope
+    # One PR for all of them: three actions moving a few times a year is not worth three reviews.
+    groups:
+      actions:
+        patterns: ['*']
+    open-pull-requests-limit: 5
