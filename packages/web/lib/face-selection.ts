@@ -8,7 +8,7 @@ export const ALL_MOUTH_NAMES: string[] = MOUTHS.map((mouth) => mouth.name)
  */
 export function faceSpecFromSelection(mouthNames: string[]): FaceSpec {
   if (mouthNames.length === 0) {
-    throw new Error('Choose at least one expression — a face needs a mouth to score against.')
+    throw new Error('Choose at least one expression: a face needs a mouth to score against.')
   }
   return faceWithMouths(mouthNames.join('+'), mouthNames)
 }

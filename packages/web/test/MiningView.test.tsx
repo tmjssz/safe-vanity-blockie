@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 
@@ -9,6 +11,11 @@ const FACE_SPEC = { name: 'x', fixed: [], regions: [] }
 // Stable reference — the real useSafeConstants hook holds `data` in useState and returns the
 // same object across re-renders once loaded, so a stub that built a new literal per call would
 // misrepresent it (and mask the exact restart-loop bug this suite guards against).
+//
+// MiningView no longer keys its restart on that object's identity but on the three constants
+// inside it, so that a chain switch — which re-reads and comes back equal in value as a NEW
+// object — does not restart the run. That is a different test's job precisely because this stub
+// cannot express it: see MiningView.chain-switch.test.tsx, which drives the real hook.
 const STABLE_CONSTANTS_DATA = {
   constantsHex: { initializerHash: '0x1', factory: '0x2', initCodeHash: '0x3' },
 }
@@ -33,18 +40,42 @@ const CANDIDATE = {
   regions: { mouth: 'small' },
 }
 
-const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy } = vi.hoisted(() => ({
-  constantsState: {
-    current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
-  },
-  minerState: { current: {} as Record<string, unknown> },
-  startSpy: vi.fn(),
-  stopSpy: vi.fn(),
-  setFiltersSpy: vi.fn(),
-}))
+// Each result card is one button, named after the result it opens ("Deploy 90.2% match 0x70e9…").
+const resultCards = () => screen.getAllByRole('button', { name: /deploy .* match/i })
 
+// Counting identicon draws is how "this card did not re-render" is observable from outside — see
+// ResultsGrid.test.tsx. Used here to prove the callback this component hands the grid survives a
+// publish, which is the invariant ResultCard's memo is worth anything under.
+const { bloSvgSpy } = vi.hoisted(() => ({ bloSvgSpy: vi.fn() }))
+
+vi.mock('@safe-vanity-blockie/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@safe-vanity-blockie/core')>()
+  return {
+    ...actual,
+    bloSvg: (address: string, size: number) => {
+      bloSvgSpy(address, size)
+      return actual.bloSvg(address, size)
+    },
+  }
+})
+
+const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy, reloadSpy } =
+  vi.hoisted(() => ({
+    constantsState: {
+      current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
+    },
+    minerState: { current: {} as Record<string, unknown> },
+    startSpy: vi.fn(),
+    stopSpy: vi.fn(),
+    setFiltersSpy: vi.fn(),
+    toastErrorSpy: vi.fn(),
+    reloadSpy: vi.fn(),
+  }))
+
+// `reload` is part of the hook's contract, not part of what a test sets up: every state it can
+// return carries one, so it is spread in here rather than repeated in each `constantsState`.
 vi.mock('../lib/use-safe-constants.js', () => ({
-  useSafeConstants: () => constantsState.current,
+  useSafeConstants: () => ({ reload: reloadSpy, ...constantsState.current }),
 }))
 
 vi.mock('../lib/use-miner.js', () => ({
@@ -56,12 +87,34 @@ vi.mock('../lib/use-miner.js', () => ({
   }),
 }))
 
+// A worker failure must reach the toast layer as well as the inline alert (see the test below) —
+// the alert is what the brief requires to stay put, the toast is the extra, timed feedback.
+vi.mock('sonner', () => ({
+  toast: { error: toastErrorSpy, success: vi.fn() },
+}))
+
 beforeEach(() => {
   constantsState.current = { loading: true }
   minerState.current = IDLE_STATE
+  bloSvgSpy.mockClear()
   startSpy.mockClear()
+  toastErrorSpy.mockClear()
   stopSpy.mockClear()
   setFiltersSpy.mockClear()
+  reloadSpy.mockClear()
+})
+
+/** The page's slot for the portaled status bar, mounted so a test can ask whether the bar exists. */
+function mountStatusBarSlot(): HTMLElement {
+  const slot = document.createElement('div')
+  slot.id = MINING_STATUS_BAR_SLOT_ID
+  document.body.append(slot)
+  return slot
+}
+
+// RTL's cleanup only unmounts what it rendered; the portal slot is appended to the body by hand.
+afterEach(() => {
+  document.getElementById(MINING_STATUS_BAR_SLOT_ID)?.remove()
 })
 
 describe('MiningView', () => {
@@ -71,6 +124,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -87,12 +142,255 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
 
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
     expect(screen.getByText(/4,200/)).toBeDefined()
+  })
+
+  // The grid shows everything retained and scrolls, so the number handed to the miner is a
+  // retention size only. A display count riding on it would multiply into the leaderboard's size
+  // (it used to be keep x 20) the moment anyone asked to see more results.
+  it('asks the miner to retain a deep pool, with no display count riding on it', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(startSpy).toHaveBeenCalledWith(expect.objectContaining({ retain: 200 }))
+    expect(startSpy.mock.calls[0][0]).not.toHaveProperty('keep')
+  })
+
+  it('shows every result it is given rather than a top-eight slice', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: Array.from({ length: 24 }, (_, index) => ({
+        ...CANDIDATE,
+        address: `0x${index.toString(16).padStart(40, '0')}`,
+      })),
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(resultCards()).toHaveLength(24)
+  })
+
+  // The wiring hop the grid cannot test for itself: without `filters` and `bestContrast` reaching
+  // it, the empty state cannot name what is excluding things or how close the search came.
+  it('hands the grid what its empty state needs to explain itself', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      bestContrast: 143,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    // The whole panel, not the live region inside it: that region carries the stable headline
+    // only, so the numbers do not queue an announcement each time they change.
+    const message = screen.getByTestId('no-matches').textContent ?? ''
+    expect(message).toMatch(/no result matches/i)
+    expect(message).toMatch(/162/)
+    expect(message).toMatch(/300/)
+    expect(message).toMatch(/143/)
+  })
+
+  // The bar used to read the head of the *displayed* list. Once the filters can empty that list
+  // (they no longer fall back to showing everything), the bar answered a filter change with "No
+  // candidates yet" two rows above an empty state explaining that 162 candidates had been found —
+  // re-asserting the exact misreading the empty state exists to correct, and taking the only live
+  // signal of search quality with it. It reads the unfiltered board instead.
+  it('keeps reporting the best result while the filters exclude every card', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      bestOverall: CANDIDATE,
+      bestContrast: 143,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('90.2%')).toBeDefined()
+    expect(screen.getByText(/best result/i)).toBeDefined()
+    expect(screen.queryByText(/no candidates yet/i)).toBeNull()
+  })
+
+  // The filtered-out count is gone from above the grid; what replaces it is a count of what is
+  // actually on screen, next to the heading, so it can be checked against the cards by eye. Just
+  // the number — the heading it sits on already says what is being counted.
+  it('badges the Results heading with the number of cards shown, and drops the filtered-out line', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: Array.from({ length: 3 }, (_, index) => ({
+        ...CANDIDATE,
+        address: `0x${index.toString(16).padStart(40, '0')}`,
+      })),
+      droppedCount: 197,
+      bestOverall: CANDIDATE,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { name: /^results$/i })
+    const badge = screen.getByTestId('results-count')
+    // On the heading, not floating somewhere above the grid.
+    expect(heading.parentElement?.contains(badge)).toBe(true)
+    expect(badge.textContent).toBe(`${resultCards().length} results shown`)
+    expect(screen.queryByText(/filtered out/i)).toBeNull()
+  })
+
+  // The badge's whole claim is that it counts what is on screen. In the opening seconds of a run
+  // the grid holds four skeleton placeholders, so a bare "0" is the one moment that claim is false —
+  // and counting the placeholders instead would be worse, since they are not results. There is
+  // simply nothing to count yet, so the badge waits.
+  it('does not count placeholders: no badge until there is something real to count', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [], droppedCount: 0 }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]').length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('results-count')).toBeNull()
+  })
+
+  // The exception: nothing found *yet* is not the same as nothing surviving the filters. There the
+  // grid has no cards on purpose, the zero is the point, and it agrees with the empty state.
+  it('keeps the badge at zero when the filters exclude everything, agreeing with the empty state', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      candidates: [],
+      droppedCount: 162,
+      bestOverall: CANDIDATE,
+    }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('results-count').textContent).toBe('0 results shown')
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+  })
+
+  // ResultCard's memo is what keeps a 200-card grid usable across several publishes a second, and
+  // it is worth nothing unless the callback threaded down to it is the same function every time.
+  // A refactor to `onSelect={(candidate) => onSelect(candidate)}` anywhere on that path would
+  // leave every test green while turning the memo into 200 wasted comparisons per publish.
+  it('hands the grid a callback that survives a publish, which is what the card memo rides on', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+    const onSelect = vi.fn()
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={onSelect}
+      />,
+    )
+    const drawn = bloSvgSpy.mock.calls.length
+    expect(drawn).toBeGreaterThan(0)
+
+    // A publish: a new state object and a new candidates array holding the same candidate object,
+    // exactly what useMiner produces when the board did not change.
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      scanned: 5_000,
+      candidates: [CANDIDATE],
+    }
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={onSelect}
+      />,
+    )
+
+    expect(screen.getByText(/5,000/)).toBeDefined()
+    expect(bloSvgSpy.mock.calls.length).toBe(drawn)
   })
 
   it('calls start with the twoColor and minContrast values from the filters prop, not hardcoded ones', () => {
@@ -103,6 +401,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 250 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -120,6 +420,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -130,6 +432,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={{ twoColor: false, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -147,6 +451,8 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -163,6 +469,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -174,6 +482,8 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -181,7 +491,7 @@ describe('MiningView', () => {
     expect(stopSpy).toHaveBeenCalled()
     expect(startSpy).toHaveBeenCalledTimes(1)
     // The row is still there — pausing stops mining, it does not hide the leaderboard.
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
   })
 
   it('resumes mining when paused flips back to false', () => {
@@ -193,6 +503,8 @@ describe('MiningView', () => {
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -203,6 +515,8 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -218,11 +532,351 @@ describe('MiningView', () => {
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
         filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
 
     expect(screen.getByRole('alert').textContent).toMatch(/RPC blew up/)
     expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  // The chain picker moved into the header, so the config can change — and the constants be
+  // re-read — under a LIVE search, against unauthenticated public RPCs where a rate-limited read
+  // is an ordinary event. Replacing the screen then says the search is gone while the run is in
+  // fact completely intact (leaderboard, cumulative totals and resume point are all still in
+  // useMiner), and the obvious response to that screen is the reload that really does lose it.
+  it('keeps a live run on screen when the constants read fails, and reports it inline', () => {
+    const slot = mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'HTTP 429: rate limited' }
+    minerState.current = { ...IDLE_STATE, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    // Everything the user would have lost is still exactly where it was: the status bar with its
+    // scanned count, and every card on the leaderboard.
+    expect(slot.textContent).toMatch(/4,200/)
+    expect(resultCards()).toHaveLength(1)
+
+    // …and the failure is reported among them rather than in place of them — saying what stopped,
+    // what did not, and offering the way back.
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toMatch(/HTTP 429: rate limited/)
+    expect(alert.textContent).toMatch(/every result below is still here/i)
+    expect(screen.getByRole('button', { name: /try again/i })).toBeDefined()
+    // The run is not mined on while the constants behind it are unknown.
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  // The other half of the same rule, kept deliberately: a run that has reported nothing has
+  // nothing on screen to protect, so the failure is still allowed to be the whole view.
+  it('still replaces the whole view with the error when no run has reported anything yet', () => {
+    const slot = mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'RPC blew up' }
+    minerState.current = IDLE_STATE
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('alert').textContent).toMatch(/RPC blew up/)
+    // Nothing else at all: no status bar in the page's slot, no Results section, no grid.
+    expect(slot.children).toHaveLength(0)
+    expect(screen.queryByRole('heading', { name: /^results$/i })).toBeNull()
+    expect(screen.queryByText(/nonces/i)).toBeNull()
+  })
+
+  it('asks for the constants again when the retry beside a live run is pressed', async () => {
+    mountStatusBarSlot()
+    constantsState.current = { loading: false, error: 'HTTP 429: rate limited' }
+    minerState.current = { ...IDLE_STATE, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+
+    // The hook's own reload, which re-reads for the same config — the run is never restarted and
+    // nothing on screen is thrown away to ask again.
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+    expect(resultCards()).toHaveLength(1)
+  })
+
+  it('toasts a worker failure in addition to (not instead of) the inline alert', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, error: 'Worker failed to start: boom' }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(toastErrorSpy).toHaveBeenCalledWith('Worker failed to start: boom')
+    // The toast is additive: the alert this same error produces (MiningView.tsx) must still be
+    // on screen, since a toast alone would disappear before the user can act on it.
+    expect(screen.getByRole('alert').textContent).toMatch(/worker failed to start: boom/i)
+  })
+
+  it('portals the status bar into the page slot when one is mounted', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+    // The page renders this element at the very top of the layout; the bar has to end up inside
+    // it, not inline in the middle of the results section, or it stops being the thing that stays
+    // in view during a long search.
+    const slot = document.createElement('div')
+    slot.id = MINING_STATUS_BAR_SLOT_ID
+    document.body.append(slot)
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const scanned = screen.getByText(/4,200/)
+    expect(slot.contains(scanned)).toBe(true)
+    // The bar's own root is a direct child of the slot — nothing of MiningView's own markup is
+    // hoisted along with it.
+    expect(slot.children).toHaveLength(1)
+  })
+
+  it('renders the status bar in place when no slot is mounted', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.contains(screen.getByText(/4,200/))).toBe(true)
+  })
+
+  // What this component still owns after the pause state moved to the page: obeying `paused`, and
+  // reporting the press. The decision of what a press MEANS while the host is also pausing is no
+  // longer here — it is asserted in test/page.test.tsx, where the flag now lives, because the
+  // Configure card offers the same action and both have to reach the same state.
+  it('stops and resumes the same run as `paused` moves', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, scanned: 4200 }
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).not.toHaveBeenCalled()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(stopSpy).toHaveBeenCalled()
+  })
+
+  it('reports a press of the bar control instead of deciding for itself', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200 }
+    const onPauseToggle = vi.fn()
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={onPauseToggle}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /pause/i }))
+
+    expect(onPauseToggle).toHaveBeenCalledOnce()
+    // It does not pause itself: the flag is the page's, and a component that also stopped locally
+    // would be a second source of truth for the state the Configure card reads.
+    expect(stopSpy).not.toHaveBeenCalled()
+  })
+
+  // Clicking a card is the whole deploy flow now, so the hop from this component's `onSelect`
+  // out to the page is what opens the dialog — a card wired to nothing is a dead page.
+  // An alternative to the search that is running, so it belongs beside the thing it is an
+  // alternative to rather than as a row of its own between the heading and the grid.
+  it('puts the CLI handoff in the Results heading row', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 4200, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByRole('heading', { level: 2, name: /^results$/i }).parentElement!
+    const handoff = screen.getByRole('button', { name: /run this search/i })
+    expect(row.contains(handoff)).toBe(true)
+    // Pushed to the right end of that row, away from the heading and its count.
+    expect(handoff.parentElement?.className ?? handoff.className).toMatch(/ml-auto/)
+  })
+
+  it('reports the clicked candidate to its host', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+    const onSelect = vi.fn()
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={onSelect}
+      />,
+    )
+
+    await userEvent.click(resultCards()[0])
+    expect(onSelect).toHaveBeenCalledWith(CANDIDATE)
+  })
+
+  // The handoff is an alternative to the search that is running, so it belongs where it can be
+  // read before scrolling through eight results — not stranded under them. Asserted on document
+  // order rather than on markup, so it survives any amount of restyling.
+  it('offers the CLI handoff above the results, not below them', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const handoff = screen.getByRole('button', { name: /run this search/i })
+    const position = handoff.compareDocumentPosition(resultCards()[0])
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // T5. `filters` is optional on CliHandoff and the command builder omits the flags entirely
+  // without it, so deleting the prop here typechecks and every test stays green — while the
+  // copied `npx` command silently reverts to CLI defaults and the native run enforces a different
+  // standard from the one on screen. CliHandoff.test.tsx covers the component in isolation; this
+  // covers the wiring hop.
+  it('hands the live filters to the CLI command, not the CLI defaults', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: false, minContrast: 300 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    expect(command.textContent).toContain('--no-two-color')
+    expect(command.textContent).toContain('--min-contrast 300')
+  })
+
+  it('does not toast when there is no worker error', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = IDLE_STATE
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(toastErrorSpy).not.toHaveBeenCalled()
   })
 })

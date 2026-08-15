@@ -1,0 +1,68 @@
+'use client'
+
+import { Slider as SliderPrimitive } from 'radix-ui'
+import * as React from 'react'
+
+import { cn } from '@/lib/utils'
+
+// Deviates from the generated source by two props: `aria-label` and `aria-labelledby`. Radix puts
+// role="slider" on the thumb, not the root, and only the thumb's own label names it — spread onto
+// the root, as generated, they name nothing at all and the control is announced as a bare
+// "slider". They are pulled out here and forwarded to every thumb below.
+function Slider({
+  className,
+  defaultValue,
+  value,
+  min = 0,
+  max = 100,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
+  ...props
+}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+  const _values = React.useMemo(
+    () => (Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min, max]),
+    [value, defaultValue, min, max],
+  )
+
+  return (
+    <SliderPrimitive.Root
+      data-slot="slider"
+      defaultValue={defaultValue}
+      value={value}
+      min={min}
+      max={max}
+      className={cn(
+        'relative flex w-full touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col',
+        className,
+      )}
+      {...props}
+    >
+      <SliderPrimitive.Track
+        data-slot="slider-track"
+        className={cn(
+          'relative grow overflow-hidden rounded-full bg-muted data-[orientation=horizontal]:h-1.5 data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-1.5',
+        )}
+      >
+        <SliderPrimitive.Range
+          data-slot="slider-range"
+          className={cn(
+            'absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full',
+          )}
+        />
+      </SliderPrimitive.Track>
+      {Array.from({ length: _values.length }, (_, index) => (
+        // See the note above the component: the label belongs on the thumb.
+        <SliderPrimitive.Thumb
+          data-slot="slider-thumb"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
+          // biome-ignore lint/suspicious/noArrayIndexKey: vendored shadcn/ui code, kept diffable against upstream. The thumbs are a fixed, positional list with no identity of their own.
+          key={index}
+          className="block size-4 shrink-0 rounded-full border border-primary bg-white shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+        />
+      ))}
+    </SliderPrimitive.Root>
+  )
+}
+
+export { Slider }

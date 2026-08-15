@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
@@ -18,6 +18,10 @@ const FACE_SPEC_B = { name: 'b', fixed: [], regions: [] }
 const STABLE_CONSTANTS_DATA = {
   constantsHex: { initializerHash: '0x1', factory: '0x2', initCodeHash: '0x3' },
 }
+
+// Each result card is one button, named after the result it opens ("Deploy 90.2% match 0x70e9…").
+const resultCards = () => screen.getAllByRole('button', { name: /deploy .* match/i })
+const noResultCards = () => screen.queryAllByRole('button', { name: /deploy .* match/i })
 
 const CANDIDATE = {
   saltNonce: '1885506',
@@ -72,6 +76,10 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true })
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('MiningView + useMiner integration (pause/resume)', () => {
   it('preserves the leaderboard and continues from the resume point, instead of resetting to zero', () => {
     const { rerender } = render(
@@ -80,6 +88,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -88,9 +98,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
 
     // Mine some ground and find a candidate.
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
-    // Pause (selecting a result, in the real app) — the worker is told to stop but not
+    // Pause (a deploy in flight, in the real app) — the worker is told to stop but not
     // terminated, and the leaderboard/scanned count must not be touched.
     rerender(
       <MiningView
@@ -98,14 +108,16 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
     expect(instances[0].posted.some((request) => request.type === 'stop')).toBe(true)
     expect(instances[0].terminated).toBe(false)
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
-    // Resume (deselecting, "Back to mining") — same config/faceSpec, so this must continue the
+    // Resume (closing the deploy dialog) — same config/faceSpec, so this must continue the
     // same run: a fresh worker pool (teardown always happens) but picking up from the resume
     // point, not from zero, and keeping what was already found.
     rerender(
@@ -114,6 +126,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -124,12 +138,163 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(startInputOf(instances[1]).start).toBeGreaterThan(0)
     expect(startInputOf(instances[1]).start).toBe(500)
     // The candidate found before pausing is still there — the board was not thrown away.
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
     // The displayed scanned count also carries over rather than resetting to zero: emitting more
     // progress from the new worker should report a cumulative total, not just the new segment.
     act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
     expect(screen.getByText(/700\s*nonces/)).toBeDefined()
+  })
+
+  // The status bar now shows the elapsed time, which turned a long-standing accounting bug into
+  // something a user can watch happen: stop() recorded nothing, so the resuming start() folded
+  // the whole wall-clock duration of the pause into "active mining time". Two seconds of mining
+  // either side of a two-minute pause is four seconds of mining, not 2m 04s.
+  it('does not bill the time spent paused as mining time', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    act(() => vi.advanceTimersByTime(2_000))
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(screen.getByText('2s elapsed')).toBeDefined()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    // A long look at a candidate before going back to mining.
+    act(() => vi.advanceTimersByTime(120_000))
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(2_000))
+    act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
+
+    // Exact text, not a substring match: "2m 04s elapsed" contains "4s elapsed".
+    expect(screen.getByText('4s elapsed')).toBeDefined()
+  })
+
+  it('holds the clock still while paused, even if a filter change re-publishes mid-pause', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(3_000))
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(screen.getByText('3s elapsed')).toBeDefined()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(90_000))
+
+    // The Face card never locks, so the contrast filter can be dragged while paused — that
+    // re-publishes from the existing leaderboard, and the clock must not jump when it does.
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={{ twoColor: true, minContrast: 120 }}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('3s elapsed')).toBeDefined()
+  })
+
+  // The failure this pins is the whole screen contradicting itself: drag the contrast floor past
+  // every result and the grid says "162 candidates have been found so far and all of them were
+  // excluded", while the bar two rows above it says "No candidates yet". The bar's best result has
+  // to come from the retained board, which the filters never touch, so it stays true and steady
+  // while the grid below it is empty.
+  it('keeps the bar reporting the best result found when the filters empty the grid', () => {
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    expect(resultCards()).toHaveLength(1)
+    // The card carries the same percentage, so this is deliberately not a unique match yet.
+    expect(screen.getAllByText('90.2%').length).toBeGreaterThan(0)
+
+    // CANDIDATE's contrast is 157, so this floor excludes it — and everything else on the board.
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={{ twoColor: true, minContrast: 442 }}
+        paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(noResultCards()).toHaveLength(0)
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+    expect(screen.getByText('90.2%')).toBeDefined()
+    expect(screen.getByText(/best result/i)).toBeDefined()
+    expect(screen.queryByText(/no candidates yet/i)).toBeNull()
+    // The heading's badge counts the cards, so it empties with the grid — while the bar above,
+    // reading the untouched board, goes on reporting the best result the run has found.
+    expect(screen.getByTestId('results-count').textContent).toBe('0 results shown')
   })
 
   it('starts a genuinely new run from zero, without carrying over the previous board, when the face spec changes', () => {
@@ -139,11 +304,13 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getAllByRole('button', { name: /use this/i })).toHaveLength(1)
+    expect(resultCards()).toHaveLength(1)
 
     // A different accepted-expressions selection produces a different FaceSpec object — this is
     // "a changed config or face spec", not a pause/resume of the same run, so it must reset.
@@ -153,13 +320,15 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
 
     expect(instances).toHaveLength(2)
     expect(startInputOf(instances[1]).start).toBe(0)
-    expect(screen.queryAllByRole('button', { name: /use this/i })).toHaveLength(0)
+    expect(noResultCards()).toHaveLength(0)
     expect(screen.getByText(/^0 nonces/)).toBeDefined()
   })
 
@@ -170,6 +339,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -181,12 +352,14 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_A as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
 
-    // While paused, the accepted expressions change (FacePicker is still visible/usable next to
-    // a selected result) — a genuinely different run, even though it will only actually start
+    // While paused, the accepted expressions change (FacePicker is still visible/usable while a
+    // deploy is in flight) — a genuinely different run, even though it will only actually start
     // once un-paused.
     rerender(
       <MiningView
@@ -194,6 +367,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -203,6 +378,8 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
         faceSpec={FACE_SPEC_B as never}
         filters={DEFAULT_FACE_FILTERS}
         paused={false}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
@@ -210,6 +387,6 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     const lastWorker = instances.at(-1)
     if (!lastWorker) throw new Error('expected a worker to have started')
     expect(startInputOf(lastWorker).start).toBe(0)
-    expect(screen.queryAllByRole('button', { name: /use this/i })).toHaveLength(0)
+    expect(noResultCards()).toHaveLength(0)
   })
 })

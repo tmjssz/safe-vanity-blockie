@@ -26,9 +26,11 @@ looks the same to a human. Always verify the full address, never the picture.
 live results as real `blo` SVGs, restores a config from a `?config=` share link, and deploys a
 chosen result with a connected injected wallet. It cross-checks the deployed address twice
 before showing success — see [`packages/web/README.md`](packages/web/README.md) for how it
-mines, its performance figures, and its wallet support. Every result card also offers a
-ready-to-paste `npx safe-vanity-blockie` command, for searches long enough to want every CPU
-core and resumability.
+mines, its performance figures, and its wallet support. Below the results it also offers a
+ready-to-paste `npx safe-vanity-blockie` command for the current search, for runs long enough to
+want every CPU core and resumability. Mining also stops on the app's own account — while a deploy
+is in flight, and while a share link's `saltNonce` is being re-derived — so the Pause control is
+your reason combined with those, not a single switch.
 
     mise exec -- pnpm -r build
     mise exec -- pnpm --filter @safe-vanity-blockie/web dev

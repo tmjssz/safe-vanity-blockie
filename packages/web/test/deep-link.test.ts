@@ -11,7 +11,12 @@ import {
   makeScorer,
 } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { candidateFromSaltNonce, decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
+import {
+  candidateFromSaltNonce,
+  decodeConfigParam,
+  encodeConfigParam,
+  shareConfigPath,
+} from '../lib/deep-link'
 
 const CONFIG = {
   owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
@@ -110,6 +115,30 @@ describe('config deep link', () => {
     const { config, error } = decodeConfigParam(encodeRaw({ ...CONFIG, saltNonce: 1885506 }))
     expect(error).toMatch(/saltNonce/)
     expect(config).toBeUndefined()
+  })
+})
+
+// page.tsx pushes exactly this string into the address bar, so what it does to the REST of the
+// URL is not a detail of the copyable field — it is what the app navigates itself to.
+describe('shareConfigPath', () => {
+  it('writes ?config= into the URL it is given, keeping the path, other params and the fragment', () => {
+    expect(shareConfigPath(CONFIG, '/vanity/app?utm=spring#results')).toBe(
+      `/vanity/app?utm=spring&config=${encodeConfigParam(CONFIG)}#results`,
+    )
+  })
+
+  it('replaces a config already in the URL rather than adding a second one', () => {
+    expect(shareConfigPath(CONFIG, '/?config=stale')).toBe(`/?config=${encodeConfigParam(CONFIG)}`)
+  })
+
+  it('defaults to the URL the document is on', () => {
+    expect(shareConfigPath(CONFIG)).toBe(`/?config=${encodeConfigParam(CONFIG)}`)
+  })
+
+  it('returns a path, never an absolute URL: the origin is the caller’s to add', () => {
+    expect(shareConfigPath(CONFIG, 'https://example.test/app')).toBe(
+      `/app?config=${encodeConfigParam(CONFIG)}`,
+    )
   })
 })
 

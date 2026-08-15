@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMiner } from '../lib/use-miner'
 import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
 
@@ -37,13 +37,13 @@ class FakeWorker {
   }
 }
 
-const candidate = (address: string, score: number, twoColor = true) => ({
+const candidate = (address: string, score: number, twoColor = true, contrast = 150) => ({
   saltNonce: '1',
   address,
   score,
   maxScore: 133,
   twoColor,
-  contrast: 150,
+  contrast,
   regions: { mouth: 'smile' },
 })
 
@@ -55,7 +55,7 @@ const startInput = {
   },
   faceSpec: { name: 'x', fixed: [], regions: [] },
   workers: 2,
-  keep: 4,
+  retain: 40,
   twoColor: true,
   minContrast: 0,
 } as unknown as Parameters<ReturnType<typeof useMiner>['start']>[0]
@@ -63,6 +63,10 @@ const startInput = {
 beforeEach(() => {
   instances.length = 0
   vi.stubGlobal('Worker', FakeWorker)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('useMiner', () => {
@@ -106,6 +110,132 @@ describe('useMiner', () => {
       expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
       expect(result.current.state.droppedCount).toBe(1)
     })
+  })
+
+  // The web can render "nothing matches these filters"; core's fallback (show everything rather
+  // than nothing) would instead hand back the full unfiltered list, which reads as a filter that
+  // was ignored. The count of what the filters removed has to survive too — with the fallback on,
+  // core reports droppedCount 0 in exactly this case.
+  it('reports no candidates at all, and the real drop count, when the filters exclude everything', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 125, false), candidate('0xb', 120, false)],
+      }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.state.candidates).toEqual([])
+      expect(result.current.state.droppedCount).toBe(2)
+    })
+  })
+
+  // The status bar cannot read the head of `candidates`: that list is the filtered one, so a
+  // contrast floor nothing clears empties it and the bar would announce "No candidates yet" over
+  // an empty state explaining that plenty had been found. Retention is score-ranked and blind to
+  // the filters, so the head of the board is the honest best-so-far — and its size is the honest
+  // "how many has this run found", which is not the number of cards on screen.
+  it('reports the best retained candidate, and how many it is holding, whatever the filters exclude', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 125, true, 150), candidate('0xb', 120, true, 140)],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+
+    expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestOverall?.address).toBe('0xa')
+  })
+
+  // A three-colour result can outscore every two-colour one; the board keeps it either way, so
+  // "the best found" means the best the run has retained, not the best the filters would allow.
+  it('takes the best retained candidate by score alone, not by the filters', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 130, false), candidate('0xb', 120, true)],
+      }),
+    )
+
+    await waitFor(() => expect(result.current.state.bestOverall?.address).toBe('0xa'))
+    expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
+  })
+
+  // "No matches" is far more useful as "no matches — the best contrast found so far is 143", since
+  // the contrast floor is the control the user is about to move. It has to be measured over the
+  // candidates the *other* filters accept, or a three-colour result with huge contrast would
+  // advertise a floor that still matches nothing.
+  it('reports the best contrast among candidates the other filters accept', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [
+          candidate('0xa', 125, false, 400),
+          candidate('0xb', 120, true, 143),
+          candidate('0xc', 119, true, 120),
+        ],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+
+    expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestContrast).toBe(143)
+  })
+
+  it('leaves the best contrast unreported while results are still matching', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xb', 120, true, 143)],
+      }),
+    )
+
+    await waitFor(() => expect(result.current.state.candidates).toHaveLength(1))
+    expect(result.current.state.bestContrast).toBeUndefined()
+  })
+
+  // Retention and display used to be the same number times twenty: `keep` was the display slice,
+  // and the pool retained 20x it. They are separate concerns — retention has to be deep because it
+  // is score-ranked and filter-blind, while the grid simply shows everything that survives the
+  // filters — so the hook takes retention and nothing else.
+  it('retains what it is told to and displays every survivor, with no display slice of its own', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start({ ...startInput, retain: 50 }))
+
+    const found = Array.from({ length: 30 }, (_, index) => candidate(`0x${index}`, 200 - index))
+    act(() => instances[0].emit({ type: 'progress', scanned: 10, candidates: found }))
+
+    await waitFor(() => expect(result.current.state.candidates).toHaveLength(30))
+  })
+
+  it('gives each worker the retention size, which is what keep means across that boundary', () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start({ ...startInput, retain: 250 }))
+
+    const request = instances[0].posted[0]
+    if (request.type !== 'start') throw new Error('expected a start request')
+    expect(request.input.keep).toBe(250)
   })
 
   it('stops every worker and clears running when asked', async () => {
@@ -189,6 +319,93 @@ describe('useMiner', () => {
     expect(instances.every((worker) => !worker.terminated)).toBe(true)
     // Progress is preserved, not reset.
     expect(result.current.state.scanned).toBe(10)
+  })
+
+  // The elapsed clock stops when *scanning* stops, and stop() is not the only thing that stops
+  // scanning: every path that sets `running: false` ends the run just as finally. Without a stamp
+  // on those paths the clock stands still only until something re-publishes — a filter change,
+  // say — at which point it silently absorbs however long the user spent reading the error, and
+  // the rate collapses by the same factor.
+  describe('elapsed time after a run ends without stop()', () => {
+    const ranFor = (ms: number) => {
+      const hook = renderHook(() => useMiner())
+      act(() => hook.result.current.start(startInput))
+      act(() => vi.advanceTimersByTime(ms))
+      act(() => instances[0].emit({ type: 'progress', scanned: 1_000, candidates: [] }))
+      expect(hook.result.current.state.elapsedMs).toBe(ms)
+      return hook
+    }
+
+    const endings: [string, () => void][] = [
+      [
+        'a worker reporting an error',
+        () => instances[0].emit({ type: 'error', message: 'wasm failed to load' }),
+      ],
+      [
+        'a worker failing to start at all',
+        () => instances[0].emitError('worker chunk failed to load'),
+      ],
+      ['an unreadable message from a worker', () => instances[0].emitMessageError()],
+    ]
+
+    for (const [description, end] of endings) {
+      it(`stops the clock at ${description}, not at whatever happens next`, () => {
+        vi.useFakeTimers()
+        const { result } = ranFor(12_000)
+
+        act(end)
+        expect(result.current.state.running).toBe(false)
+
+        // The user reads the error, thinks for five minutes, then nudges the contrast filter.
+        act(() => vi.advanceTimersByTime(300_000))
+        act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+        expect(result.current.state.elapsedMs).toBe(12_000)
+        expect(result.current.state.rate).toBeCloseTo(1_000 / 12, 5)
+      })
+    }
+
+    it('stops the clock when the last worker finishes its range', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emit({ type: 'done', scanned: 1_000, candidates: [] }))
+      act(() => instances[1].emit({ type: 'done', scanned: 0, candidates: [] }))
+      expect(result.current.state.running).toBe(false)
+
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+      expect(result.current.state.elapsedMs).toBe(12_000)
+    })
+
+    // The stamp must still describe the moment scanning ended, not the moment the component was
+    // torn down or the user got round to pressing Pause.
+    it('does not let a later stop() walk the stamp forward', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emitError('worker chunk failed to load'))
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.stop())
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+
+      expect(result.current.state.elapsedMs).toBe(12_000)
+    })
+
+    // …and a resume after a failed run still bills only the mining either side of it.
+    it('carries only the active time into a resumed run', () => {
+      vi.useFakeTimers()
+      const { result } = ranFor(12_000)
+
+      act(() => instances[0].emitError('worker chunk failed to load'))
+      act(() => vi.advanceTimersByTime(300_000))
+      act(() => result.current.start({ ...startInput, resume: true, start: 1_000 }))
+      act(() => vi.advanceTimersByTime(3_000))
+      act(() => instances[2].emit({ type: 'progress', scanned: 10, candidates: [] }))
+
+      expect(result.current.state.elapsedMs).toBe(15_000)
+    })
   })
 
   it('ignores a message from a superseded run, so a stale worker cannot corrupt the new one', async () => {

@@ -15,18 +15,19 @@ import {
   type WorkerRequest,
 } from './worker-protocol'
 
-/**
- * Retention is score-ranked and blind to the two-colour and contrast filters, which are
- * applied for display — so retain far more than we show, or filtering has nothing left.
- */
-const RETENTION_MULTIPLIER = 20
-const MIN_RETENTION = 200
-
 export interface StartMiningInput {
   constantsHex: { initializerHash: string; factory: string; initCodeHash: string }
   faceSpec: FaceSpec
   workers: number
-  keep: number
+  /**
+   * How many candidates the leaderboard keeps, and the only size this hook has: everything
+   * retained that survives the filters is reported, so there is no display cap riding on this
+   * number. Retention is score-ranked and blind to the two-colour and contrast filters, which are
+   * applied afterwards, so it has to be far deeper than a user would ever look at — otherwise a
+   * strict filter has nothing left to choose from. It is also what `keep` means to a worker (see
+   * the start request below): the worker's own retention, never a display count.
+   */
+  retain: number
   twoColor: boolean
   minContrast: number
   start?: number
@@ -47,6 +48,22 @@ export interface MinerState {
   rate: number
   candidates: Candidate[]
   droppedCount: number
+  /**
+   * The best candidate the run has retained, ranked by score alone and blind to the filters —
+   * the head of the leaderboard rather than of `candidates`. The status bar reads this: with the
+   * fallback off, a contrast floor nothing clears empties `candidates`, and a bar deriving its
+   * best score from that list would answer a filter change with "No candidates yet" directly
+   * above an empty state explaining that hundreds had been found and excluded. It is also the
+   * one live signal of how well the search is going, which must not go out with the filters.
+   */
+  bestOverall?: Candidate
+  /**
+   * The highest contrast among retained candidates that pass every filter *except* the contrast
+   * floor — i.e. how close the search has come to satisfying it. Reported only when nothing is
+   * being shown, since that is the only time it says anything the grid does not already show, and
+   * undefined when not even the two-colour filter leaves a candidate to measure.
+   */
+  bestContrast?: number
   error?: string
   nextStart: number
 }
@@ -61,9 +78,38 @@ const IDLE: MinerState = {
   nextStart: 0,
 }
 
+/**
+ * The instant the current segment's active mining ends: the moment scanning was stopped if it has
+ * been stopped since the segment began, otherwise now. Everything that measures elapsed time reads
+ * this rather than `Date.now()` directly, so wall-clock time spent paused counts for nothing — a
+ * pause must neither inflate the elapsed total when the run resumes nor let a re-publish during
+ * the pause (a filter change, a late `done` message) tick the clock forward.
+ *
+ * A `stoppedAt` older than `startedAt` — including the initial 0 — means this segment has not been
+ * stopped, so it is still running and ends now.
+ */
+function activeUntil(startedAt: number, stoppedAt: number): number {
+  return stoppedAt >= startedAt ? stoppedAt : Date.now()
+}
+
 export interface LiveFilters {
   twoColor: boolean
   minContrast: number
+}
+
+/**
+ * How close the retained pool came to clearing the contrast floor. Measured over the candidates
+ * the *other* filters accept — a three-colour result with enormous contrast would otherwise
+ * advertise a floor that still matches nothing once two-colour is on. Undefined when no candidate
+ * survives those other filters at all, because then contrast is not what is excluding things.
+ */
+function bestContrastOf(candidates: Candidate[], filters: LiveFilters): number | undefined {
+  let best: number | undefined
+  for (const candidate of candidates) {
+    if (filters.twoColor && !candidate.twoColor) continue
+    if (best === undefined || candidate.contrast > best) best = candidate.contrast
+  }
+  return best
 }
 
 export function useMiner(): {
@@ -77,6 +123,10 @@ export function useMiner(): {
   const scannedRef = useRef<number[]>([])
   const boardRef = useRef<Leaderboard | undefined>(undefined)
   const startedAtRef = useRef(0)
+  // When scanning last stopped, so that a pause is not billed as active mining time. 0 (or any
+  // stamp older than the current segment's start) means "no stop since this segment began" — a
+  // start() with no intervening stop(), e.g. a config change while still running.
+  const stoppedAtRef = useRef(0)
   const liveRef = useRef(0)
   // Cumulative scanned count / active-mining time from segments before the current one. A
   // "segment" ends whenever start() is called again (pause or a fresh run); on resume these
@@ -85,7 +135,7 @@ export function useMiner(): {
   // a genuinely fresh start.
   const priorScannedRef = useRef(0)
   const priorElapsedRef = useRef(0)
-  // Filters are a display concern: retention (RETENTION_MULTIPLIER/MIN_RETENTION above) is
+  // Filters are a display concern: retention (StartMiningInput.retain above) is
   // score-ranked and filter-blind, so re-filtering never needs to touch the worker pool or
   // discard mining progress. `publish` (defined fresh inside every start()) reads this ref
   // rather than a value captured by the start() closure, so `setFilters` below can change what
@@ -110,6 +160,20 @@ export function useMiner(): {
 
   useEffect(() => teardown, [teardown])
 
+  /**
+   * Marks the moment scanning stopped. Called from every path that ends a segment — stop(), a
+   * worker error, a worker that never ran, an unreadable message, and the last worker finishing
+   * its range — because the elapsed clock must stop when mining stops, not when the user next
+   * touches something that re-publishes.
+   *
+   * Only the first stop of a segment counts: a later stop() (the effect cleanup on unmount, say,
+   * or Pause pressed long after a run already died) must not walk the stamp forward across the
+   * idle time it exists to exclude.
+   */
+  const markStopped = useCallback(() => {
+    if (stoppedAtRef.current < startedAtRef.current) stoppedAtRef.current = Date.now()
+  }, [])
+
   const start = useCallback(
     (input: StartMiningInput) => {
       // Only a real resume of an existing run preserves anything — a `resume: true` with no
@@ -121,7 +185,7 @@ export function useMiner(): {
       runIdRef.current += 1
       const runId = runIdRef.current
 
-      const retain = Math.max(input.keep * RETENTION_MULTIPLIER, MIN_RETENTION)
+      const retain = input.retain
       const from = input.start ?? 0
       const ranges = planWorkerRanges(from, input.workers, WORKER_BLOCK)
 
@@ -129,7 +193,8 @@ export function useMiner(): {
         // Fold the segment that just ended into the running totals instead of discarding them.
         // `boardRef.current` is left as-is (same Leaderboard instance, same entries).
         priorScannedRef.current += scannedRef.current.reduce((a, b) => a + b, 0)
-        priorElapsedRef.current += Date.now() - startedAtRef.current
+        priorElapsedRef.current +=
+          activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current
       } else {
         boardRef.current = new Leaderboard(retain)
         priorScannedRef.current = 0
@@ -138,6 +203,8 @@ export function useMiner(): {
 
       scannedRef.current = new Array(input.workers).fill(0)
       startedAtRef.current = Date.now()
+      // The stamp belonged to the segment just folded in; the new segment is running.
+      stoppedAtRef.current = 0
       liveRef.current = input.workers
       filtersRef.current = { twoColor: input.twoColor, minContrast: input.minContrast }
       setState((previous) =>
@@ -148,11 +215,21 @@ export function useMiner(): {
         const board = boardRef.current
         if (!board) return
         const scanned = priorScannedRef.current + scannedRef.current.reduce((a, b) => a + b, 0)
-        const elapsedMs = Math.max(1, priorElapsedRef.current + (Date.now() - startedAtRef.current))
-        const { reported, droppedCount } = selectReported(board.entries(), {
+        const elapsedMs = Math.max(
+          1,
+          priorElapsedRef.current +
+            (activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current),
+        )
+        const entries = board.entries()
+        const { reported, droppedCount } = selectReported(entries, {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,
-          keep: input.keep,
+          // The board holds at most `retain`, so this cap never binds: everything kept that
+          // survives the filters is shown, and the grid scrolls.
+          keep: retain,
+          // The grid says "nothing matches these filters" for itself. Core's default — show the
+          // unfiltered list rather than nothing — would make the filter look ignored instead.
+          fallbackWhenEmpty: false,
         })
         setState((previous) => ({
           ...previous,
@@ -161,6 +238,14 @@ export function useMiner(): {
           rate: (scanned / elapsedMs) * 1000,
           candidates: reported,
           droppedCount,
+          // Both read off `entries`, not off `reported`: the board is score-ranked and the
+          // filters never touch it, so these two stay true and steady while the grid empties.
+          bestOverall: entries[0],
+          // Only worth computing when there is nothing to show — it exists to turn "no matches"
+          // into "no matches; the best contrast found so far is 143", and it is the one number
+          // that tells the user where to put the slider.
+          bestContrast:
+            reported.length === 0 ? bestContrastOf(entries, filtersRef.current) : undefined,
           nextStart: nextStartFrom(from, WORKER_BLOCK, scannedRef.current),
         }))
       }
@@ -174,6 +259,7 @@ export function useMiner(): {
           if (runIdRef.current !== runId) return
           const event = message.data
           if (event.type === 'error') {
+            markStopped()
             setState((previous) => ({ ...previous, running: false, error: event.message }))
             teardown()
             return
@@ -183,7 +269,12 @@ export function useMiner(): {
           publish()
           if (event.type === 'done') {
             liveRef.current -= 1
-            if (liveRef.current <= 0) setState((previous) => ({ ...previous, running: false }))
+            if (liveRef.current <= 0) {
+              // The range is exhausted: this is the end of the run, and the clock stops here
+              // rather than wherever the next re-publish happens to fall.
+              markStopped()
+              setState((previous) => ({ ...previous, running: false }))
+            }
           }
         }
         // Covers a failure to run the worker module at all — a 404 on the worker chunk after a
@@ -193,10 +284,11 @@ export function useMiner(): {
         // "0 nonces" with no explanation.
         worker.onerror = (event: ErrorEvent) => {
           if (runIdRef.current !== runId) return
+          markStopped()
           setState((previous) => ({
             ...previous,
             running: false,
-            error: `Worker failed to start: ${event.message || 'unknown error'}. Reload the page — if this persists, your browser or network may be blocking the mining worker or its WASM.`,
+            error: `Worker failed to start: ${event.message || 'unknown error'}. Reload the page. If this persists, your browser or network may be blocking the mining worker or its WASM.`,
           }))
           teardown()
         }
@@ -205,6 +297,7 @@ export function useMiner(): {
         // report progress.
         worker.onmessageerror = () => {
           if (runIdRef.current !== runId) return
+          markStopped()
           setState((previous) => ({
             ...previous,
             running: false,
@@ -226,13 +319,16 @@ export function useMiner(): {
         return worker
       })
     },
-    [teardown],
+    [markStopped, teardown],
   )
 
   const stop = useCallback(() => {
+    // Record when scanning stopped before telling the workers, so the elapsed clock stops here
+    // and the pause that follows is not counted as mining time (see activeUntil).
+    markStopped()
     const request: WorkerRequest = { type: 'stop' }
     for (const worker of workersRef.current) worker.postMessage(request)
-  }, [])
+  }, [markStopped])
 
   const setFilters = useCallback((filters: LiveFilters) => {
     filtersRef.current = filters
