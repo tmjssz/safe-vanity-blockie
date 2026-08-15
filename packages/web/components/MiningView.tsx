@@ -81,7 +81,6 @@ export function MiningView({
       start: sameRun ? state.nextStart : undefined,
     })
     return stop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [constants.data, faceSpec, start, stop, workers, paused])
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.
