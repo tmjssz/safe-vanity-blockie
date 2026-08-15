@@ -1,0 +1,34 @@
+name: Nightly network tests
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network-tests:
+    name: network-tests
+    runs-on: ubuntu-latest
+    env:
+      # The tests fall back to a public RPC with `?? 'https://…'`, which only catches
+      # undefined — an unset repository variable would otherwise pass an empty string
+      # straight through and break them. The default is repeated here for that reason.
+      TEST_RPC_URL: ${{ vars.TEST_RPC_URL || 'https://ethereum-rpc.publicnode.com' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v2
+      - name: Resolve pnpm store path
+        run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm -r build
+      - name: Network tests
+        run: pnpm -r test:network
