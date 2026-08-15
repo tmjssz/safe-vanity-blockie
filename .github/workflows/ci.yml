@@ -55,3 +55,5 @@ jobs:
         run: pnpm -r typecheck
       - name: Unit tests
         run: pnpm -r test
+      - name: CLI packaging smoke test
+        run: ./scripts/smoke-pack.sh
