@@ -1,0 +1,4 @@
+# Mechanical reformat when Biome was introduced. No behavioural change.
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+8356121133c5229b1d44cb8d75843c6dd2a2377a
