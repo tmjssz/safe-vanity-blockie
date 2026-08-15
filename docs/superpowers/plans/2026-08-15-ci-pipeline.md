@@ -19,13 +19,13 @@
 - **No secrets.** Network tests default to a public RPC; `TEST_RPC_URL` is an optional repository *variable*.
 - **Biome is pinned to exactly `2.5.8`** (no caret). A floating lint tool turns an upstream release into a red build on an unrelated PR.
 - **Conventional commit messages.**
-- **Export the ssh-agent socket before committing.** The session's inherited `SSH_AUTH_SOCK` points at a dead agent, so `git commit` fails with `error: Couldn't get agent socket?`. Prefix commit commands with:
+- **Commit with `--no-gpg-sign`.** This repo signs commits with an ssh-agent key that is forwarded from the developer's laptop and configured to require interactive confirmation per signature, so an unattended `git commit` hangs indefinitely. Implementers commit their own work using:
 
   ```bash
-  export SSH_AUTH_SOCK=/run/user/501/vscode-ssh-auth-sock-880839671
+  git commit --no-gpg-sign -m "<message from the task's final step>"
   ```
 
-  With that set, signing succeeds. `git log --show-signature` still reports `N`; that is only a missing local `gpg.ssh.allowedSignersFile`, and it matches the rest of this repo's history. Implementers commit their own work — each task's final step gives the exact message to use.
+  The whole branch is re-signed in one pass at the end of the run. **That rebase rewrites every SHA**, so `.git-blame-ignore-revs` (Task 2) must be refreshed with the post-rebase SHA of the format commit before the branch is finished.
 
 ---
 
