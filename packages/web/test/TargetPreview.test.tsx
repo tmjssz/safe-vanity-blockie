@@ -4,9 +4,11 @@ import { TargetPreview } from '../components/TargetPreview'
 import { targetGridFor } from '../lib/face-selection'
 
 function filledAt(container: HTMLElement, row: number, col: number): string | null {
-  return container
-    .querySelector(`rect[data-row="${row}"][data-col="${col}"]`)
-    ?.getAttribute('data-filled') ?? null
+  return (
+    container
+      .querySelector(`rect[data-row="${row}"][data-col="${col}"]`)
+      ?.getAttribute('data-filled') ?? null
+  )
 }
 
 describe('TargetPreview', () => {

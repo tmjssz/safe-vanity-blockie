@@ -1,16 +1,16 @@
 'use client'
 
 import {
-  Leaderboard,
-  selectReported,
   type Candidate,
   type FaceSpec,
+  Leaderboard,
+  selectReported,
 } from '@safe-vanity-blockie/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  WORKER_BLOCK,
   nextStartFrom,
   planWorkerRanges,
+  WORKER_BLOCK,
   type WorkerEvent,
   type WorkerRequest,
 } from './worker-protocol'

@@ -1,15 +1,15 @@
-import { filterCandidates, formatScore, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, filterCandidates, formatScore } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
   asciiFor,
   buildGalleryHtml,
   buildResultStrip,
-  resultColumnsForWidth,
-  formatDuration,
   buildResultsJson,
+  formatDuration,
   formatLeaderboard,
-  renderAscii,
   type ResultConfig,
+  renderAscii,
+  resultColumnsForWidth,
 } from '../src/report.js'
 
 const CONFIG: ResultConfig = {
@@ -68,7 +68,10 @@ describe('filterCandidates', () => {
   })
 
   it('drops results below the contrast floor', () => {
-    const entries = [candidate({ address: '0xa', contrast: 200 }), candidate({ address: '0xb', contrast: 50 })]
+    const entries = [
+      candidate({ address: '0xa', contrast: 200 }),
+      candidate({ address: '0xb', contrast: 50 }),
+    ]
     expect(filterCandidates(entries, { twoColor: false, minContrast: 150 })).toHaveLength(1)
   })
 })
@@ -115,7 +118,10 @@ describe('buildResultsJson', () => {
 
 describe('buildGalleryHtml', () => {
   it('produces a self-contained page with one real blo svg per result', () => {
-    const html = buildGalleryHtml(CONFIG, [candidate(), candidate({ address: '0x' + '11'.repeat(20) })])
+    const html = buildGalleryHtml(CONFIG, [
+      candidate(),
+      candidate({ address: '0x' + '11'.repeat(20) }),
+    ])
     expect(html.startsWith('<!doctype html>')).toBe(true)
     expect(html).not.toMatch(/<script|https?:\/\/[^"]*\.(js|css)/)
     expect(html.match(/<svg /g)).toHaveLength(2)
@@ -124,13 +130,17 @@ describe('buildGalleryHtml', () => {
   })
 
   it('reports the L1 singleton flag and the self-check outcome', () => {
-    const html = buildGalleryHtml({ ...CONFIG, isL1SafeSingleton: true, selfCheck: 'failed' }, [candidate()])
+    const html = buildGalleryHtml({ ...CONFIG, isL1SafeSingleton: true, selfCheck: 'failed' }, [
+      candidate(),
+    ])
     expect(html).toContain('<dt>L1 singleton</dt><dd>yes</dd>')
     expect(html).toContain('<dt>self-check</dt><dd>failed</dd>')
   })
 
   it('escapes text that comes from the config', () => {
-    const html = buildGalleryHtml({ ...CONFIG, target: '<img src=x onerror=alert(1)>' }, [candidate()])
+    const html = buildGalleryHtml({ ...CONFIG, target: '<img src=x onerror=alert(1)>' }, [
+      candidate(),
+    ])
     expect(html).not.toContain('<img src=x')
     expect(html).toContain('&lt;img src=x')
   })
@@ -138,7 +148,11 @@ describe('buildGalleryHtml', () => {
 
 describe('formatLeaderboard', () => {
   it('renders one line per candidate up to the limit', () => {
-    const entries = [candidate({ address: '0xa' }), candidate({ address: '0xb' }), candidate({ address: '0xc' })]
+    const entries = [
+      candidate({ address: '0xa' }),
+      candidate({ address: '0xb' }),
+      candidate({ address: '0xc' }),
+    ]
     const lines = formatLeaderboard(entries, 2).trim().split('\n')
     expect(lines.filter((line) => line.includes('0x'))).toHaveLength(2)
     expect(lines[0]).toMatch(/score/i)

@@ -135,9 +135,7 @@ function HomeContent() {
       ) : (
         <>
           {linkResult?.error && (
-            <p role="alert">
-              This share link could not be used: {linkResult.error}
-            </p>
+            <p role="alert">This share link could not be used: {linkResult.error}</p>
           )}
           <ConfigForm initial={initial} onSubmit={setConfig} />
         </>

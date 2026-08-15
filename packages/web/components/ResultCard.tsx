@@ -1,4 +1,4 @@
-import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
 import { Blockie } from './Blockie'
 
 export interface ResultCardProps {

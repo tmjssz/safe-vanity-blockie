@@ -27,7 +27,13 @@ export interface MiningViewProps {
   onSelect: (candidate: Candidate) => void
 }
 
-export function MiningView({ config, faceSpec, filters, paused = false, onSelect }: MiningViewProps) {
+export function MiningView({
+  config,
+  faceSpec,
+  filters,
+  paused = false,
+  onSelect,
+}: MiningViewProps) {
   const constants = useSafeConstants(config)
   const { state, start, stop, setFilters } = useMiner()
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
@@ -39,9 +45,7 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
   // resume of that run rather than a fresh one. Left untouched while paused, so a config/face
   // change made while paused (e.g. via FacePicker, still visible next to a selected result) is
   // correctly detected as "different" once mining resumes.
-  const runIdentityRef = useRef<{ data: unknown; faceSpec: FaceSpec; workers: number } | null>(
-    null,
-  )
+  const runIdentityRef = useRef<{ data: unknown; faceSpec: FaceSpec; workers: number } | null>(null)
 
   // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast are
   // deliberately excluded: they're a display filter over already-mined candidates, not
@@ -53,6 +57,8 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
   // stops the live run without terminating the worker pool. Toggling back to false resumes that
   // same run (continuing from `state.nextStart`, keeping the leaderboard) when nothing else
   // changed, or starts fresh if constants/faceSpec/workers changed while paused.
+  //
+  // biome-ignore lint/correctness/useExhaustiveDependencies: twoColor, minContrast, and state.nextStart are deliberately excluded — see the comment above. Adding them restarts the miner and discards progress.
   useEffect(() => {
     if (!constants.data) return
     if (paused) return
@@ -75,7 +81,6 @@ export function MiningView({ config, faceSpec, filters, paused = false, onSelect
       start: sameRun ? state.nextStart : undefined,
     })
     return stop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [constants.data, faceSpec, start, stop, workers, paused])
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.

@@ -3,11 +3,11 @@ import { compileFace } from '../src/scoring.js'
 import {
   BASE_TARGET,
   BASE_WEIGHTS,
-  MOUTHS,
-  TEMPLATES,
   faceWithMouths,
   getTemplate,
+  MOUTHS,
   parseFaceSpec,
+  TEMPLATES,
 } from '../src/templates.js'
 
 describe('templates', () => {
@@ -19,7 +19,13 @@ describe('templates', () => {
   })
 
   it('ships the five documented expressions, each 12 cells long', () => {
-    expect(MOUTHS.map((mouth) => mouth.name)).toEqual(['smile', 'frown', 'neutral', 'open', 'small'])
+    expect(MOUTHS.map((mouth) => mouth.name)).toEqual([
+      'smile',
+      'frown',
+      'neutral',
+      'open',
+      'small',
+    ])
     for (const mouth of MOUTHS) expect(mouth.cells).toHaveLength(12)
   })
 

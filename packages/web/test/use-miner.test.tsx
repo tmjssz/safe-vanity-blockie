@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
 import { useMiner } from '../lib/use-miner'
+import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
 
 const instances: FakeWorker[] = []
 

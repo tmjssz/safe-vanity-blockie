@@ -27,7 +27,9 @@ function renderPicker(
 describe('FacePicker', () => {
   it('renders a toggle for every expression', () => {
     renderPicker({ value: ['smile'] })
-    expect(screen.getAllByRole('checkbox', { name: /smile|frown|neutral|open|small/i })).toHaveLength(5)
+    expect(
+      screen.getAllByRole('checkbox', { name: /smile|frown|neutral|open|small/i }),
+    ).toHaveLength(5)
   })
 
   it('adds an expression when its toggle is checked', async () => {

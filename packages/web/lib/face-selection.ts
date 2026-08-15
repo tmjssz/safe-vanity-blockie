@@ -1,4 +1,4 @@
-import { MOUTHS, faceWithMouths, type FaceSpec } from '@safe-vanity-blockie/core'
+import { type FaceSpec, faceWithMouths, MOUTHS } from '@safe-vanity-blockie/core'
 
 export const ALL_MOUTH_NAMES: string[] = MOUTHS.map((mouth) => mouth.name)
 

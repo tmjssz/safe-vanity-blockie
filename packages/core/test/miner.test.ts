@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { bloData, bloImage } from '../src/blo.js'
 import { createAddressDeriver } from '../src/address.js'
+import { bloData, bloImage } from '../src/blo.js'
 import { hexToBytes } from '../src/hex.js'
 import { createKeccak256, type Keccak256 } from '../src/keccak.js'
-import { Leaderboard, compareCandidates, createMiner, type Candidate } from '../src/miner.js'
+import { type Candidate, compareCandidates, createMiner, Leaderboard } from '../src/miner.js'
 import { colorContrast, compileFace, isTwoColor, makeScorer } from '../src/scoring.js'
 import { getTemplate } from '../src/templates.js'
 
@@ -65,7 +65,10 @@ describe('Leaderboard', () => {
   it('merges another run and re-ranks', () => {
     const board = new Leaderboard(3)
     board.offer(candidate({ address: '0xa', score: 100 }))
-    board.merge([candidate({ address: '0xb', score: 130 }), candidate({ address: '0xa', score: 100 })])
+    board.merge([
+      candidate({ address: '0xb', score: 130 }),
+      candidate({ address: '0xa', score: 100 }),
+    ])
     expect(board.entries().map((entry) => entry.address)).toEqual(['0xb', '0xa'])
   })
 

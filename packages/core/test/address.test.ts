@@ -1,5 +1,5 @@
+import { concat, getCreate2Address, type Hex, numberToHex, keccak256 as viemKeccak256 } from 'viem'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { concat, getCreate2Address, keccak256 as viemKeccak256, numberToHex, type Hex } from 'viem'
 import { createAddressDeriver } from '../src/address.js'
 import { hexToBytes } from '../src/hex.js'
 import { createKeccak256, type Keccak256 } from '../src/keccak.js'
@@ -36,7 +36,13 @@ describe('createAddressDeriver', () => {
 
   it('matches viem for nonces above 2^32, where the high word matters', () => {
     const deriver = createAddressDeriver(CONSTANTS, keccak256)
-    for (const nonce of [4294967295, 4294967296, 8_400_000_000, 5254976178, Number.MAX_SAFE_INTEGER]) {
+    for (const nonce of [
+      4294967295,
+      4294967296,
+      8_400_000_000,
+      5254976178,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
       expect(deriver.derive(nonce)).toBe(expectedAddress(BigInt(nonce)))
     }
   })

@@ -36,7 +36,9 @@ export function randomColor(rseed: Uint32Array): Hsl {
   return [
     Math.floor(nextRandom(rseed) * 360),
     Math.floor(40 + nextRandom(rseed) * 60),
-    Math.floor((nextRandom(rseed) + nextRandom(rseed) + nextRandom(rseed) + nextRandom(rseed)) * 25),
+    Math.floor(
+      (nextRandom(rseed) + nextRandom(rseed) + nextRandom(rseed) + nextRandom(rseed)) * 25,
+    ),
   ]
 }
 

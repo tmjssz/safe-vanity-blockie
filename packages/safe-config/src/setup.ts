@@ -1,13 +1,13 @@
 import {
-  SafeProvider,
   encodeSetupCallData,
   getSafeContract,
   getSafeProxyFactoryContract,
   predictSafeAddress,
+  SafeProvider,
 } from '@safe-global/protocol-kit'
 import type { SafeVersion } from '@safe-global/types-kit'
 import { hexToBytes, type SafeConstants } from '@safe-vanity-blockie/core'
-import { concat, keccak256, type Hex } from 'viem'
+import { concat, type Hex, keccak256 } from 'viem'
 
 export interface SetupInput {
   rpcUrl: string

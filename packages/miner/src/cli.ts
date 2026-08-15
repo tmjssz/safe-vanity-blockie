@@ -1,30 +1,29 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import {
+  type Candidate,
   compileFace,
+  type FaceSpec,
   formatScore,
   getTemplate,
   parseFaceSpec,
   selectReported,
   TEMPLATES,
-  type Candidate,
-  type FaceSpec,
 } from '@safe-vanity-blockie/core'
-import { CliError, HELP_TEXT, parseArgs, type MineArgs } from './args.js'
-import { WORKER_BLOCK, createPool, type PoolProgress } from './pool.js'
+import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
+import { CliError, HELP_TEXT, type MineArgs, parseArgs } from './args.js'
+import { createPool, type PoolProgress, type PoolResult, WORKER_BLOCK } from './pool.js'
 import {
-  asciiFor,
-  buildResultStrip,
-  resultColumnsForWidth,
   buildGalleryHtml,
+  buildResultStrip,
   buildResultsJson,
   formatDuration,
   formatLeaderboard,
   type ResultConfig,
+  resultColumnsForWidth,
 } from './report.js'
-import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
 
 /** A builtin template name, or a path to a FaceSpec JSON file. */
 export function resolveFaceSpec(target: string): FaceSpec {
@@ -232,7 +231,7 @@ export async function runMine(options: MineArgs): Promise<number> {
   }
   process.on('SIGINT', onSigint)
 
-  let result
+  let result: PoolResult
   try {
     result = await pool.run()
   } finally {
@@ -397,7 +396,10 @@ export async function main(argv: string[]): Promise<number> {
 
 // Only run when invoked as the executable. Without this guard, importing cli.js from a test
 // would execute main() with vitest's own argv and fail on "unknown option".
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// argv[1] is resolved through realpath because npm installs bins as symlinks into
+// node_modules/.bin, while import.meta.url is always the real path -- comparing them
+// unresolved makes `npx safe-vanity-blockie` a silent no-op.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main(process.argv.slice(2))
     .then((code) => {
       process.exitCode = code

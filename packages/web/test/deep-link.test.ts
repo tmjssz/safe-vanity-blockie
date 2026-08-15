@@ -51,7 +51,9 @@ describe('config deep link', () => {
   })
 
   it('rejects a parameter that decodes to invalid JSON', () => {
-    expect(decodeConfigParam(btoa('{ not json').replace(/=+$/, '')).error).toMatch(/could not decode/i)
+    expect(decodeConfigParam(btoa('{ not json').replace(/=+$/, '')).error).toMatch(
+      /could not decode/i,
+    )
   })
 
   it('rejects a config that fails validation, rather than trusting the link', () => {

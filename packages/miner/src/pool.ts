@@ -1,5 +1,5 @@
 import { Worker } from 'node:worker_threads'
-import { Leaderboard, type Candidate, type FaceSpec } from '@safe-vanity-blockie/core'
+import { type Candidate, type FaceSpec, Leaderboard } from '@safe-vanity-blockie/core'
 import type { WorkerInput, WorkerMessage } from './worker.js'
 
 /**

@@ -1,6 +1,6 @@
 import { createAddressDeriver, createKeccak256 } from '@safe-vanity-blockie/core'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { loadSafeConstants, verifyWithProtocolKit, type SafeSetup } from '../src/setup.js'
+import { loadSafeConstants, type SafeSetup, verifyWithProtocolKit } from '../src/setup.js'
 
 const RPC_URL = process.env.TEST_RPC_URL ?? 'https://ethereum-rpc.publicnode.com'
 const OWNERS = ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045']
@@ -36,9 +36,9 @@ describe('loadSafeConstants', () => {
   })
 
   it('throws a clear mismatch error when the address is wrong', async () => {
-    await expect(
-      verifyWithProtocolKit(setup, '1', '0x' + '00'.repeat(20)),
-    ).rejects.toThrow(/self-check failed/)
+    await expect(verifyWithProtocolKit(setup, '1', '0x' + '00'.repeat(20))).rejects.toThrow(
+      /self-check failed/,
+    )
   })
 
   it('produces the same constants for the same config on a second call', async () => {
