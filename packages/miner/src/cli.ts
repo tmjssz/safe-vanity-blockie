@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import {
@@ -396,7 +396,10 @@ export async function main(argv: string[]): Promise<number> {
 
 // Only run when invoked as the executable. Without this guard, importing cli.js from a test
 // would execute main() with vitest's own argv and fail on "unknown option".
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// argv[1] is resolved through realpath because npm installs bins as symlinks into
+// node_modules/.bin, while import.meta.url is always the real path -- comparing them
+// unresolved makes `npx safe-vanity-blockie` a silent no-op.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main(process.argv.slice(2))
     .then((code) => {
       process.exitCode = code
