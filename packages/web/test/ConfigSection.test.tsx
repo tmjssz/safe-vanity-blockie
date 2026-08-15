@@ -22,9 +22,7 @@ const SUBTITLE = 'Find a Safe address whose identicon renders as a face.'
  * rather than eleven.
  */
 function renderSection(overrides: Partial<Parameters<typeof ConfigSection>[0]> = {}) {
-  return render(
-    <ConfigSection chainId={CONFIG.chainId} onSubmit={vi.fn()} {...overrides} />,
-  )
+  return render(<ConfigSection chainId={CONFIG.chainId} onSubmit={vi.fn()} {...overrides} />)
 }
 
 const ownerField = (n: number) =>
@@ -147,11 +145,6 @@ describe('ConfigSection', () => {
     })
   })
 
-
-
-
-
-
   // A `?config=…` share link exists to reproduce one exact Safe address, and all four of the
   // fields it carries go into deriving it. If the prefill is dropped anywhere between the decoded
   // link and the form, the user retypes owners by hand — and one typo yields a different address,
@@ -191,7 +184,6 @@ describe('ConfigSection', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 }))
   })
-
 
   // S4. CardTitle renders a <div> by default, so Configure, Face and Deploy were invisible to
   // heading navigation on a page whose whole premise is reading an address carefully.

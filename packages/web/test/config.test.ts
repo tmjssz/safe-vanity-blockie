@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_FACE_FILTERS,
-  SUPPORTED_CHAINS,
   chainSwitchDiscardsResults,
+  DEFAULT_FACE_FILTERS,
   isOwnerAddress,
   ownerAddressError,
+  SUPPORTED_CHAINS,
   safeSingletonFor,
   validateMineConfig,
 } from '../lib/config'
@@ -154,7 +154,14 @@ describe('isOwnerAddress', () => {
   })
 
   it('rejects exactly what validateMineConfig rejects', () => {
-    for (const owner of ['0xnope', '', '0x', OWNER_A.slice(0, -1), `${OWNER_A}00`, 'not an address']) {
+    for (const owner of [
+      '0xnope',
+      '',
+      '0x',
+      OWNER_A.slice(0, -1),
+      `${OWNER_A}00`,
+      'not an address',
+    ]) {
       expect(isOwnerAddress(owner)).toBe(false)
       // The empty string is the one that is not a MALFORMED address — the validator drops it and
       // complains that there are no owners at all, which is the same "cannot start" either way,

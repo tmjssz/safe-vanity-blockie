@@ -87,9 +87,7 @@ describe('Footer', () => {
       await user.hover(privacyTrigger())
       await screen.findByText(/runs entirely in your browser/i)
       await user.unhover(privacyTrigger())
-      await waitFor(() =>
-        expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull(),
-      )
+      await waitFor(() => expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull())
     })
 
     // A click is a deliberate request to read the thing, so it has to survive the pointer
@@ -112,9 +110,7 @@ describe('Footer', () => {
       await user.click(privacyTrigger())
       await screen.findByText(/runs entirely in your browser/i)
       await user.click(privacyTrigger())
-      await waitFor(() =>
-        expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull(),
-      )
+      await waitFor(() => expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull())
     })
 
     it('closes on Escape', async () => {
@@ -123,9 +119,7 @@ describe('Footer', () => {
       await user.click(privacyTrigger())
       await screen.findByText(/runs entirely in your browser/i)
       await user.keyboard('{Escape}')
-      await waitFor(() =>
-        expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull(),
-      )
+      await waitFor(() => expect(screen.queryByText(/runs entirely in your browser/i)).toBeNull())
     })
 
     // The claim has a real network footprint (public RPC reads, and a wallet-sent transaction on

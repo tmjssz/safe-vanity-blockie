@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
+import { describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 
 // T6. `<Toaster />` was mounted in app/layout.tsx and deleting it kept the whole suite green:

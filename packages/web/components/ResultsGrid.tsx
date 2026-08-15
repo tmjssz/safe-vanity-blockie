@@ -3,8 +3,13 @@ import type { FaceFilters } from '../lib/config'
 import { ResultCard } from './ResultCard'
 import { Skeleton } from './ui/skeleton'
 
-/** How many placeholder cards to show while mining hasn't turned up a candidate yet. */
-const SKELETON_COUNT = 4
+/**
+ * The placeholder cards shown while mining hasn't turned up a candidate yet. Held as keys rather
+ * than a count so the render maps over a stable list: the placeholders are interchangeable and
+ * never reorder, but keying them by array index is the pattern that goes wrong the moment a list
+ * does reorder, so it isn't worth writing even here.
+ */
+const SKELETON_KEYS = ['a', 'b', 'c', 'd'].map((suffix) => `result-skeleton-${suffix}`)
 
 export interface ResultsGridProps {
   candidates: Candidate[]
@@ -98,8 +103,8 @@ export function ResultsGrid({
           <ResultCard key={candidate.address} candidate={candidate} onSelect={onSelect} />
         ))}
         {showSkeletons &&
-          Array.from({ length: SKELETON_COUNT }, (_, index) => (
-            <div key={index} data-testid="result-skeleton">
+          SKELETON_KEYS.map((key) => (
+            <div key={key} data-testid="result-skeleton">
               <Skeleton className="h-72 w-full rounded-xl" />
             </div>
           ))}

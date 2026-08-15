@@ -3,7 +3,6 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { DecorativeBlockie } from './Blockie'
 import {
   type ConfigErrors,
   isOwnerAddress,
@@ -12,6 +11,7 @@ import {
   SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
 } from '../lib/config'
+import { DecorativeBlockie } from './Blockie'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -390,82 +390,82 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           already filled in, rather than a list you build — and at the form's uniform spacing the
           whole card read as one undifferentiated run of fields. */}
       <div className="my-2 grid gap-4 sm:grid-cols-2">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={thresholdId}>Threshold</Label>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={thresholdId}>Threshold</Label>
+          <div className="flex items-center gap-2">
+            <Select
+              value={String(effectiveThreshold)}
+              onValueChange={(value) => {
+                // Only a real option is an answer. This control is backed by a hidden native
+                // <select>, and Radix reports that element's changes as choices: a commit that adds
+                // the option a new value names can leave it holding a value it has no option for
+                // for an instant, and the element answers with "" — which `Number` reads as 0. That
+                // is a threshold no config can have (it would clamp the display and the submit to 0
+                // and mark the form as answered by the user, locking out the share-link seed above),
+                // and nobody asked for it. Reachable exactly once: a `?config=` link landing after
+                // the first render, which seeds the owners and the threshold together.
+                const next = Number(value)
+                if (!Number.isInteger(next) || next < 1) return
+                edited.current = true
+                setThreshold(next)
+              }}
+              // N of zero: no owner has been typed, so there is no threshold that could be honoured
+              // and the control offers none. Submitting anyway is not silent — validateMineConfig
+              // answers "Add at least one owner address.", which is rendered above.
+              disabled={signerCount === 0}
+            >
+              <SelectTrigger id={thresholdId} aria-label="Threshold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {/* Exactly 1..N. The `max(…, 1)` only ever matters while the control is disabled: it
+                  keeps a "1" for the trigger to display rather than an empty box. */}
+                {Array.from({ length: Math.max(signerCount, 1) }, (_, index) => index + 1).map(
+                  (option) => (
+                    <SelectItem key={option} value={String(option)}>
+                      {option}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              out of {signerCount} signer{signerCount === 1 ? '' : 's'}
+            </p>
+          </div>
+          {errors.threshold && (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.threshold}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={safeVersionId}>Safe version</Label>
           <Select
-            value={String(effectiveThreshold)}
+            value={safeVersion}
             onValueChange={(value) => {
-              // Only a real option is an answer. This control is backed by a hidden native
-              // <select>, and Radix reports that element's changes as choices: a commit that adds
-              // the option a new value names can leave it holding a value it has no option for
-              // for an instant, and the element answers with "" — which `Number` reads as 0. That
-              // is a threshold no config can have (it would clamp the display and the submit to 0
-              // and mark the form as answered by the user, locking out the share-link seed above),
-              // and nobody asked for it. Reachable exactly once: a `?config=` link landing after
-              // the first render, which seeds the owners and the threshold together.
-              const next = Number(value)
-              if (!Number.isInteger(next) || next < 1) return
               edited.current = true
-              setThreshold(next)
+              setSafeVersion(value)
             }}
-            // N of zero: no owner has been typed, so there is no threshold that could be honoured
-            // and the control offers none. Submitting anyway is not silent — validateMineConfig
-            // answers "Add at least one owner address.", which is rendered above.
-            disabled={signerCount === 0}
           >
-            <SelectTrigger id={thresholdId} aria-label="Threshold">
+            <SelectTrigger id={safeVersionId} aria-label="Safe version">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {/* Exactly 1..N. The `max(…, 1)` only ever matters while the control is disabled: it
-                  keeps a "1" for the trigger to display rather than an empty box. */}
-              {Array.from({ length: Math.max(signerCount, 1) }, (_, index) => index + 1).map(
-                (option) => (
-                  <SelectItem key={option} value={String(option)}>
-                    {option}
-                  </SelectItem>
-                ),
-              )}
+              {SUPPORTED_SAFE_VERSIONS.map((version) => (
+                <SelectItem key={version} value={version}>
+                  {version}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <p className="text-sm text-muted-foreground">
-            out of {signerCount} signer{signerCount === 1 ? '' : 's'}
-          </p>
+          {errors.safeVersion && (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.safeVersion}
+            </p>
+          )}
         </div>
-        {errors.threshold && (
-          <p role="alert" className="text-sm text-destructive">
-            {errors.threshold}
-          </p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={safeVersionId}>Safe version</Label>
-        <Select
-          value={safeVersion}
-          onValueChange={(value) => {
-            edited.current = true
-            setSafeVersion(value)
-          }}
-        >
-          <SelectTrigger id={safeVersionId} aria-label="Safe version">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SUPPORTED_SAFE_VERSIONS.map((version) => (
-              <SelectItem key={version} value={version}>
-                {version}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {errors.safeVersion && (
-          <p role="alert" className="text-sm text-destructive">
-            {errors.safeVersion}
-          </p>
-        )}
-      </div>
       </div>
 
       {/* The chain is picked in the header, so there is no field to hang this under — but

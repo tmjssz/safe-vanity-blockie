@@ -1,11 +1,11 @@
 'use client'
 
-import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
 import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
-import { SUPPORTED_CHAINS, type MineConfig } from '../lib/config'
+import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
 import { Blockie, DecorativeBlockie } from './Blockie'
 import { ShareConfig } from './ShareConfig'
 import { Alert, AlertDescription } from './ui/alert'
@@ -196,9 +196,9 @@ export function DeployDialog({
               read while browsing, this one while about to spend. */}
           <AlertDescription>
             <p>
-              <strong className="font-medium">A matching identicon is cosmetic.</strong> Check
-              every character of the address below before you confirm. A look-alike blockie is a
-              known phishing vector.
+              <strong className="font-medium">A matching identicon is cosmetic.</strong> Check every
+              character of the address below before you confirm. A look-alike blockie is a known
+              phishing vector.
             </p>
           </AlertDescription>
         </Alert>
@@ -277,8 +277,8 @@ export function DeployDialog({
         </div>
 
         <p className="text-sm text-muted-foreground">
-          You do not have to deploy now: this address exists whether or not you do, so you can
-          copy the share link and deploy it later, on any chain with the canonical Safe contracts.
+          You do not have to deploy now: this address exists whether or not you do, so you can copy
+          the share link and deploy it later, on any chain with the canonical Safe contracts.
         </p>
 
         {/* The saltNonce in the spread is the entire payload: without it the link degrades from
@@ -292,9 +292,7 @@ export function DeployDialog({
             that was already there when the text arrived — mounting the <p> together with its
             first message (which is what `{status && …}` did) announces nothing at all, and this
             is where the transaction hash and "Safe deployed at 0x…" appear. */}
-        <div aria-live="polite">
-          {status && <p className="text-sm break-all">{status}</p>}
-        </div>
+        <div aria-live="polite">{status && <p className="text-sm break-all">{status}</p>}</div>
         {error && (
           <Alert variant="destructive">
             <AlertDescription className="break-all">{error}</AlertDescription>

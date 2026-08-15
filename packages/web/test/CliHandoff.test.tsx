@@ -174,9 +174,7 @@ describe('CliHandoff', () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
 
-    const block = (await screen.findByRole('dialog')).querySelector(
-      '[data-slot="command-block"]',
-    )!
+    const block = (await screen.findByRole('dialog')).querySelector('[data-slot="command-block"]')!
     const copy = screen.getByRole('button', { name: /copy/i })
     const command = block.querySelector('pre')!
 

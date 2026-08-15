@@ -197,7 +197,9 @@ describe('FacePicker', () => {
       renderPicker({ value: ['smile'] })
       expect(screen.queryAllByRole('img', { name: /target pattern/i })).toHaveLength(0)
       expect(
-        screen.getAllByRole('checkbox').map((entry) => entry.getAttribute('aria-label') ?? entry.textContent),
+        screen
+          .getAllByRole('checkbox')
+          .map((entry) => entry.getAttribute('aria-label') ?? entry.textContent),
       ).toEqual(['smile', 'frown', 'neutral', 'open', 'small'])
     })
 
@@ -261,7 +263,11 @@ describe('FacePicker', () => {
       // Staged like any other selection change, not applied: it restarts the search just the same.
       expect(onChange).not.toHaveBeenCalled()
       for (const name of ALL_MOUTH_NAMES) {
-        expect(screen.getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') }).getAttribute('aria-checked')).toBe('true')
+        expect(
+          screen
+            .getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') })
+            .getAttribute('aria-checked'),
+        ).toBe('true')
       }
       expect(screen.getByRole('button', { name: /^apply$/i })).toBeDefined()
       // Nothing left to select, so the control that would do it stands down.
@@ -277,9 +283,9 @@ describe('FacePicker', () => {
       renderPicker({ value: ['smile', 'frown'] })
       await userEvent.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
 
-      const row = screen.getByRole('heading', { name: /face expressions/i }).closest(
-        '[data-slot="expressions-heading-row"]',
-      )
+      const row = screen
+        .getByRole('heading', { name: /face expressions/i })
+        .closest('[data-slot="expressions-heading-row"]')
       expect(row).not.toBeNull()
 
       const selectAll = screen.getByRole('button', { name: /^select all$/i })
@@ -357,7 +363,9 @@ describe('FacePicker', () => {
 
       expect(onChange).not.toHaveBeenCalled()
       // Still staged, so a change is not silently lost by backing out of the question.
-      expect(screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked')).toBe('true')
+      expect(
+        screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked'),
+      ).toBe('true')
       expect(applyButton()).toBeDefined()
     })
 
@@ -403,9 +411,9 @@ describe('FacePicker', () => {
         expect(screen.getByRole('button', { name: /^reset$/i }).getAttribute('data-variant')).toBe(
           'outline',
         )
-        expect(screen.getByRole('button', { name: /^select all$/i }).getAttribute('data-variant')).toBe(
-          'link',
-        )
+        expect(
+          screen.getByRole('button', { name: /^select all$/i }).getAttribute('data-variant'),
+        ).toBe('link')
         expect(screen.getByRole('button', { name: /^apply$/i }).getAttribute('data-variant')).toBe(
           'default',
         )
@@ -427,9 +435,15 @@ describe('FacePicker', () => {
         await user.click(screen.getByRole('checkbox', { name: /^smile$/i }))
         await user.click(resetButton())
 
-        expect(screen.getByRole('checkbox', { name: /^smile$/i }).getAttribute('aria-checked')).toBe('true')
-        expect(screen.getByRole('checkbox', { name: /^frown$/i }).getAttribute('aria-checked')).toBe('true')
-        expect(screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked')).toBe('false')
+        expect(
+          screen.getByRole('checkbox', { name: /^smile$/i }).getAttribute('aria-checked'),
+        ).toBe('true')
+        expect(
+          screen.getByRole('checkbox', { name: /^frown$/i }).getAttribute('aria-checked'),
+        ).toBe('true')
+        expect(
+          screen.getByRole('checkbox', { name: /^neutral$/i }).getAttribute('aria-checked'),
+        ).toBe('false')
       })
 
       // Nothing was applied, so nothing restarts and there is nothing to warn about.

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { SUPPORTED_CHAINS, chainSwitchDiscardsResults } from '../lib/config'
+import { chainSwitchDiscardsResults, SUPPORTED_CHAINS } from '../lib/config'
 import { Button } from './ui/button'
 import {
   Dialog,

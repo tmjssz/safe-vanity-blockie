@@ -38,6 +38,7 @@ export function useSafeConstants(config: MineConfig | undefined): {
   const [attempt, setAttempt] = useState(0)
   const reload = useCallback(() => setAttempt((previous) => previous + 1), [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is never read in here — it is the trigger, per the note above. Dropping it from the list makes reload() a no-op.
   useEffect(() => {
     if (!config) {
       setState({ loading: false })

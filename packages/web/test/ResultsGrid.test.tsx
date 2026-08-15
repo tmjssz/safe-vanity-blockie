@@ -1,6 +1,6 @@
+import type { Candidate } from '@safe-vanity-blockie/core'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Candidate } from '@safe-vanity-blockie/core'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 
@@ -296,10 +296,7 @@ describe('ResultsGrid', () => {
 
     const cards = resultCards()
     const names = cards.map((card) => card.getAttribute('aria-label'))
-    expect(names).toEqual([
-      expect.stringContaining('0xa'),
-      expect.stringContaining('0xb'),
-    ])
+    expect(names).toEqual([expect.stringContaining('0xa'), expect.stringContaining('0xb')])
     expect(new Set(names).size).toBe(2)
 
     // Same for the badge row each card is described by: a shared id would point every card's

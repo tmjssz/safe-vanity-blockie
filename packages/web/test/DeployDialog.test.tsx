@@ -1,6 +1,6 @@
+import { loadSafeConstants } from '@safe-vanity-blockie/safe-config'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { loadSafeConstants } from '@safe-vanity-blockie/safe-config'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MineConfig } from '../lib/config'
 import { decodeConfigParam } from '../lib/deep-link'
@@ -97,7 +97,7 @@ describe('DeployDialog', () => {
   // default tint, one flowing sentence rather than a title stacked over a description. Met three
   // times in one session, it has to be recognisably one warning rather than three that happen to
   // start with the same words.
-  it('draws the caveat as the app\'s warning box', async () => {
+  it("draws the caveat as the app's warning box", async () => {
     await renderDialog()
     const note = screen.getByRole('note')
     expect(note.className).toMatch(/amber/)

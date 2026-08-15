@@ -65,8 +65,8 @@ export function AboutDialog({ trigger }: { trigger?: React.ReactNode }) {
           <Section title="How it works">
             A Safe&rsquo;s address is derived from its owners, threshold, Safe version and one free
             number, the salt nonce. Only that number is free to vary, so this app tries them in
-            bulk: for each one it draws the identicon the resulting address would produce and
-            scores it against a face.
+            bulk: for each one it draws the identicon the resulting address would produce and scores
+            it against a face.
           </Section>
 
           <Section title="Nothing is deployed while you search">

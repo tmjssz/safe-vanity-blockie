@@ -20,9 +20,9 @@ export function SecurityNotice() {
           not get a row of its own. */}
       <AlertDescription>
         <p>
-          <strong className="font-medium">A matching identicon is cosmetic.</strong>{' '}
-          Never treat it as proof of an address. Blockie look-alikes are a known phishing vector.
-          Always verify the full address.
+          <strong className="font-medium">A matching identicon is cosmetic.</strong> Never treat it
+          as proof of an address. Blockie look-alikes are a known phishing vector. Always verify the
+          full address.
         </p>
       </AlertDescription>
     </Alert>

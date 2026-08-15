@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import { FaceSection } from '../components/FaceSection'
+import { DEFAULT_FACE_FILTERS } from '../lib/config'
 
 function renderSection(overrides: Partial<Parameters<typeof FaceSection>[0]> = {}) {
   const props = {

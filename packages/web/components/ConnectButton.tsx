@@ -50,7 +50,8 @@ export function ConnectButton() {
   // the browser announced. Still written defensively rather than as `connectors[0]!`, so that
   // adding a connector back shows a button instead of silently connecting the first one.
   const connector = connectors[0]
-  if (!connector) return <p className="text-sm text-muted-foreground">No browser wallet detected.</p>
+  if (!connector)
+    return <p className="text-sm text-muted-foreground">No browser wallet detected.</p>
 
   return (
     <Button

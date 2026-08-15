@@ -174,6 +174,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
           </div>
         </div>
 
+        {/* biome-ignore lint/a11y/useSemanticElements: a <fieldset> is not a drop-in here — it wants its label as a <legend> inside it, whereas this group's heading is the card's own <h3 id="face-expressions">, which sits above the Reset/Apply row rather than inside the grid. */}
         <div role="group" aria-labelledby="face-expressions" className="grid grid-cols-5 gap-2">
           {ALL_MOUTH_NAMES.map((name) => {
             const accepted = draft.includes(name)
@@ -181,6 +182,8 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
               // role="checkbox" on a real <button> is what Radix's own Checkbox renders, so this
               // stays a toggle for assistive tech — and its accessible name is the caption below
               // the preview, which is why the preview itself is decorative here.
+              //
+              // biome-ignore lint/a11y/useSemanticElements: see above — an <input type="checkbox"> cannot host the preview tile this control is made of.
               <button
                 key={name}
                 type="button"
@@ -217,7 +220,6 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
             {error}
           </p>
         )}
-
       </section>
 
       <section className="flex flex-col gap-3">

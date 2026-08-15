@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_RGB_DISTANCE, contrastPairForDistance, rgbDistance } from '../lib/contrast-preview'
+import { contrastPairForDistance, MAX_RGB_DISTANCE, rgbDistance } from '../lib/contrast-preview'
 
 describe('contrastPairForDistance', () => {
   // The swatches exist to answer "how different is 120, really?". A pair that only approximated

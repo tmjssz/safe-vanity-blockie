@@ -7,19 +7,19 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
-import { DeployDialog, type DeployAttempt } from '../components/DeployDialog'
+import { type DeployAttempt, DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { SecurityNotice } from '../components/SecurityNotice'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import {
+  chainSwitchDiscardsResults,
   DEFAULT_CHAIN_ID,
   DEFAULT_FACE_FILTERS,
-  chainSwitchDiscardsResults,
-  validateMineConfig,
   type FaceFilters,
   type MineConfig,
+  validateMineConfig,
 } from '../lib/config'
 import { candidateFromSaltNonce, decodeConfigParam, shareConfigPath } from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
@@ -511,8 +511,7 @@ function HomeContent() {
       // A written entry wins where a link's param and a mined result's encode identically: the
       // app really pushed that one, and it is the newer of the two.
       const restored =
-        written ??
-        (param && param === linkParamRef.current ? linkSelection.current : undefined)
+        written ?? (param && param === linkParamRef.current ? linkSelection.current : undefined)
       // Whatever the URL names, including nothing: an entry naming a result puts it back — with
       // its own config, the pairing intact — and a base entry closes the dialog.
       setSelection(restored)
@@ -840,7 +839,6 @@ function HomeContent() {
           be centred in. It costs nothing once a run is on screen: the content is taller than the
           viewport by then, so there is no leftover height to distribute. */}
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
-
         {!config && !linkDismissed && linkResult?.error && (
           <Alert variant="destructive">
             <AlertDescription>

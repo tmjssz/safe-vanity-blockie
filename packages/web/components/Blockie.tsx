@@ -38,6 +38,7 @@ export const DecorativeBlockie = memo(function DecorativeBlockie({
       data-slot={slot}
       aria-hidden="true"
       className={cn('inline-flex shrink-0 overflow-hidden [&>svg]:size-full', className)}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, not user input — see the note on Blockie below.
       dangerouslySetInnerHTML={{ __html: bloSvg(address, size) }}
     />
   )

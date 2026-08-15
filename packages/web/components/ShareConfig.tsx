@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { shareConfigPath, type SharedConfig } from '../lib/deep-link'
+import { type SharedConfig, shareConfigPath } from '../lib/deep-link'
 import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
 import { Input } from './ui/input'

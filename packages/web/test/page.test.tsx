@@ -70,9 +70,7 @@ const {
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
   facePickerPropsRef: {
-    current: undefined as
-      | { value: string[]; onChange: (names: string[]) => void }
-      | undefined,
+    current: undefined as { value: string[]; onChange: (names: string[]) => void } | undefined,
   },
   // The address bar, as the App Router presents it to useSearchParams(). It is a subscribable
   // store rather than a bare `{ current }` because the page now WRITES the URL as well as
@@ -402,10 +400,7 @@ const PLAN_FOR = (address: string) => ({
 })
 
 /** Opens the header's chain picker and chooses a chain by name. */
-async function chooseChain(
-  user: ReturnType<typeof userEvent.setup>,
-  name: RegExp,
-): Promise<void> {
+async function chooseChain(user: ReturnType<typeof userEvent.setup>, name: RegExp): Promise<void> {
   await user.click(screen.getByRole('combobox', { name: /^chain$/i }))
   await user.click(await screen.findByRole('option', { name }))
 }
@@ -565,9 +560,9 @@ describe('Page', () => {
     // The same candidate, and the same share link — the selection is restored from the entry
     // rather than reconstructed out of the URL, so the candidate/config pairing is the original.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    ).toBe(shared)
+    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
+      shared,
+    )
     expect(window.location.href).toBe(shared)
   })
 
@@ -594,9 +589,9 @@ describe('Page', () => {
     // The same result, from the entry the close left behind — and the same paired config, so the
     // share link the reopened dialog renders is the original character for character.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    ).toBe(shared)
+    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
+      shared,
+    )
     expect(window.location.href).toBe(shared)
 
     // And Forward from there is the close again: base URL, no dialog.
@@ -862,9 +857,8 @@ describe('Page', () => {
   // And it does that without mining: clicking someone's link must not spin up five to eight
   // workers at full CPU unasked.
   it('opens the deploy dialog on the candidate a link names, with no submit and no mining', async () => {
-    const { candidateFromSaltNonce } = await vi.importActual<typeof import('../lib/deep-link')>(
-      '../lib/deep-link',
-    )
+    const { candidateFromSaltNonce } =
+      await vi.importActual<typeof import('../lib/deep-link')>('../lib/deep-link')
     const { ALL_MOUTH_NAMES, faceSpecFromSelection } = await import('../lib/face-selection')
     const expected = await candidateFromSaltNonce(
       SAFE_SETUP.constants,
@@ -1060,9 +1054,8 @@ describe('Page', () => {
         initCodeHash: new Uint8Array(32).fill(7),
       },
     }
-    const { candidateFromSaltNonce } = await vi.importActual<typeof import('../lib/deep-link')>(
-      '../lib/deep-link',
-    )
+    const { candidateFromSaltNonce } =
+      await vi.importActual<typeof import('../lib/deep-link')>('../lib/deep-link')
     const { ALL_MOUTH_NAMES, faceSpecFromSelection } = await import('../lib/face-selection')
     const faceSpec = faceSpecFromSelection(ALL_MOUTH_NAMES)
     const fromLink = await candidateFromSaltNonce(LINK_SETUP.constants, '12345', faceSpec)
@@ -1277,9 +1270,9 @@ describe('Page', () => {
     // The sender's candidate, and the same share link — not a second reconstruction, and not a
     // config re-derived from the URL.
     expect(screen.getByRole('dialog').textContent).toBe(address)
-    expect(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    ).toBe(received)
+    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
+      received,
+    )
     // Not latched as an incoming link: no overlay over the dialog, and no second constants read
     // for a reconstruction that already happened. (One call, from the mount.)
     expect(spinner()).toBeNull()
@@ -1295,7 +1288,7 @@ describe('Page', () => {
   // "Start over" puts the link out of reach for good — the prefill, the saltNonce, its errors. The
   // held selection its own history entry restores from has to go with it, or Back would put the
   // sender's dialog, with a live Deploy button, back on a page that has just been reset.
-  it("does not reopen a share link's dialog on Back after \"Start over\"", async () => {
+  it('does not reopen a share link\'s dialog on Back after "Start over"', async () => {
     searchParamsRef.current = linkParams()
     const received = window.location.href
 
@@ -2210,8 +2203,10 @@ describe('Page', () => {
     expect(window.location.href).toBe(
       (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
     )
-    expect(decodeConfigParam(new URLSearchParams(window.location.search).get('config') ?? '')
-      .config?.chainId).toBe(137)
+    expect(
+      decodeConfigParam(new URLSearchParams(window.location.search).get('config') ?? '').config
+        ?.chainId,
+    ).toBe(137)
 
     // The carry CORRECTED the entry the user is standing on rather than stacking a new one on top
     // of it. Back therefore leaves the dialog behind entirely, instead of landing on a Sepolia
@@ -2566,9 +2561,9 @@ describe('Page', () => {
     // modal, deliberately and unchanged — it is a blocking question, not a panel to work beside —
     // so while it is up the header behind it is aria-hidden exactly as it should be.
     expect(await screen.findByText(/switch to sepolia\?/i)).toBeDefined()
-    expect(
-      screen.getByRole('combobox', { name: /^chain$/i, hidden: true }).textContent,
-    ).toContain('Ethereum')
+    expect(screen.getByRole('combobox', { name: /^chain$/i, hidden: true }).textContent).toContain(
+      'Ethereum',
+    )
 
     // Declining leaves the link alone: it resolves into its own dialog, on its own chain.
     await user.click(screen.getByRole('button', { name: /^stay on ethereum$/i }))

@@ -128,9 +128,7 @@ describe('shareConfigPath', () => {
   })
 
   it('replaces a config already in the URL rather than adding a second one', () => {
-    expect(shareConfigPath(CONFIG, '/?config=stale')).toBe(
-      `/?config=${encodeConfigParam(CONFIG)}`,
-    )
+    expect(shareConfigPath(CONFIG, '/?config=stale')).toBe(`/?config=${encodeConfigParam(CONFIG)}`)
   })
 
   it('defaults to the URL the document is on', () => {

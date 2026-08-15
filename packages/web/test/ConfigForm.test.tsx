@@ -224,9 +224,11 @@ describe('ConfigForm', () => {
       await user.type(ownerField(3), OWNER_C)
       await user.click(startButton())
 
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        owners: [OWNER, OWNER_B, OWNER_C],
-      }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owners: [OWNER, OWNER_B, OWNER_C],
+        }),
+      )
     })
 
     // THE LIST-KEYING TRAP. Keyed by array index, React reuses the wrong DOM node when a row is
@@ -292,9 +294,7 @@ describe('ConfigForm', () => {
     // The array the link decoded, one field per entry — not a joined string the user has to
     // re-split by hand. Order is part of the address, so this pins it.
     it('prefills one field per owner from a share link, in order', () => {
-      render(
-        <ConfigForm chainId={1} initial={{ owners: [OWNER, OWNER_B] }} onSubmit={vi.fn()} />,
-      )
+      render(<ConfigForm chainId={1} initial={{ owners: [OWNER, OWNER_B] }} onSubmit={vi.fn()} />)
 
       expect(ownerField(1).value).toBe(OWNER)
       expect(ownerField(2).value).toBe(OWNER_B)
@@ -416,10 +416,12 @@ describe('ConfigForm', () => {
       await chooseThreshold(user, 2)
       await user.click(startButton())
 
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        owners: [OWNER, OWNER_B],
-        threshold: 2,
-      }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owners: [OWNER, OWNER_B],
+          threshold: 2,
+        }),
+      )
     })
 
     // A threshold picked when there were three owners must not survive the removal of one.
@@ -446,10 +448,12 @@ describe('ConfigForm', () => {
       expect(await thresholdOptions(user)).toEqual(['1', '2'])
 
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        owners: [OWNER, OWNER_B],
-        threshold: 2,
-      }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owners: [OWNER, OWNER_B],
+          threshold: 2,
+        }),
+      )
       expect(screen.queryByText(/exceeds/i)).toBeNull()
     })
 
@@ -468,10 +472,12 @@ describe('ConfigForm', () => {
 
       expect(thresholdTrigger().textContent).toContain('1')
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        owners: [OWNER],
-        threshold: 1,
-      }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owners: [OWNER],
+          threshold: 1,
+        }),
+      )
     })
 
     // N of zero: there is no valid threshold to offer, so the control is disabled rather than
@@ -503,12 +509,13 @@ describe('ConfigForm', () => {
 
       expect(thresholdTrigger().textContent).toContain('2')
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-        owners: [OWNER, OWNER_B],
-        threshold: 2,
-      }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owners: [OWNER, OWNER_B],
+          threshold: 2,
+        }),
+      )
     })
-
   })
 
   // Start is gated on exactly the two things this form can judge row by row: whether any owner has

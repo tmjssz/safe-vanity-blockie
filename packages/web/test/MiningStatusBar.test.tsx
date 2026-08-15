@@ -27,7 +27,15 @@ const status = {
 
 describe('MiningStatusBar', () => {
   it('shows the best score as a percentage, not a raw fraction', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.getByText('90.2%')).toBeDefined()
     expect(screen.queryByText(/120\/133/)).toBeNull()
   })
@@ -35,26 +43,58 @@ describe('MiningStatusBar', () => {
   // A bare percentage next to a progress bar reads as "the run is 90% done", which is not a
   // number this search can even have — the space is 2^256 wide and nothing is being counted down.
   it('labels the percentage, so it cannot be read as run progress', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.getByText(/best result/i)).toBeDefined()
   })
 
   // The bar itself was the other half of that misreading: a filled track implies a total to be a
   // fraction of, and the only total here is the template's maximum score, which is not progress.
   it('draws no progress bar', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
   it('shows scanned count, rate and worker count', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.getByText(/4,200,000/)).toBeDefined()
     expect(screen.getByText(/1\.03M\/s/)).toBeDefined()
     expect(screen.getByText(/5 workers/)).toBeDefined()
   })
 
   it('shows how long the run has been going, formatted the way the CLI reports it', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.getByText(/2m 05s/)).toBeDefined()
   })
 
@@ -115,7 +155,15 @@ describe('MiningStatusBar', () => {
   // retention cap so it stopped moving seconds into a run. What the run has *scored* is the nonce
   // count; what survives the filters is the grid's badge.
   it('does not count the retained leaderboard', () => {
-    render(<MiningStatusBar status={status} onPauseToggle={vi.fn()} config={CONFIG} resultCount={0} onStartOver={vi.fn()} />)
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
     expect(screen.queryByText(/kept/i)).toBeNull()
   })
 
@@ -317,8 +365,7 @@ describe('MiningStatusBar', () => {
       expect(rowOf(pause)).not.toBe(rowOf(startOver))
       // Second row, so it follows the first in document order.
       expect(
-        rowOf(pause)!.compareDocumentPosition(rowOf(startOver)!) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        rowOf(pause)!.compareDocumentPosition(rowOf(startOver)!) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy()
       // Both pushed to the right edge of their own row.
       expect(pause.parentElement?.className).toMatch(/ml-auto/)
