@@ -19,7 +19,13 @@
 - **No secrets.** Network tests default to a public RPC; `TEST_RPC_URL` is an optional repository *variable*.
 - **Biome is pinned to exactly `2.5.8`** (no caret). A floating lint tool turns an upstream release into a red build on an unrelated PR.
 - **Conventional commit messages.**
-- **The sandbox cannot create commits** (`git commit` fails with `error: Couldn't get agent socket?` because commit signing has no agent). Implementers stage with `git add -A` and **stop**; the controller makes the commit. Every "Commit" step below is written as stage-then-report.
+- **Export the ssh-agent socket before committing.** The session's inherited `SSH_AUTH_SOCK` points at a dead agent, so `git commit` fails with `error: Couldn't get agent socket?`. Prefix commit commands with:
+
+  ```bash
+  export SSH_AUTH_SOCK=/run/user/501/vscode-ssh-auth-sock-880839671
+  ```
+
+  With that set, signing succeeds. `git log --show-signature` still reports `N`; that is only a missing local `gpg.ssh.allowedSignersFile`, and it matches the rest of this repo's history. Implementers commit their own work — each task's final step gives the exact message to use.
 
 ---
 
@@ -125,7 +131,7 @@ lint/suspicious/noConfusingVoidType           1 (1 warning)
 lint/complexity/useOptionalChain              1 (1 warning)
 ```
 
-`pnpm lint --reporter=summary` prints exactly this table. A non-empty diff is expected at this stage; Task 2 applies it.
+`pnpm lint --reporter=summary` prints this table **plus** a list of files the formatter would rewrite — `pnpm lint` is `biome check`, which covers formatting too. Those format diagnostics are expected here; Task 2 applies them. Only the lint-rule table above needs to match.
 
 - [ ] **Step 5: Stage and report**
 
@@ -142,7 +148,7 @@ Report to the controller for commit as: `chore: add biome config and lint script
 This commit must contain **zero** behavioural change. Formatting only — no lint fixes, no import sorting.
 
 **Files:**
-- Modify: 28 files across `packages/*` (23 `.ts`/`.tsx`, 4 `.json` — unchanged because the JSON formatter is off — and `packages/web/app/globals.css`)
+- Modify: ~24 files across `packages/*` — 23 `.ts`/`.tsx` plus `packages/web/app/globals.css`. The 4 package manifests that Biome's JSON formatter would rewrite are excluded by `json.formatter.enabled: false`.
 - Create: `.git-blame-ignore-revs`
 
 **Interfaces:**
@@ -165,7 +171,7 @@ Use `biome format`, **not** `pnpm format` (`biome check --write`), which would a
 - [ ] **Step 3: Verify the change is purely cosmetic**
 
 Run: `git diff --shortstat`
-Expected: roughly `28 files changed, ~260 insertions(+), ~126 deletions(-)`. The exact counts may drift slightly; what must hold is that every hunk is whitespace or line-wrapping. Spot-check three hunks:
+Expected: roughly 24 files changed, on the order of 200 insertions and 120 deletions. Treat the counts as a sanity check, not an assertion — what must hold is that every hunk is whitespace or line-wrapping. Spot-check three hunks:
 
 ```bash
 git diff -- packages/web/lib/wagmi.ts
@@ -436,7 +442,18 @@ pnpm --filter safe-vanity-blockie test
 
 Expected: all miner tests PASS. `cli.test.ts` imports from `../src/cli.js`; if the guard had regressed in the other direction, that import would execute `main()` with vitest's argv and fail on an unknown option.
 
-- [ ] **Step 6: Stage and report**
+- [ ] **Step 6: Format and lint the new file**
+
+`bin.test.ts` is created after the repo-wide format pass in Task 2, so it has never been through Biome. An unformatted new file fails the `lint` job.
+
+```bash
+pnpm format
+pnpm lint
+```
+
+Expected: `pnpm lint` exits 0. Review any change `pnpm format` made to `bin.test.ts` before continuing.
+
+- [ ] **Step 7: Stage and report**
 
 ```bash
 git add -A
