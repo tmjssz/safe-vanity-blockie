@@ -47,7 +47,8 @@ Every pull request runs two jobs:
 - **`build-test`** — `pnpm -r build`, then `pnpm -r typecheck`, `pnpm -r test`, then
   `scripts/smoke-pack.sh`, which packs the CLI and runs it from a consumer-style npm install
 
-Both are required checks on `main`. Reproduce them locally with:
+Once branch protection is enabled on `main`, both are required checks. Reproduce them locally
+with:
 
     pnpm lint
     pnpm -r build && pnpm -r typecheck && pnpm -r test
