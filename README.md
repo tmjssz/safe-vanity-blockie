@@ -39,6 +39,31 @@ core and resumability.
     pnpm install
     pnpm test
 
+### CI
+
+Every pull request runs two jobs:
+
+- **`lint`** — `biome ci .` (formatting and lint, no build required)
+- **`build-test`** — `pnpm -r build`, then `pnpm -r typecheck`, `pnpm -r test`, then
+  `scripts/smoke-pack.sh`, which packs the CLI and runs it from a consumer-style npm install
+
+Both are required checks on `main`. Reproduce them locally with:
+
+    pnpm lint
+    pnpm -r build && pnpm -r typecheck && pnpm -r test
+    ./scripts/smoke-pack.sh
+
+The build must precede the typecheck: packages resolve `@safe-vanity-blockie/core` through its
+`dist` types, and `packages/web` additionally needs the types `next build` generates.
+
+The RPC-dependent suites (`pnpm -r test:network`) are **not** run on pull requests — they hit a
+live public endpoint. They run nightly, and on demand with `gh workflow run nightly.yml`.
+
+Formatting is Biome, pinned in `package.json`. Run `pnpm format` before pushing. The commit that
+first reformatted the repo is listed in `.git-blame-ignore-revs`; to skip it in blame output:
+
+    git config blame.ignoreRevsFile .git-blame-ignore-revs
+
 ## Usage
 
     npx safe-vanity-blockie \
