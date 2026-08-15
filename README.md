@@ -14,6 +14,10 @@ the canonical Safe contracts.
 look-alikes are a known phishing vector: an attacker can mine a different address whose identicon
 looks the same to a human. Always verify the full address, never the picture.
 
+**This is a personal side project, not an official Safe product.** It is not built, reviewed, or
+supported by Safe, and it carries no bug bounty. See [SECURITY.md](SECURITY.md) for what is in scope
+and how to report a problem privately.
+
 ## Packages
 
 - `packages/core` — pure, isomorphic library: `blo` port, CREATE2 derivation, scoring, templates
