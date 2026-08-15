@@ -12,11 +12,13 @@ jobs:
   network-tests:
     name: network-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # The tests fall back to a public RPC with `?? 'https://…'`, which only catches
       # undefined — an unset repository variable would otherwise pass an empty string
       # straight through and break them. The default is repeated here for that reason.
       TEST_RPC_URL: ${{ vars.TEST_RPC_URL || 'https://ethereum-rpc.publicnode.com' }}
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v2
