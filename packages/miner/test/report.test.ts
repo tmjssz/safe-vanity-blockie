@@ -1,15 +1,15 @@
-import { filterCandidates, formatScore, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, filterCandidates, formatScore } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
   asciiFor,
   buildGalleryHtml,
   buildResultStrip,
-  resultColumnsForWidth,
-  formatDuration,
   buildResultsJson,
+  formatDuration,
   formatLeaderboard,
-  renderAscii,
   type ResultConfig,
+  renderAscii,
+  resultColumnsForWidth,
 } from '../src/report.js'
 
 const CONFIG: ResultConfig = {

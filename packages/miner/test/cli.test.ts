@@ -1,10 +1,10 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getTemplate, selectReported, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, getTemplate, selectReported } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { asciiFor } from '../src/report.js'
 import { buildProgressBlock, resolveFaceSpec } from '../src/cli.js'
+import { asciiFor } from '../src/report.js'
 
 function makeCandidate(overrides: Partial<Candidate>): Candidate {
   return {

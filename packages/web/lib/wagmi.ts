@@ -1,7 +1,7 @@
-import { arbitrum, base, gnosis, mainnet, optimism, polygon, sepolia } from 'wagmi/chains'
-import { createConfig, http } from 'wagmi'
-import { injected } from 'wagmi/connectors'
 import type { Chain } from 'viem'
+import { createConfig, http } from 'wagmi'
+import { arbitrum, base, gnosis, mainnet, optimism, polygon, sepolia } from 'wagmi/chains'
+import { injected } from 'wagmi/connectors'
 
 /** Chains this app offers, in order — must stay in sync with `SUPPORTED_CHAINS`. */
 const CHAIN_LIST = [mainnet, sepolia, polygon, arbitrum, optimism, base, gnosis] as const

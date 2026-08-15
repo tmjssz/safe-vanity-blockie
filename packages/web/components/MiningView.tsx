@@ -57,6 +57,8 @@ export function MiningView({
   // stops the live run without terminating the worker pool. Toggling back to false resumes that
   // same run (continuing from `state.nextStart`, keeping the leaderboard) when nothing else
   // changed, or starts fresh if constants/faceSpec/workers changed while paused.
+  //
+  // biome-ignore lint/correctness/useExhaustiveDependencies: twoColor, minContrast, and state.nextStart are deliberately excluded — see the comment above. Adding them restarts the miner and discards progress.
   useEffect(() => {
     if (!constants.data) return
     if (paused) return

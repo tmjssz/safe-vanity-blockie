@@ -1,12 +1,12 @@
-import Safe from '@safe-global/protocol-kit'
 import type { Eip1193Provider, SafeConfig } from '@safe-global/protocol-kit'
+import Safe from '@safe-global/protocol-kit'
 import type { Transaction } from '@safe-global/types-kit'
 import {
   createAddressDeriver,
   createKeccak256,
   type SafeConstants,
 } from '@safe-vanity-blockie/core'
-import { verifyWithProtocolKit, type SafeSetup } from '@safe-vanity-blockie/safe-config'
+import { type SafeSetup, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
 
 /**
  * protocol-kit's default export resolves as an implied-CommonJS namespace under bundler

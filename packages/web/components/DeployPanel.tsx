@@ -1,11 +1,11 @@
 'use client'
 
-import { formatScore, type Candidate } from '@safe-vanity-blockie/core'
+import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
 import { useState } from 'react'
 import { useAccount, useConnectorClient, useSwitchChain } from 'wagmi'
 import type { MineConfig } from '../lib/config'
-import { ShareConfig } from './ShareConfig'
 import { Blockie } from './Blockie'
+import { ShareConfig } from './ShareConfig'
 
 export function DeployPanel({ config, candidate }: { config: MineConfig; candidate: Candidate }) {
   const { isConnected, address, chainId } = useAccount()

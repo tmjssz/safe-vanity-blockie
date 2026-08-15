@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { filterCandidates, formatScore, selectReported } from '../src/select.js'
 import type { Candidate } from '../src/miner.js'
+import { filterCandidates, formatScore, selectReported } from '../src/select.js'
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
   return {

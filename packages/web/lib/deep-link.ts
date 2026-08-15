@@ -1,14 +1,14 @@
 import {
   bloImage,
+  type Candidate,
   colorContrast,
   compileFace,
   createAddressDeriver,
   createKeccak256,
   describeMatch,
+  type FaceSpec,
   isTwoColor,
   makeScorer,
-  type Candidate,
-  type FaceSpec,
   type SafeConstants,
 } from '@safe-vanity-blockie/core'
 import { validateMineConfig } from './config'

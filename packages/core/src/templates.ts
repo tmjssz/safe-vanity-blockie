@@ -1,4 +1,4 @@
-import type { FaceSpec, FaceRegion, FixedCell, RegionAlternative } from './types.js'
+import type { FaceRegion, FaceSpec, FixedCell, RegionAlternative } from './types.js'
 
 export const MOUTH_BUDGET = 60
 export const MOUTH_STROKE_WEIGHT = 3

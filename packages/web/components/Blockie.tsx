@@ -12,6 +12,7 @@ export function Blockie({ address, size = 64 }: BlockieProps) {
     <span
       aria-label={`Identicon for ${address}`}
       role="img"
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, not user input — see the comment above.
       dangerouslySetInnerHTML={{ __html: bloSvg(address, size) }}
     />
   )

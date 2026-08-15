@@ -1,30 +1,24 @@
-export { createAddressDeriver, type AddressDeriver, type SafeConstants } from './address.js'
+export { type AddressDeriver, createAddressDeriver, type SafeConstants } from './address.js'
 export {
   bloData,
   bloDataInto,
   bloImage,
   bloSvg,
   nextRandom,
-  randSeed,
   randomColor,
+  randSeed,
   seedInto,
 } from './blo.js'
 export { bytesToHex, hexToBytes } from './hex.js'
 export { createKeccak256, type Keccak256 } from './keccak.js'
 export {
-  Leaderboard,
+  type Candidate,
   compareCandidates,
   createMiner,
-  type Candidate,
+  Leaderboard,
   type MineOptions,
   type MineResult,
 } from './miner.js'
-export {
-  filterCandidates,
-  formatScore,
-  selectReported,
-  type SelectReportedResult,
-} from './select.js'
 export {
   apportion,
   colorContrast,
@@ -35,17 +29,23 @@ export {
   makeScorer,
 } from './scoring.js'
 export {
+  filterCandidates,
+  formatScore,
+  type SelectReportedResult,
+  selectReported,
+} from './select.js'
+export {
   BASE_TARGET,
   BASE_WEIGHTS,
-  MOUTHS,
+  faceWithMouths,
+  getTemplate,
   MOUTH_BG_WEIGHT,
   MOUTH_BUDGET,
   MOUTH_INDICES,
   MOUTH_STROKE_WEIGHT,
-  TEMPLATES,
-  faceWithMouths,
-  getTemplate,
+  MOUTHS,
   parseFaceSpec,
+  TEMPLATES,
 } from './templates.js'
 export type {
   BloImage,

@@ -1,5 +1,5 @@
+import { concat, getCreate2Address, type Hex, numberToHex, keccak256 as viemKeccak256 } from 'viem'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { concat, getCreate2Address, keccak256 as viemKeccak256, numberToHex, type Hex } from 'viem'
 import { createAddressDeriver } from '../src/address.js'
 import { hexToBytes } from '../src/hex.js'
 import { createKeccak256, type Keccak256 } from '../src/keccak.js'

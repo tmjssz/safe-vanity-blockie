@@ -2,10 +2,10 @@ import { createInterface } from 'node:readline/promises'
 import Safe, { getSafeAddressFromDeploymentTx, type SafeConfig } from '@safe-global/protocol-kit'
 import type { Transaction } from '@safe-global/types-kit'
 import { createAddressDeriver, createKeccak256 } from '@safe-vanity-blockie/core'
-import { createWalletClient, http, publicActions, type Hex } from 'viem'
+import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
+import { createWalletClient, type Hex, http, publicActions } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { DeployArgs } from './args.js'
-import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
 
 /**
  * protocol-kit's package.json has no `"type": "module"`, so under this project's

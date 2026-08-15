@@ -70,7 +70,7 @@ export interface MineOptions {
   /** Iterations between onProgress callbacks. Default 250_000. */
   chunkSize?: number
   /** Return false to stop early. `scanned` is cumulative for this call. */
-  onProgress?: (scanned: number, best: Candidate[]) => boolean | void
+  onProgress?: (scanned: number, best: Candidate[]) => boolean | undefined
 }
 
 export interface MineResult {

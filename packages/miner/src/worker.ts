@@ -1,11 +1,11 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import {
+  type Candidate,
   compileFace,
   createKeccak256,
   createMiner,
-  hexToBytes,
-  type Candidate,
   type FaceSpec,
+  hexToBytes,
 } from '@safe-vanity-blockie/core'
 
 export interface WorkerInput {

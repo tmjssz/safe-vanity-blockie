@@ -8,7 +8,7 @@ import {
   isTwoColor,
   makeScorer,
 } from '../src/scoring.js'
-import { MOUTHS, MOUTH_BUDGET, TEMPLATES, getTemplate } from '../src/templates.js'
+import { getTemplate, MOUTH_BUDGET, MOUTHS, TEMPLATES } from '../src/templates.js'
 import type { FaceSpec } from '../src/types.js'
 
 const FACES = getTemplate('faces')

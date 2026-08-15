@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import {
+  type ConfigErrors,
+  type MineConfig,
   SUPPORTED_CHAINS,
   SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
-  type ConfigErrors,
-  type MineConfig,
 } from '../lib/config'
 
 export interface ConfigFormProps {

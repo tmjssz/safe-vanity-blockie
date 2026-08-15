@@ -61,7 +61,7 @@ class FakeWorker {
 
 function startInputOf(worker: FakeWorker) {
   const request = worker.posted[0]
-  if (!request || request.type !== 'start') throw new Error('expected a start request')
+  if (request?.type !== 'start') throw new Error('expected a start request')
   return request.input
 }
 

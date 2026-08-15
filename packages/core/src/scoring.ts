@@ -13,7 +13,7 @@ export function apportion(rawWeights: number[], budget: number): number[] {
   if (total <= 0) throw new Error('apportion: raw weights must sum to a positive number')
   const exact = rawWeights.map((weight) => (weight * budget) / total)
   const shares = exact.map((value) => Math.floor(value))
-  let remainder = budget - shares.reduce((a, b) => a + b, 0)
+  const remainder = budget - shares.reduce((a, b) => a + b, 0)
   const order = exact
     .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
     .sort((a, b) => b.fraction - a.fraction || a.index - b.index)

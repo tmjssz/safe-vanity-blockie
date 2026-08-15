@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { bloData, bloImage } from '../src/blo.js'
 import { createAddressDeriver } from '../src/address.js'
+import { bloData, bloImage } from '../src/blo.js'
 import { hexToBytes } from '../src/hex.js'
 import { createKeccak256, type Keccak256 } from '../src/keccak.js'
-import { Leaderboard, compareCandidates, createMiner, type Candidate } from '../src/miner.js'
+import { type Candidate, compareCandidates, createMiner, Leaderboard } from '../src/miner.js'
 import { colorContrast, compileFace, isTwoColor, makeScorer } from '../src/scoring.js'
 import { getTemplate } from '../src/templates.js'
 

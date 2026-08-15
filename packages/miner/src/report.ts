@@ -1,10 +1,4 @@
-import {
-  bloData,
-  bloSvg,
-  filterCandidates,
-  formatScore,
-  type Candidate,
-} from '@safe-vanity-blockie/core'
+import { bloData, bloSvg, type Candidate, formatScore } from '@safe-vanity-blockie/core'
 
 export interface ResultConfig {
   owners: string[]

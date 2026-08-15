@@ -1,11 +1,11 @@
 import {
-  Leaderboard,
+  type Candidate,
   compileFace,
   createKeccak256,
   createMiner,
-  hexToBytes,
-  type Candidate,
   type FaceSpec,
+  hexToBytes,
+  Leaderboard,
 } from '@safe-vanity-blockie/core'
 
 /**
