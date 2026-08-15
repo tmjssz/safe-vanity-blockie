@@ -70,7 +70,8 @@ export interface MineOptions {
   /** Iterations between onProgress callbacks. Default 250_000. */
   chunkSize?: number
   /** Return false to stop early. `scanned` is cumulative for this call. */
-  onProgress?: (scanned: number, best: Candidate[]) => boolean | undefined
+  // biome-ignore lint/suspicious/noConfusingVoidType: deliberate union with void so callers may return nothing; narrowing to `boolean | undefined` breaks consumers of the published package whose callback bodies infer a `void` return.
+  onProgress?: (scanned: number, best: Candidate[]) => boolean | void
 }
 
 export interface MineResult {
