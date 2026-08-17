@@ -1657,35 +1657,19 @@ describe('Page', () => {
     expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
   })
 
-  // The caveat is about reading a result, so it appears where results do. Before a run there is
-  // nothing to mistrust yet, and a permanent banner over an empty starting screen is the fastest
-  // way to teach someone that this particular panel is scenery — which is the one thing this
-  // warning cannot afford to become.
-  it('shows the phishing caveat only once a run exists', async () => {
-    render(<Page />)
-
-    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
-
-    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
-    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
-  })
-
-  // "Stays visible from then on": stopping mining does not take it away, because the results it
-  // is about are still on screen.
-  it('keeps the caveat up once mining stops, and drops it only on start over', async () => {
+  // A banner carried for the whole run is the fastest way to teach someone it is scenery, so the
+  // page itself carries no standing caveat. It is stated where it is actually read instead: the
+  // idle Configure card, the About dialog, and the deploy dialog, each asserted in its own suite.
+  it('carries no standing phishing caveat, idle or mining', async () => {
     render(<Page />)
     const user = userEvent.setup()
 
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
-    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
-
-    // Full width, like the Face card and the grid below it, rather than the Configure card's
-    // narrow measure — the card it used to line up with is not on screen during a run.
-    const note = screen.getByRole('note')
-    expect(note.closest('[class*="max-w-[520px]"]')).toBeNull()
-
-    await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.queryByText(/known phishing vector/i)).toBeNull()
   })
 

@@ -11,7 +11,6 @@ import { type DeployAttempt, DeployDialog } from '../components/DeployDialog'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
-import { SecurityNotice } from '../components/SecurityNotice'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import {
   chainSwitchDiscardsResults,
@@ -893,18 +892,10 @@ function HomeContent() {
             than a half-mounted search with an empty leaderboard and a status bar reading zero. */}
         {config && (
           <>
-            {/* The caveat is about how to read a result, so it appears where results do, at the
-                full content width the Face card and the grid use. It used to line up with the
-                Configure card's narrower measure; that card is not on screen during a run any
-                more, so the narrow column it belonged to no longer exists.
-
-                Before a run there is nothing on screen to mistrust — and a permanent banner over
-                an empty starting screen is the fastest way to teach someone that this panel is
-                scenery, which is the one thing this warning cannot afford to become. Once up it
-                stays up, through a stop and through every result found, until "Start over"
-                clears the run itself. */}
-            <SecurityNotice />
-
+            {/* No standing phishing caveat here. A banner that is on screen for the whole run is
+                the fastest way to teach someone it is scenery, and the caveat is already carried
+                where it is actually read: the idle Configure card, the About dialog, and the
+                deploy dialog, where the address is confirmed and money is spent. */}
             <FaceSection
               mouths={mouths}
               filters={filters}
