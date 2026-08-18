@@ -33,7 +33,7 @@ export const ResultCard = memo(function ResultCard({ candidate, onSelect }: Resu
     // merge — Slot only concatenates classNames, it does not resolve conflicts between them.
     <Card
       asChild
-      className="w-full cursor-pointer items-stretch gap-3 py-4 text-left outline-none transition-colors hover:border-ring hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="w-full items-stretch gap-3 py-4 text-left outline-none transition-colors hover:border-ring hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <button
         type="button"

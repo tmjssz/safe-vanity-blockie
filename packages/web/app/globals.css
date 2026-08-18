@@ -79,4 +79,17 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4's preflight sets `cursor: default` on buttons, which left every control in the app
+     — the footer's info icon, "Learn more", Deploy, the chain picker, the theme toggle — showing an
+     arrow where a link shows a hand. Restored here rather than as a class on each control: "a
+     control looks clickable" is not an invariant a dozen components can hold up by each remembering
+     the same class, and the next one added would start out wrong again.
+
+     Disabled controls are excluded — nothing happens when they are clicked, and the inputs already
+     say so with `disabled:cursor-not-allowed`. So are the deliberately `cursor-default` rows inside
+     select and dropdown menus, which are options rather than buttons. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    @apply cursor-pointer;
+  }
 }

@@ -191,7 +191,7 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
                 aria-checked={accepted}
                 onClick={() => toggle(name)}
                 className={cn(
-                  'relative flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-2 transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  'relative flex flex-col items-center gap-1.5 rounded-lg border p-2 transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
                   // Inverted from what this used to do. Everything starts accepted, so the
                   // remarkable state is the rejected one: accepted tiles are simply normal, and
                   // rejection is what the eye should catch. Ringing all five by default made the
