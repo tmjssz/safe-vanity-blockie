@@ -8,6 +8,7 @@ import type { FaceFilters, MineConfig } from '../lib/config'
 import { useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
 import { chainById } from '../lib/wagmi'
+import { useRegisterStartOver } from './AppTitle'
 import { CliHandoff } from './CliHandoff'
 import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from './MiningStatusBar'
 import { ResultsGrid } from './ResultsGrid'
@@ -93,6 +94,13 @@ export function MiningView({
   useEffect(() => {
     setStatusBarSlot(document.getElementById(MINING_STATUS_BAR_SLOT_ID))
   }, [])
+
+  // Makes the app title in the header the second door back to the Configure card, for exactly as
+  // long as this component is mounted — which is exactly as long as there is a run to discard.
+  // It is registered from here for the same reason the status bar is rendered from here: the
+  // count the confirmation names and the reset it calls both live at this level. Unmounting on
+  // "Start over" is what puts the title back to plain text, so neither side keeps a flag.
+  useRegisterStartOver(state.candidates.length, onStartOver)
 
   // The three constants a worker actually mines with, as values. Everything below keys off these
   // rather than off `constants.data`, and that is the whole reason a chain switch is free.

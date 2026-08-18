@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AppTitle, StartOverProvider } from '../components/AppTitle'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
@@ -346,6 +347,36 @@ describe('MiningView', () => {
     expect(screen.getByTestId('results-count').textContent).toBe('0 results shown')
     expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
     expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+  })
+
+  // The header title is the second door back to the Configure card, and this component is what
+  // makes it one: it owns both the count the confirmation names and the reset it calls. Registered
+  // for exactly as long as a run is on screen — so the title is a control during a run and plain
+  // text either side of it — which is asserted in AppTitle's own suite.
+  it('puts the run in reach of the header title, count and all', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+    const onStartOver = vi.fn()
+
+    render(
+      <StartOverProvider>
+        <AppTitle />
+        <MiningView
+          config={CONFIG as never}
+          faceSpec={FACE_SPEC as never}
+          filters={DEFAULT_FACE_FILTERS}
+          onPauseToggle={vi.fn()}
+          onStartOver={onStartOver}
+          onSelect={vi.fn()}
+        />
+      </StartOverProvider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Safe Vanity Blockie' }))
+    expect(screen.getByText(/discard 1 result and start over\?/i)).toBeDefined()
+
+    await userEvent.click(await screen.findByRole('button', { name: /^discard and start over$/i }))
+    expect(onStartOver).toHaveBeenCalledTimes(1)
   })
 
   // ResultCard's memo is what keeps a 200-card grid usable across several publishes a second, and
