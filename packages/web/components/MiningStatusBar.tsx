@@ -164,7 +164,14 @@ export function MiningStatusBar({
           <span className="text-muted-foreground">
             {status.scanned.toLocaleString('en-US')} nonces
           </span>
-          <span className="text-muted-foreground">{formatRate(status.rate)}</span>
+          {/* Zero while paused, and not the average of the segment that just ended: nothing is
+              being scanned, so a speed is a claim about work that is not happening — sitting
+              unchanged next to a button offering to resume it. The count and the clock beside it
+              are cumulative facts about the run and stay where they are; this is the one figure on
+              the bar that describes the current moment. */}
+          <span className="text-muted-foreground">
+            {formatRate(status.paused ? 0 : status.rate)}
+          </span>
           <span className="text-muted-foreground">{status.workers} workers</span>
           {/* Gated on `started` — the same condition the controls use — because a clock reading
               "0s elapsed" before anything has been mined claims a run that does not exist. The

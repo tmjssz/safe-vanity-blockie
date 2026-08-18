@@ -85,6 +85,29 @@ describe('MiningStatusBar', () => {
     expect(screen.getByText(/5 workers/)).toBeDefined()
   })
 
+  // Nothing is being scanned while paused, so a speed is a claim about work that is not
+  // happening — and the number it would show is the average of the segment that just ended,
+  // sitting unchanged next to a Resume button. The scanned count and the elapsed clock are
+  // cumulative facts about the run and stay put; the rate is the one figure here that describes
+  // this instant.
+  it('reads zero while paused, rather than the speed the run last managed', () => {
+    render(
+      <MiningStatusBar
+        status={{ ...status, paused: true }}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('0k/s')).toBeDefined()
+    expect(screen.queryByText(/1\.03M\/s/)).toBeNull()
+    // The totals behind it are untouched: they are what the run has done, not what it is doing.
+    expect(screen.getByText(/4,200,000/)).toBeDefined()
+    expect(screen.getByText(/2m 05s/)).toBeDefined()
+  })
+
   it('shows how long the run has been going, formatted the way the CLI reports it', () => {
     render(
       <MiningStatusBar
