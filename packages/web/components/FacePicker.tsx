@@ -3,9 +3,10 @@
 import { Check, Info } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
-import { contrastPairForDistance, MAX_RGB_DISTANCE, rgbCss } from '../lib/contrast-preview'
+import { MAX_RGB_DISTANCE } from '../lib/contrast-preview'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
+import { ContrastSwatch } from './ContrastSwatch'
 import { TargetPreview } from './TargetPreview'
 import { Button } from './ui/button'
 import {
@@ -102,7 +103,6 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
   }
 
   const allAccepted = ALL_MOUTH_NAMES.every((name) => draft.includes(name))
-  const [dark, light] = contrastPairForDistance(filters.minContrast)
 
   return (
     // Two columns on a wide card: the tiles need the room, the two colour controls do not. They
@@ -251,21 +251,10 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
               The RGB distance required between the two blockie colours.
             </Explains>
             <div className="ml-auto flex items-center gap-2">
-              {/* The number says how far apart; these say what that looks like. They are greys
-                  because that is the only axis where an exact pair exists at every value the
-                  slider can reach — see lib/contrast-preview. */}
-              <span aria-hidden="true" className="flex overflow-hidden rounded-sm border">
-                <span
-                  data-slot="contrast-swatch"
-                  className="size-4"
-                  style={{ backgroundColor: rgbCss(dark) }}
-                />
-                <span
-                  data-slot="contrast-swatch"
-                  className="size-4"
-                  style={{ backgroundColor: rgbCss(light) }}
-                />
-              </span>
+              {/* The number says how far apart; this says what that looks like. Shared with every
+                  result tile, which shows the same pair for the contrast it was mined at, so the
+                  two readings of one number cannot drift apart. */}
+              <ContrastSwatch distance={filters.minContrast} className="h-4 w-8" />
               {/* A slider with no readout is unusable for a value this precise. */}
               <span
                 data-testid="min-contrast-value"
