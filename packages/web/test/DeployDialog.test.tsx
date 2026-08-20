@@ -1,5 +1,5 @@
 import { loadSafeConstants } from '@safe-vanity-blockie/safe-config'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MineConfig } from '../lib/config'
@@ -454,5 +454,53 @@ describe('DeployDialog', () => {
     await renderDialog()
     expect(screen.getAllByText(/cosmetic/i)).toHaveLength(1)
     expect(screen.getAllByText(/deploy it later/i)).toHaveLength(1)
+  })
+
+  // This is the detail view now: the result tile is a picture, a number and a truncated address,
+  // so everything a user might want to read about a result has to be reachable here.
+
+  // A bare "90.2%" on the tile is a number without a denominator. The dialog is where there is
+  // room to say what it is a percentage of.
+  it('says what the score is a percentage of', async () => {
+    await renderDialog()
+    expect(screen.getByText(/match to the closest accepted expression/i)).toBeDefined()
+  })
+
+  // The tile shows the expression and the contrast in eleven-pixel type with the word "contrast"
+  // left to a tooltip; this is where both are spelled out.
+  it('names the expression and the contrast it was mined for', async () => {
+    await renderDialog()
+    const summary = screen.getByTestId('result-traits').textContent ?? ''
+    expect(summary).toMatch(/small/)
+    expect(summary).toMatch(/contrast/i)
+    expect(summary).toMatch(/157/)
+  })
+
+  // The tile only marks the colour count when the filter is not already guaranteeing it, so for a
+  // three-colour result it now appears nowhere else at all.
+  it('says how many colours the identicon uses, which the tile no longer always shows', async () => {
+    await renderDialog()
+    expect(screen.getByTestId('result-traits').textContent).toMatch(/two colours/i)
+  })
+
+  it('offers to copy the address, which is the thing being verified', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await renderDialog()
+
+    // fireEvent, not userEvent: userEvent.setup() replaces navigator.clipboard with its own stub.
+    fireEvent.click(screen.getByRole('button', { name: /copy address/i }))
+    expect(writeText).toHaveBeenCalledWith(candidate.address)
+  })
+
+  // The saltNonce is what reproduces the address, and until now the only way to keep one was the
+  // share link — which carries the whole config with it.
+  it('offers to copy the saltNonce on its own', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await renderDialog()
+
+    fireEvent.click(screen.getByRole('button', { name: /copy saltnonce/i }))
+    expect(writeText).toHaveBeenCalledWith(candidate.saltNonce)
   })
 })

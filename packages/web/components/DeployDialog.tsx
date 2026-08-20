@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
 import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
 import { Blockie, DecorativeBlockie } from './Blockie'
+import { CopyButton } from './CopyButton'
 import { ShareConfig } from './ShareConfig'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
@@ -209,9 +210,54 @@ export function DeployDialog({
         <div className="flex flex-wrap items-center gap-4 rounded-lg border p-4">
           <Blockie address={candidate.address} size={128} />
           <div className="flex min-w-0 flex-col items-start gap-2">
-            <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
-            <code className="break-all text-sm">{candidate.address}</code>
-            <code className="text-xs text-muted-foreground">saltNonce {candidate.saltNonce}</code>
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
+              {/* The tile shows this number bare, for want of room. Here it gets its denominator:
+                  a percentage of nothing named is not a figure anyone can act on. */}
+              <span className="text-xs text-muted-foreground">
+                match to the closest accepted expression
+              </span>
+            </span>
+            {/* Copy buttons rather than "select the 42 characters without missing one": this is
+                the screen whose whole job is getting an address somewhere else intact. Beside the
+                value, not under it, so which control copies which line is never in doubt. */}
+            <span className="flex min-w-0 items-start gap-1">
+              <code className="break-all text-sm">{candidate.address}</code>
+              <CopyButton
+                value={candidate.address}
+                label="Copy address"
+                copiedMessage="Address copied"
+                failedMessage="Could not copy automatically. Select the address and copy it manually."
+                className="mt-0.5"
+              />
+            </span>
+            <span className="flex min-w-0 items-start gap-1">
+              {/* The saltNonce is what reproduces this address; until now the only way to keep one
+                  was the share link, which carries the whole config with it. */}
+              <code className="break-all text-xs text-muted-foreground">
+                saltNonce {candidate.saltNonce}
+              </code>
+              <CopyButton
+                value={candidate.saltNonce}
+                label="Copy saltNonce"
+                copiedMessage="saltNonce copied"
+                failedMessage="Could not copy automatically. Select the saltNonce and copy it manually."
+              />
+            </span>
+            {/* What the result was mined for. The tile carries these two in eleven-pixel type with
+                the word "contrast" left to a tooltip, and it marks the colour count only when the
+                filter is not already guaranteeing it — so for a three-colour result this is the
+                only place it is stated at all. */}
+            <span
+              data-testid="result-traits"
+              className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <Badge variant="outline">{Object.values(candidate.regions).join('/') || '—'}</Badge>
+              <Badge variant="outline">contrast {candidate.contrast}</Badge>
+              <Badge variant="outline">
+                {candidate.twoColor ? 'two colours' : 'three colours'}
+              </Badge>
+            </span>
           </div>
         </div>
 
