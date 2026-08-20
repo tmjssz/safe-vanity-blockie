@@ -60,18 +60,27 @@ vi.mock('@safe-vanity-blockie/core', async (importOriginal) => {
   }
 })
 
-const { constantsState, minerState, startSpy, stopSpy, setFiltersSpy, toastErrorSpy, reloadSpy } =
-  vi.hoisted(() => ({
-    constantsState: {
-      current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
-    },
-    minerState: { current: {} as Record<string, unknown> },
-    startSpy: vi.fn(),
-    stopSpy: vi.fn(),
-    setFiltersSpy: vi.fn(),
-    toastErrorSpy: vi.fn(),
-    reloadSpy: vi.fn(),
-  }))
+const {
+  constantsState,
+  minerState,
+  startSpy,
+  stopSpy,
+  setFiltersSpy,
+  setSortSpy,
+  toastErrorSpy,
+  reloadSpy,
+} = vi.hoisted(() => ({
+  constantsState: {
+    current: { loading: true } as { data?: unknown; error?: string; loading: boolean },
+  },
+  minerState: { current: {} as Record<string, unknown> },
+  startSpy: vi.fn(),
+  stopSpy: vi.fn(),
+  setFiltersSpy: vi.fn(),
+  setSortSpy: vi.fn(),
+  toastErrorSpy: vi.fn(),
+  reloadSpy: vi.fn(),
+}))
 
 // `reload` is part of the hook's contract, not part of what a test sets up: every state it can
 // return carries one, so it is spread in here rather than repeated in each `constantsState`.
@@ -85,6 +94,7 @@ vi.mock('../lib/use-miner.js', () => ({
     start: startSpy,
     stop: stopSpy,
     setFilters: setFiltersSpy,
+    setSort: setSortSpy,
   }),
 }))
 
@@ -102,6 +112,7 @@ beforeEach(() => {
   toastErrorSpy.mockClear()
   stopSpy.mockClear()
   setFiltersSpy.mockClear()
+  setSortSpy.mockClear()
   reloadSpy.mockClear()
 })
 
@@ -132,6 +143,95 @@ describe('MiningView', () => {
     )
     expect(screen.getByText(/reading safe/i)).toBeDefined()
     expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  describe('the sort control', () => {
+    const sortTrigger = () => screen.getByRole('combobox', { name: /^sort results$/i })
+
+    const renderWithResults = () => {
+      constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+      minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+      render(
+        <MiningView
+          config={CONFIG as never}
+          faceSpec={FACE_SPEC as never}
+          filters={DEFAULT_FACE_FILTERS}
+          onPauseToggle={vi.fn()}
+          onStartOver={vi.fn()}
+          onSelect={vi.fn()}
+        />,
+      )
+    }
+
+    // Best match is what the leaderboard is for: the run exists to find the closest face, and any
+    // other default would hide that behind an ordering nobody asked for.
+    it('starts on best match', () => {
+      renderWithResults()
+      expect(sortTrigger().textContent).toMatch(/best match/i)
+      // Pushed on mount as well as on a change, so the hook and the control cannot disagree about
+      // what is on screen.
+      expect(setSortSpy).toHaveBeenCalledWith('best')
+    })
+
+    // "Best match" on its own, beside a heading, reads as a status rather than as a control. The
+    // word is decorative for a screen reader, which gets the same thing from the control's name.
+    it('says out loud that it is a sort', () => {
+      renderWithResults()
+      const prefix = screen.getByText('Sort:')
+      expect(prefix.getAttribute('aria-hidden')).toBe('true')
+      expect(sortTrigger().getAttribute('aria-label')).toBe('Sort results')
+    })
+
+    it('offers the three orders and nothing else', async () => {
+      const user = userEvent.setup()
+      renderWithResults()
+      await user.click(sortTrigger())
+
+      const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
+      expect(options).toEqual(['Best match', 'Newest', 'Contrast'])
+    })
+
+    // Ordering is the miner's to apply — it holds the arrival numbers, and re-ordering there costs
+    // no mining progress — so this control's whole job is to say which one.
+    it('asks the miner to re-order, rather than sorting the grid itself', async () => {
+      const user = userEvent.setup()
+      renderWithResults()
+
+      await user.click(sortTrigger())
+      await user.click(await screen.findByRole('option', { name: /contrast/i }))
+
+      expect(setSortSpy).toHaveBeenLastCalledWith('contrast')
+      expect(sortTrigger().textContent).toMatch(/contrast/i)
+      // Nothing about the run changes: it is a display order, not a search.
+      expect(startSpy).toHaveBeenCalledTimes(1)
+      expect(stopSpy).not.toHaveBeenCalled()
+    })
+
+    it('sits in the heading row beside the CLI handoff, not above the grid', () => {
+      renderWithResults()
+      const row = sortTrigger().closest('div')?.parentElement
+      expect(row?.textContent).toMatch(/results/i)
+      expect(row?.querySelector('[data-testid="results-grid"]')).toBeNull()
+      expect(row?.contains(screen.getByRole('button', { name: /run on your machine/i }))).toBe(true)
+    })
+
+    // A control that reorders nothing is furniture to be read past, and this row already carries
+    // a heading, a count badge and the CLI handoff.
+    it('stays away until there is something to order', () => {
+      constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+      minerState.current = { ...IDLE_STATE, running: true, candidates: [] }
+      render(
+        <MiningView
+          config={CONFIG as never}
+          faceSpec={FACE_SPEC as never}
+          filters={DEFAULT_FACE_FILTERS}
+          onPauseToggle={vi.fn()}
+          onStartOver={vi.fn()}
+          onSelect={vi.fn()}
+        />,
+      )
+      expect(screen.queryByRole('combobox', { name: /^sort results$/i })).toBeNull()
+    })
   })
 
   it('renders one ResultCard per candidate and shows the scanned count once loaded', () => {

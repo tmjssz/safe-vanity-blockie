@@ -98,6 +98,36 @@ export interface LiveFilters {
 }
 
 /**
+ * How the grid orders what it shows. A display concern in the same sense the filters are: the
+ * leaderboard is score-ranked and untouched by either, so re-ordering costs no mining progress.
+ *
+ * - `best`     the leaderboard's own ranking (score, then two-colour, then contrast)
+ * - `newest`   most recently accepted onto the board first
+ * - `contrast` highest colour contrast first
+ */
+export type ResultSort = 'best' | 'newest' | 'contrast'
+
+/**
+ * Orders the reported list for display.
+ *
+ * `reported` arrives in leaderboard order, and every arm below is a stable sort over it, so ties
+ * fall back to the ranking the user would otherwise be looking at rather than to an arbitrary
+ * order that shuffles between publishes.
+ *
+ * `newest` reads arrival numbers rather than saltNonces. A nonce cannot stand in for a discovery
+ * time: the workers scan disjoint ranges in parallel, so a high nonce is not a late find.
+ */
+function orderForDisplay(
+  reported: Candidate[],
+  sort: ResultSort,
+  arrival: Map<string, number>,
+): Candidate[] {
+  if (sort === 'best') return reported
+  if (sort === 'contrast') return [...reported].sort((a, b) => b.contrast - a.contrast)
+  return [...reported].sort((a, b) => (arrival.get(b.address) ?? 0) - (arrival.get(a.address) ?? 0))
+}
+
+/**
  * How close the retained pool came to clearing the contrast floor. Measured over the candidates
  * the *other* filters accept — a three-colour result with enormous contrast would otherwise
  * advertise a floor that still matches nothing once two-colour is on. Undefined when no candidate
@@ -117,6 +147,7 @@ export function useMiner(): {
   start: (input: StartMiningInput) => void
   stop: () => void
   setFilters: (filters: LiveFilters) => void
+  setSort: (sort: ResultSort) => void
 } {
   const [state, setState] = useState<MinerState>(IDLE)
   const workersRef = useRef<Worker[]>([])
@@ -141,6 +172,15 @@ export function useMiner(): {
   // rather than a value captured by the start() closure, so `setFilters` below can change what
   // gets shown without restarting anything.
   const filtersRef = useRef<LiveFilters>({ twoColor: true, minContrast: 0 })
+  // Read by `publish` for the same reason the filters are: a re-order must not restart anything.
+  const sortRef = useRef<ResultSort>('best')
+  // Which batch of arrivals each retained address came in on, which is the only thing that can
+  // answer "what just turned up?": the board is score-ranked and keeps the best `retain`, so
+  // neither its order nor a candidate's saltNonce carries a discovery time. Numbers are assigned
+  // in `publish` and pruned to the board's current contents there — an evicted address cannot
+  // come back within a run, because the ranges already scanned are never scanned again.
+  const arrivalRef = useRef(new Map<string, number>())
+  const arrivalSeqRef = useRef(0)
   const publishRef = useRef<() => void>(() => {})
   // Bumped at the top of every start() and captured per-worker below. terminate() does not
   // un-queue a message a worker already dispatched, so a stale message can still arrive after
@@ -197,6 +237,10 @@ export function useMiner(): {
           activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current
       } else {
         boardRef.current = new Leaderboard(retain)
+        // With the board, because they name its rows: carried over, a fresh run's first finds
+        // would sort below results that no longer exist.
+        arrivalRef.current = new Map()
+        arrivalSeqRef.current = 0
         priorScannedRef.current = 0
         priorElapsedRef.current = 0
       }
@@ -221,6 +265,23 @@ export function useMiner(): {
             (activeUntil(startedAtRef.current, stoppedAtRef.current) - startedAtRef.current),
         )
         const entries = board.entries()
+        const arrival = arrivalRef.current
+        // One number per batch of arrivals, not per candidate: everything in a single worker
+        // message turned up at the same moment, and the board's own order within it is score
+        // order, which is not an arrival order at all. Sharing a number leaves the stable sort in
+        // orderForDisplay to fall back to the leaderboard ranking among them — so "newest" reads
+        // as "the batch that just landed, best first" rather than inventing a sequence.
+        let batch: number | undefined
+        for (const entry of entries) {
+          if (arrival.has(entry.address)) continue
+          batch ??= ++arrivalSeqRef.current
+          arrival.set(entry.address, batch)
+        }
+        // Keeps the map the size of the board rather than of everything the run ever accepted.
+        if (arrival.size > entries.length) {
+          const kept = new Set(entries.map((entry) => entry.address))
+          for (const address of arrival.keys()) if (!kept.has(address)) arrival.delete(address)
+        }
         const { reported, droppedCount } = selectReported(entries, {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,
@@ -236,7 +297,7 @@ export function useMiner(): {
           scanned,
           elapsedMs,
           rate: (scanned / elapsedMs) * 1000,
-          candidates: reported,
+          candidates: orderForDisplay(reported, sortRef.current, arrival),
           droppedCount,
           // Both read off `entries`, not off `reported`: the board is score-ranked and the
           // filters never touch it, so these two stay true and steady while the grid empties.
@@ -335,5 +396,10 @@ export function useMiner(): {
     publishRef.current()
   }, [])
 
-  return { state, start, stop, setFilters }
+  const setSort = useCallback((sort: ResultSort) => {
+    sortRef.current = sort
+    publishRef.current()
+  }, [])
+
+  return { state, start, stop, setFilters, setSort }
 }

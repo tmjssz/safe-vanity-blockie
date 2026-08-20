@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import type { FaceFilters, MineConfig } from '../lib/config'
-import { useMiner } from '../lib/use-miner'
+import { type ResultSort, useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
 import { chainById } from '../lib/wagmi'
 import { useRegisterStartOver } from './AppTitle'
@@ -15,6 +15,7 @@ import { ResultsGrid } from './ResultsGrid'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 /**
  * How many candidates the leaderboard keeps. Every one of them that survives the two-colour and
@@ -24,6 +25,17 @@ import { Button } from './ui/button'
  * anything in at all. 200 is what this screen has effectively retained all along.
  */
 const RETAINED_COUNT = 200
+
+/**
+ * The orders offered beside the Results heading, and the words for them. Best match leads because
+ * it is what the run is for: the leaderboard exists to find the closest face, and any other
+ * default would hide that behind an ordering nobody asked for.
+ */
+const SORT_OPTIONS: { value: ResultSort; label: string }[] = [
+  { value: 'best', label: 'Best match' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'contrast', label: 'Contrast' },
+]
 
 // The status bar has to sit above the caveat and both sections — it is the one thing that must
 // stay in view during a long search — but the mining state that feeds it is owned here, next to
@@ -77,7 +89,11 @@ export function MiningView({
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
-  const { state, start, stop, setFilters } = useMiner()
+  const { state, start, stop, setFilters, setSort } = useMiner()
+  // Held here rather than in the hook so the trigger has something to display, and pushed down the
+  // same way the filters are. The hook applies it: it holds the arrival numbers "Newest" needs,
+  // and re-ordering there costs no mining progress.
+  const [sort, setSortMode] = useState<ResultSort>('best')
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
   const { twoColor, minContrast } = filters
   // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
@@ -175,6 +191,13 @@ export function MiningView({
     setFilters({ twoColor, minContrast })
   }, [twoColor, minContrast, setFilters])
 
+  // Same shape, and pushed on mount as well as on a change: the control and the order the grid is
+  // actually in cannot be allowed to disagree, and the hook's own default is not this component's
+  // to assume.
+  useEffect(() => {
+    setSort(sort)
+  }, [sort, setSort])
+
   // A worker failure (crash, WASM blocked, unreadable message — see use-miner's onerror /
   // onmessageerror) is transient feedback worth surfacing immediately, but the toast fades on
   // its own timer. The `role="alert"` rendered below stays on screen for as long as the error
@@ -269,12 +292,41 @@ export function MiningView({
               <span className="sr-only"> results shown</span>
             </Badge>
           )}
-          {/* Beside the heading rather than in a row of its own between it and the grid: it is an
-              alternative to the search that is running, so it belongs next to the thing it is an
-              alternative to, and it has to be reachable without scrolling past the whole
-              leaderboard. `filters` goes with it so the copied command enforces the same standard
-              as the screen rather than the CLI's own defaults. */}
-          <div className="ml-auto">
+          {/* Both controls in the heading row, on the right. The sort belongs to the grid below it
+              and nothing else, and the handoff has to be reachable without scrolling past two
+              hundred results; a row of their own between the heading and the grid would push the
+              first tiles down the screen to say so.
+
+              Shown only once there is something to order — a control that reorders nothing is
+              furniture to be read past. */}
+          <div className="ml-auto flex items-center gap-2">
+            {state.candidates.length > 0 && (
+              <>
+                {/* "Best match" on its own, sitting beside a heading, reads as a status rather
+                    than as something to press. Hidden from assistive tech, which gets the same
+                    word — and a clearer one — from the trigger's own name just below. */}
+                <span aria-hidden="true" className="text-sm text-muted-foreground">
+                  Sort:
+                </span>
+                <Select value={sort} onValueChange={(next) => setSortMode(next as ResultSort)}>
+                  {/* Named rather than captioned, as the chain picker is: there is no room for a
+                      real field label here, and the trigger already shows the order as its
+                      value. */}
+                  <SelectTrigger id="results-sort" size="sm" aria-label="Sort results">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            {/* `filters` goes with it so the copied command enforces the same standard as the
+                screen rather than the CLI's own defaults. */}
             <CliHandoff
               config={config}
               rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
