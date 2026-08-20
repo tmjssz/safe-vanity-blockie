@@ -20,8 +20,8 @@ import { useCopy } from '../lib/use-copy'
 import { explorerFor } from '../lib/wagmi'
 import { Blockie } from './Blockie'
 import { CopyButton } from './CopyButton'
+import { DeployOutcome } from './DeployOutcome'
 import { type DeployPhase, DeployStatusPill } from './DeployStatusPill'
-import { DeploySuccess } from './DeploySuccess'
 import { OwnerList } from './OwnerList'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
@@ -128,6 +128,14 @@ export function DeployDialog({
    * The dialog reads it to decide whether it is still asking for a deploy or reporting one.
    */
   const [txHash, setTxHash] = useState<string | undefined>()
+  /**
+   * Whether the failure was the user turning the request down in their wallet.
+   *
+   * Kept apart from `error` because it changes what the outcome screen is called, and only the
+   * sequence can tell: by the time the message exists, "rejected" and "failed" are the same string
+   * to everything downstream.
+   */
+  const [rejected, setRejected] = useState(false)
 
   const wrongChain = isConnected && chainId !== config.chainId
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
@@ -181,7 +189,10 @@ export function DeployDialog({
    * After submission it stays, error or not: there is a hash, and it is the only way to look up
    * what the gas was spent on.
    */
-  const showStatus = busy || submitted
+  // The confirm state's own progress line, for the window between pressing Deploy and the
+  // transaction existing — reading constants, checking the address, waiting for the wallet. Once
+  // there IS a transaction, or a failure, the dialog is a different screen and this is not on it.
+  const showStatus = busy && !submitted && error === undefined
 
   /**
    * The share link, absolute because it is copied and pasted elsewhere; page.tsx pushes the same
@@ -202,6 +213,21 @@ export function DeployDialog({
     // of the road.
     failedMessage: 'Could not copy automatically. Use the link\'s own "copy link address" instead.',
   })
+
+  /**
+   * Back to the confirm state, with nothing of the failed attempt left on it.
+   *
+   * Everything it clears is state this component owns about ONE attempt; the candidate, the config
+   * and the share link are untouched, so "Try again" is the same deploy offered again rather than a
+   * new dialog.
+   */
+  const retry = () => {
+    setError(undefined)
+    setStatus(undefined)
+    setTxHash(undefined)
+    setCompleted(false)
+    setRejected(false)
+  }
 
   /**
    * Writes a terminal failure to both channels at once. The inline Alert is the one the user acts
@@ -323,7 +349,14 @@ export function DeployDialog({
           height, so the control this dialog exists to leave usable is never covered by it. Below
           that the content scrolls inside the dialog, as it already did. */}
         <DialogContent
-          className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-[560px]"
+          className={`max-h-[calc(100dvh-7rem)] overflow-y-auto ${
+            // 560 is the width the confirm state needs: a 42-character address beside a 96px
+            // identicon, and owner rows under it. The outcome screens are three centred lines and a
+            // button, so they take the narrower one the brief asks for — and since they are the same
+            // component across pending, success and failure, the box does not resize on
+            // confirmation either.
+            phase === 'idle' || phase === 'sending' ? 'sm:max-w-[560px]' : 'sm:max-w-[480px]'
+          }`}
           showCloseButton={!busy}
           onEscapeKeyDown={(event) => {
             if (busy) event.preventDefault()
@@ -341,13 +374,32 @@ export function DeployDialog({
             event.preventDefault()
           }}
         >
+          {/* The one live region, and the reason it is here rather than on whichever screen
+              happens to be showing: a region only announces changes to a container that was ALREADY
+              there when the text arrived, and these screens replace each other outright. Mounted
+              for the dialog's whole life, and sr-only because every word of it is on screen
+              already — this is the channel, not the copy. */}
+          <div aria-live="polite" className="sr-only">
+            {phase === 'sending' && status}
+            {phase === 'pending' && 'Transaction sent. Waiting for confirmation.'}
+            {phase === 'done' && 'Safe deployed.'}
+            {phase === 'failed' && error}
+          </div>
           {/* Two screens, one dialog. Once the Safe exists, everything below was there to be
               checked or decided — the warning, the address being verified, the config, the offer
               to deploy later, a button that spends gas — and all of it is settled. A tick added to
               a form is not the same thing as a screen that says what happened, so this swaps
               rather than annotates. */}
-          {completed && txHash ? (
-            <DeploySuccess address={candidate.address} txHash={txHash} chainId={config.chainId} />
+          {phase === 'pending' || phase === 'done' || phase === 'failed' ? (
+            <DeployOutcome
+              variant={phase === 'done' ? 'success' : phase === 'failed' ? 'failed' : 'pending'}
+              address={candidate.address}
+              txHash={txHash}
+              chainId={config.chainId}
+              reason={error}
+              rejected={rejected}
+              onRetry={retry}
+            />
           ) : (
             <>
               <DialogHeader>
@@ -450,11 +502,11 @@ export function DeployDialog({
                 </div>
 
                 <div className="border-t p-4">
-                  {/* Always mounted, even while empty. A live region only announces changes to a
-                container that was already there when the text arrived — mounting it together with
-                its first message announces nothing at all, and this is where "confirm in your
-                wallet", the transaction and "Safe deployed" all appear. */}
-                  <div aria-live="polite">
+                  {/* Visible progress for the window before a transaction exists. NOT a live
+                      region: the one that announces is mounted above for the dialog's whole life,
+                      because this panel is replaced outright the moment there is something to
+                      report, and a region that arrives with its first message announces nothing. */}
+                  <div>
                     {showStatus && (
                       <div className="flex flex-col gap-2 text-sm">
                         <span className="flex items-center gap-2">
@@ -603,12 +655,6 @@ export function DeployDialog({
                     Copy share link
                   </a>
                 </div>
-              )}
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription className="break-all">{error}</AlertDescription>
-                </Alert>
               )}
 
               <DialogFooter>
@@ -782,6 +828,7 @@ export function DeployDialog({
                         setStatus(undefined)
                         const message = thrown instanceof Error ? thrown.message : String(thrown)
                         if (isWalletRejection(thrown)) {
+                          setRejected(true)
                           // Checked before the `sendDispatched` branch below, which would otherwise tell
                           // a user who had just pressed "reject" that their transaction might be out
                           // there: viem throws this one before anything reaches the network.

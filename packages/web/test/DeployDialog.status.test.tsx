@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The deploy sequence's happy path, which DeployDialog.test.tsx deliberately cannot reach: that
@@ -84,6 +84,25 @@ beforeEach(() => {
   state.receipt = undefined
 })
 
+/**
+ * The dialog's own description, which is the visible subtitle of whichever screen is showing.
+ *
+ * Queried through `aria-describedby` rather than by its text, because the dialog's sr-only live
+ * region deliberately repeats the same words — that is how the outcome gets announced across a swap
+ * that replaces every visible part of it — so a plain text query matches twice.
+ */
+// Any leftover header slot, gone whether or not the test that made it reached its last line: two
+// elements with the same id means `getElementById` hands the dialog the stale one, and the next
+// test reads an empty node forever.
+afterEach(() => {
+  for (const stale of document.querySelectorAll('#header-deploy-slot')) stale.remove()
+})
+
+const subtitle = () => {
+  const id = screen.getByRole('dialog').getAttribute('aria-describedby') as string
+  return document.getElementById(id)?.textContent ?? ''
+}
+
 async function deploy() {
   const { DeployDialog } = await import('../components/DeployDialog')
   render(
@@ -99,11 +118,13 @@ async function deploy() {
   await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
   // The transaction reference is what "after submission" means, and the point the dialog turns
   // into a report rather than a request.
-  return screen.findByText(HASH, {}, { timeout: 5000 })
+  // The pending screen is what "after submission" means: the point the dialog stops asking and
+  // starts reporting. The hash is on it, truncated — DeployOutcome's own tests cover the format.
+  return screen.findByRole('heading', { name: /^deploying safe$/i }, { timeout: 5000 })
 }
 
 describe('DeployDialog after submission', () => {
-  it('replaces the config and the deploy-later offer with the transaction', async () => {
+  it('replaces the form with the pending screen', async () => {
     await deploy()
 
     // Nothing left to change, and nothing left to decide: all three of these were asking the user
@@ -112,11 +133,11 @@ describe('DeployDialog after submission', () => {
     expect(screen.queryByText(/^threshold$/i)).toBeNull()
     expect(screen.queryByText(/deploy later instead/i)).toBeNull()
     expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByRole('heading', { name: /deploy this safe/i })).toBeNull()
 
     // The identity stays: this is which Safe the transaction is creating, and the only thing on
     // screen that answers "what did I just pay for?".
     expect(screen.getByText(ADDRESS)).toBeDefined()
-    expect(screen.getByText('90.2%')).toBeDefined()
   })
 
   it('offers the transaction to copy and to open on the chain explorer', async () => {
@@ -127,24 +148,39 @@ describe('DeployDialog after submission', () => {
     expect(link.getAttribute('href')).toBe(`https://sepolia.etherscan.io/tx/${HASH}`)
   })
 
-  // A hash is 66 characters and the card is 480px wide, so on one line it was being clipped with
-  // an ellipsis: the reference to the thing the gas was spent on, shown incompletely. It wraps
-  // instead — there is room below it now that the config rows have given way.
-  it('shows the whole transaction hash rather than clipping it', async () => {
+  it('says the transaction is sent and names what it is waiting on', async () => {
     await deploy()
-
-    const hash = screen.getByText(HASH)
-    expect(hash.textContent).toBe(HASH)
-    expect(hash.className).toMatch(/break-all/)
-    expect(hash.className).not.toMatch(/truncate/)
-  })
-
-  it('says it is waiting on the chain, not on the wallet', async () => {
-    await deploy()
-    expect(screen.getByText(/waiting for confirmation on the chain/i)).toBeDefined()
+    expect(
+      screen.getByText(/transaction sent\. waiting for confirmation on sepolia\./i),
+    ).toBeDefined()
     // The one press left is the deliberate, warned way out; there is nothing to deploy twice.
     expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
     expect(screen.getByRole('button', { name: /close and keep waiting/i })).toBeDefined()
+  })
+
+  // "Morph in place": the confirmation must change the badge, the two lines and the footer WITHOUT
+  // the screen being rebuilt around them. Asserted as DOM identity, because that is what "without
+  // remounting" means — a rebuilt subtree hands back different nodes for the parts that did not
+  // change, and anything a user was mid-way through (a selection, a just-pressed copy) goes with
+  // them.
+  it('morphs into the success screen without rebuilding it', async () => {
+    await deploy()
+    const addressBefore = screen.getByText(ADDRESS)
+    const boxBefore = addressBefore.parentElement
+    const copyBefore = screen.getByRole('button', { name: /copy safe address/i })
+
+    state.receipt?.resolve({ status: 'success' })
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^safe deployed$/i })).toBeDefined(),
+    )
+
+    expect(screen.getByText(ADDRESS)).toBe(addressBefore)
+    expect(screen.getByText(ADDRESS).parentElement).toBe(boxBefore)
+    expect(screen.getByRole('button', { name: /copy safe address/i })).toBe(copyBefore)
+    // And the parts that DO change have: the same badge element, different contents.
+    const badge = document.querySelector('[data-slot="outcome-badge"]') as HTMLElement
+    expect(badge.querySelector('.lucide-check')).not.toBeNull()
+    expect(badge.querySelector('.animate-spin')).toBeNull()
   })
 
   // "Do not close silently on submission": the dialog is the only place the outcome is reported
@@ -176,16 +212,18 @@ describe('DeployDialog after submission', () => {
 
   // The other half of the spinner bug: once the transaction is a fact, a failure has to stay in the
   // status view — there is a hash to keep — but it must stop claiming to be working on something.
-  it('stops spinning when the transaction fails after it was sent', async () => {
+  it('turns into the failure screen when the transaction fails after it was sent', async () => {
     await deploy()
     state.receipt?.resolve({ status: 'reverted' })
 
-    await waitFor(() => expect(screen.getByText(/deployment reverted/i)).toBeDefined())
-    expect(screen.queryByText(/working/i)).toBeNull()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^deployment failed$/i })).toBeDefined(),
+    )
+    // The reason, in the words the sequence used, and nothing still claiming to be working.
+    expect(subtitle()).toMatch(/deployment reverted/i)
     expect(document.querySelector('.animate-spin')).toBeNull()
-    // The hash outlives the failure: it is the only way to look up what the gas was spent on.
-    expect(screen.getByText(HASH)).toBeDefined()
-    expect(screen.getByRole('link', { name: /on etherscan/i })).toBeDefined()
+    // The transaction outlives the failure: it is the only way to look up what the gas bought.
+    expect(screen.getByRole('link', { name: /view on etherscan/i })).toBeDefined()
   })
 
   // The commonest error of all, and the one the wallet answers instantly. It has to read as a
@@ -212,13 +250,19 @@ describe('DeployDialog after submission', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
 
-    const alert = await screen.findByText(/rejected/i, {}, { timeout: 5000 })
-    expect(alert.textContent).toMatch(/nothing was sent/i)
-    expect(alert.textContent).not.toMatch(/may already have been broadcast/i)
-    // Back to asking: nothing was spent, so the deploy button is live again.
+    // Its own headline, because a rejection is a decision rather than a fault — and no transaction
+    // line, because nothing was sent.
     expect(
-      (screen.getByRole('button', { name: /^deploy safe$/i }) as HTMLButtonElement).disabled,
-    ).toBe(false)
+      await screen.findByRole('heading', { name: /^transaction rejected$/i }, { timeout: 5000 }),
+    ).toBeDefined()
+    expect(subtitle()).toMatch(/nothing was sent/i)
+    expect(subtitle()).not.toMatch(/may already have been broadcast/i)
+    expect(screen.queryByRole('link', { name: /view on etherscan/i })).toBeNull()
+
+    // And the way back to the form is offered rather than assumed: nothing was spent, so trying
+    // again is the obvious next move, but it is the user's to make.
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+    expect(screen.getByRole('button', { name: /^deploy safe$/i })).toBeDefined()
   })
 
   // "Close and keep waiting" is not a cancel — nothing can recall a transaction a wallet already
@@ -247,14 +291,19 @@ describe('DeployDialog after submission', () => {
     // From the press, not from the close: a deploy is under way, and the header is where that has
     // to be visible however the user moves around the page next.
     await waitFor(() => expect(slot.textContent).toMatch(/deploying|confirming/i))
-    await screen.findByText(HASH, {}, { timeout: 5000 })
+    await screen.findByRole('heading', { name: /^deploying safe$/i }, { timeout: 5000 })
     rerender(<DeployDialog open={false} {...props} />)
 
     expect(slot.textContent).toMatch(/confirming/i)
     await userEvent.click(within(slot).getByRole('button'))
     expect(onOpenChange).toHaveBeenCalledWith(true)
 
-    slot.remove()
+    // `open` is a prop here, so the ask has to be granted for the round trip to be observable —
+    // page.tsx is what holds that state in production. What comes back is the same pending screen,
+    // and the pill steps aside for it.
+    rerender(<DeployDialog open {...props} />)
+    expect(screen.getByRole('heading', { name: /^deploying safe$/i })).toBeDefined()
+    expect(slot.textContent).toMatch(/confirming/i)
   })
 
   // Once it has settled with the dialog in front of the user, the dialog is saying it: a pill
@@ -279,10 +328,12 @@ describe('DeployDialog after submission', () => {
     await waitFor(() => expect(slot.textContent).toMatch(/confirming/i))
 
     state.receipt?.resolve({ status: 'success' })
-    await waitFor(() => expect(screen.getByText(/safe deployed/i)).toBeDefined())
+    // By role: the sr-only live region carries the same words, so plain text matches twice.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^safe deployed$/i })).toBeDefined(),
+    )
 
     expect(slot.textContent).toBe('')
-    slot.remove()
   })
 
   // …but settling while it is closed is exactly when the pill has to stay: it is the only thing
@@ -308,7 +359,6 @@ describe('DeployDialog after submission', () => {
     state.receipt?.resolve({ status: 'success' })
 
     await waitFor(() => expect(slot.textContent).toMatch(/deployed/i))
-    slot.remove()
   })
 
   // What the page needs in order to decide whether closing this dialog may unmount it.
@@ -355,7 +405,6 @@ describe('DeployDialog after submission', () => {
       />,
     )
     expect(slot.textContent).toBe('')
-    slot.remove()
   })
 
   // The status is where "confirm in your wallet", the transaction and "Safe deployed" all arrive,
@@ -379,7 +428,9 @@ describe('DeployDialog after submission', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
     await waitFor(() => expect(live?.textContent).toMatch(/\S/))
-    // The same node throughout: a remounted region announces nothing at all.
+    // The SAME node, all the way through a swap that replaces every visible part of the dialog:
+    // that is why the region lives on the dialog rather than on whichever screen is showing.
+    await waitFor(() => expect(live?.textContent).toMatch(/waiting for confirmation/i))
     expect(document.querySelector('[aria-live="polite"]')).toBe(live)
   })
 })

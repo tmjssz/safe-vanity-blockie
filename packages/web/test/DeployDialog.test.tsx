@@ -441,47 +441,57 @@ describe('DeployDialog', () => {
 
   // Moved from DeployPanel.test.tsx, plus the resume half of the pause contract: a deploy that
   // fails must hand mining back, or the user is left staring at a stopped miner.
-  it('renders an error alert when the deploy attempt fails, and resumes mining', async () => {
+  // The failure has a screen of its own now rather than an alert under a form: the reason is its
+  // subtitle, and the dialog's own live region announces it. Queried through `aria-describedby`
+  // because that region deliberately repeats the words, so a text query matches twice.
+  //
+  // A generous timeout: this waits on a dynamic import plus a rejected promise, and the default
+  // 1000ms has been observed to flake under the CPU contention of a full monorepo `pnpm -r test`
+  // run (many suites' worker pools competing for cores at once).
+  it('turns into the failure screen when the deploy attempt fails, and resumes mining', async () => {
     const onDeploySettled = vi.fn()
     await renderDialog({ onDeploySettled })
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /^deploy safe$/i }))
 
-    // A generous timeout: this waits on a dynamic import plus a rejected promise, and the
-    // default 1000ms has been observed to flake under the CPU contention of a full monorepo
-    // `pnpm -r test` run (many suites' worker pools competing for cores at once).
-    // Queried by its text rather than by role because the phishing caveat above it is also an
-    // Alert (role="alert"); the role is then asserted on the element that was found.
-    const message = await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
-    expect(message.closest('[role="alert"]')).not.toBeNull()
+    expect(
+      await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 }),
+    ).toBeDefined()
+    const describedBy = screen.getByRole('dialog').getAttribute('aria-describedby') as string
+    expect(document.getElementById(describedBy)?.textContent).toMatch(
+      /Could not read Safe constants/,
+    )
     expect(onDeploySettled).toHaveBeenCalledOnce()
   })
 
-  // The bug this pins: a failure before anything was sent left the status panel on screen with a
-  // spinner and the word "Working…", because the panel treated "there is an error" as "there is
-  // something in progress". Nothing is in progress — the wallet said no, or the read failed — and
-  // the dialog has to go back to asking.
+  // The bug this pins: a failure before anything was sent used to leave a spinner and the word
+  // "Working…" on screen, because the status panel treated "there is an error" as "there is
+  // something in progress". Nothing is in progress — the wallet said no, or the read failed.
   it('stops spinning when a deploy fails before anything was sent', async () => {
     await renderDialog()
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /^deploy safe$/i }))
-    await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
 
     expect(screen.queryByText(/working/i)).toBeNull()
     expect(document.querySelector('.animate-spin')).toBeNull()
   })
 
-  // Nothing was spent, so everything the dialog was offering before the attempt is still on offer:
-  // the config to check, the share link to leave with, and the button to try again.
-  it('goes back to asking after a failure that spent nothing', async () => {
+  // Nothing was spent, so the way back to the form is a press away — offered rather than assumed,
+  // because a screen that silently reverted to a form would lose the reason it failed. Everything
+  // the dialog was offering before the attempt is on offer again once it is taken.
+  it('offers the way back to the form after a failure that spent nothing', async () => {
     await renderDialog()
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /^deploy safe$/i }))
-    await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
 
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+
+    expect(screen.getByRole('heading', { name: /^deploy this safe$/i })).toBeDefined()
     expect(screen.getByText(/^threshold$/i)).toBeDefined()
     expect(screen.getByRole('link', { name: /copy share link/i })).toBeDefined()
     const retry = screen.getByRole('button', { name: /^deploy safe$/i })
