@@ -158,6 +158,38 @@ describe('DeployDialog after submission', () => {
     expect(screen.getByRole('button', { name: /close and keep waiting/i })).toBeDefined()
   })
 
+  // The address used to be spelled into this line, and read as truncated: 42 characters of hex
+  // followed by the ellipsis that means "in progress". It is gone rather than fixed — the card
+  // above it is already showing that exact address, in full, with its own copy button, and this
+  // sentence is about the wallet rather than about the address.
+  it('leaves the address to the card above while the wallet is being asked', async () => {
+    const { sendTransaction } = await import('viem/actions')
+    // Hangs, so the wallet-confirmation window can be inspected instead of being passed through.
+    vi.mocked(sendTransaction).mockImplementationOnce(() => new Promise(() => {}))
+
+    const { DeployDialog } = await import('../components/DeployDialog')
+    render(
+      <DeployDialog
+        open
+        candidate={candidate}
+        config={config}
+        onOpenChange={vi.fn()}
+        onDeployStart={vi.fn()}
+        onDeploySettled={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+
+    // Every copy of it: the visible panel, and the sr-only region that announces the same words.
+    await screen.findAllByText(/confirm in your wallet/i, {}, { timeout: 5000 })
+    for (const line of screen.getAllByText(/confirm in your wallet/i)) {
+      expect(line.textContent).not.toMatch(/0x/)
+    }
+    // Said once, where it can be checked and copied: the card at the top of the same dialog.
+    expect(screen.getByText(ADDRESS)).toBeDefined()
+    expect(screen.getByRole('button', { name: /copy safe address/i })).toBeDefined()
+  })
+
   // "Morph in place": the confirmation must change the badge, the two lines and the footer WITHOUT
   // the screen being rebuilt around them. Asserted as DOM identity, because that is what "without
   // remounting" means — a rebuilt subtree hands back different nodes for the parts that did not

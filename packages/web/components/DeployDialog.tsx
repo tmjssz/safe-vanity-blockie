@@ -1,15 +1,7 @@
 'use client'
 
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
-import {
-  ArrowLeftRight,
-  Check,
-  CircleAlert,
-  ExternalLink,
-  Link2,
-  Loader2,
-  ShieldAlert,
-} from 'lucide-react'
+import { ArrowLeftRight, Check, CircleAlert, Link2, Loader2, ShieldAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -17,7 +9,6 @@ import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagm
 import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
 import { shareConfigPath } from '../lib/deep-link'
 import { useCopy } from '../lib/use-copy'
-import { explorerFor } from '../lib/wagmi'
 import { Blockie } from './Blockie'
 import { CopyButton } from './CopyButton'
 import { DeployOutcome } from './DeployOutcome'
@@ -139,7 +130,6 @@ export function DeployDialog({
 
   const wrongChain = isConnected && chainId !== config.chainId
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
-  const explorer = explorerFor(config.chainId)
   const submitted = txHash !== undefined || completed
   /**
    * How far this deploy has got, as one value. The status panel below and the header pill are two
@@ -534,50 +524,6 @@ export function DeployDialog({
                             {error ? 'The deployment stopped.' : (status ?? 'Working on it…')}
                           </span>
                         </span>
-                        {txHash && (
-                          // The label and the two controls on one line, the hash on its own beneath it.
-                          // A hash is 66 characters and this card is 480px wide, so alongside them it
-                          // could only be shown clipped — an incomplete reference to the one thing that
-                          // says what the gas was spent on. It wraps instead, which fits because the
-                          // config rows have given way to this by the time it appears.
-                          <span className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1.5">
-                              <span className="shrink-0">Transaction</span>
-                              <CopyButton
-                                value={txHash}
-                                label="Copy transaction hash"
-                                copiedMessage="Transaction hash copied"
-                              />
-                              {explorer && (
-                                <a
-                                  href={explorer.tx(txHash)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
-                                >
-                                  on {explorer.name}
-                                  <ExternalLink className="size-3" aria-hidden="true" />
-                                </a>
-                              )}
-                            </span>
-                            {/* Full strength, like the address and the saltNonce above: it is a value to
-                          be read off the screen, not a caption. */}
-                            <code className="font-mono break-all text-foreground">{txHash}</code>
-                          </span>
-                        )}
-                        {/* The point of the whole screen, once it has happened: somewhere to go and see
-                      the Safe that now exists. */}
-                        {completed && explorer && (
-                          <a
-                            href={explorer.address(candidate.address)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                          >
-                            View the Safe on {explorer.name}
-                            <ExternalLink className="size-3.5" aria-hidden="true" />
-                          </a>
-                        )}
                       </div>
                     )}
                   </div>
@@ -766,7 +712,11 @@ export function DeployDialog({
                           )
                         }
 
-                        setStatus(`Sending: confirm in your wallet to deploy ${plan.address}…`)
+                        // No address in this line. The card at the top of this dialog is already
+                        // showing that exact string, in full and copyable, so repeating it here said
+                        // nothing twice — and inside a sentence ending in an ellipsis the 42
+                        // characters read as a value cut short.
+                        setStatus('Sending: confirm in your wallet…')
                         // useConnectorClient() returns a plain viem Client, not one extended with wallet
                         // actions, so sendTransaction is called as a standalone action against it.
                         const { sendTransaction } = await import('viem/actions')
@@ -778,7 +728,8 @@ export function DeployDialog({
                         })
                         setTxHash(hash)
                         // The hash gets a row of its own in the status panel below, with a copy and
-                        // a link to the explorer, so the sentence no longer carries it.
+                        // a link to the explorer on the pending screen, so the sentence
+                        // below no longer carries it.
                         setStatus('Sent. Waiting for confirmation on the chain…')
 
                         const { createPublicClient, http } = await import('viem')
