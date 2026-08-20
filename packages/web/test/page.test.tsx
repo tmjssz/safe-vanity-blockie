@@ -477,6 +477,22 @@ describe('Page', () => {
     expect(screen.queryByRole('button', { name: /back to mining/i })).toBeNull()
   })
 
+  // A block comment is a comment in an expression position and TEXT in a JSX child position, so
+  // wrapping a component's return in a fragment can silently turn a note into a paragraph of source
+  // code on the page. It happened once, to the note above the deploy dialog, and nothing caught it:
+  // every other assertion in this suite looks for something specific, and stray prose is the
+  // absence of nothing. This looks at the whole page instead, with a dialog open over it.
+  it('renders none of the app source code onto the page', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByRole('dialog')).toBeDefined()
+
+    expect(document.body.textContent ?? '').not.toMatch(/\/\*|\*\//)
+  })
+
   // The headline of the URL/history work: the address bar has to name the result that is open,
   // and it has to be a history ENTRY — a silent replace would put the link in the bar but leave
   // Back doing something else entirely.

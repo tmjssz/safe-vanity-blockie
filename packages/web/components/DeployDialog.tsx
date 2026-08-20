@@ -267,7 +267,7 @@ export function DeployDialog({
           not rendered the slot is not a reason for the only way back to a running deploy to
           disappear. */}
       {pillSlot && pill ? createPortal(pill, pillSlot) : pill}
-      /* NON-MODAL, and that is a deliberate reversal. As a modal this dialog laid a `z-50` overlay
+      {/* NON-MODAL, and that is a deliberate reversal. As a modal this dialog laid a `z-50` overlay
       over the whole viewport, trapped focus and `aria-hidden`-ed everything behind it — which
       includes the sticky header, and therefore the chain selector. The chain could not be changed
       without closing the result first. Raising the header above the overlay instead would have let
@@ -277,7 +277,7 @@ export function DeployDialog({
       and hides nothing, so the page behind really is the page — and the backdrop below is this
       component's own, drawn precisely so it can stop where the header starts. What follows from it
       is handled in page.tsx: the header's chain carries the open selection with it, and a card
-      behind this dialog is out of a pointer's reach but still in the accessibility tree. */
+      behind this dialog is out of a pointer's reach but still in the accessibility tree. */}
       <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         {/* The backdrop, and the reason it is not `inset-0`. It darkens and blurs everything BELOW
           the sticky header — `top-14` is that header's own `h-14` in app/layout.tsx, the same

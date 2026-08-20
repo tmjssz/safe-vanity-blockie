@@ -92,6 +92,18 @@ async function renderDialog(
 }
 
 describe('DeployDialog', () => {
+  // A bare `/* … */` is a comment in an expression position and TEXT in a JSX child position, and
+  // this component grew a fragment around its return — which quietly turned the note above the
+  // Dialog into a paragraph of source code rendered onto the page behind it. Nothing else here
+  // could catch that: every other assertion looks for something specific, and stray prose is the
+  // absence of nothing.
+  it('renders none of its own source code', async () => {
+    const { container } = await renderDialog()
+    const onScreen = `${container.textContent ?? ''} ${document.body.textContent ?? ''}`
+    expect(onScreen).not.toMatch(/\/\*/)
+    expect(onScreen).not.toMatch(/NON-MODAL/i)
+  })
+
   it('repeats the phishing caveat where money is spent', async () => {
     await renderDialog()
     expect(screen.getByText(/cosmetic/i)).toBeDefined()
