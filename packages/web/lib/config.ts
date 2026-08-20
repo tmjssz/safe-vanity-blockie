@@ -3,15 +3,22 @@ import { ZKSYNC_CHAIN_IDS } from '@safe-vanity-blockie/safe-config'
 export const SUPPORTED_SAFE_VERSIONS = ['1.4.1', '1.3.0'] as const
 export type SupportedSafeVersion = (typeof SUPPORTED_SAFE_VERSIONS)[number]
 
-/** Chains with canonical Safe deployments that this app offers. */
+/**
+ * Chains with canonical Safe deployments that this app offers.
+ *
+ * `safeShortName` is the EIP-3770 prefix Safe itself uses to name a chain in an address — the
+ * `sep:` in `sep:0x…` — and it is what app.safe.global's own links are built from. Carried on
+ * these entries rather than in a map of its own so it cannot drift out of step with the list it
+ * describes; test/config.test.ts pins one per chain.
+ */
 export const SUPPORTED_CHAINS = [
-  { id: 1, name: 'Ethereum' },
-  { id: 11155111, name: 'Sepolia' },
-  { id: 137, name: 'Polygon' },
-  { id: 42161, name: 'Arbitrum One' },
-  { id: 10, name: 'OP Mainnet' },
-  { id: 8453, name: 'Base' },
-  { id: 100, name: 'Gnosis' },
+  { id: 1, name: 'Ethereum', safeShortName: 'eth' },
+  { id: 11155111, name: 'Sepolia', safeShortName: 'sep' },
+  { id: 137, name: 'Polygon', safeShortName: 'matic' },
+  { id: 42161, name: 'Arbitrum One', safeShortName: 'arb1' },
+  { id: 10, name: 'OP Mainnet', safeShortName: 'oeth' },
+  { id: 8453, name: 'Base', safeShortName: 'base' },
+  { id: 100, name: 'Gnosis', safeShortName: 'gno' },
 ] as const
 
 /** The chain the header starts on, and what an unseeded config is mined for. */

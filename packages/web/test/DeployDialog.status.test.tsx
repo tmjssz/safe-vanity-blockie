@@ -148,14 +148,25 @@ describe('DeployDialog after submission', () => {
   })
 
   // "Do not close silently on submission": the dialog is the only place the outcome is reported
-  // inline, so it has to still be here to report it.
-  it('reports the deployed Safe, with somewhere to go and see it', async () => {
+  // inline, so it has to still be here to report it — and by then it is a different screen. What
+  // that screen contains is DeploySuccess's own tests; this is the switch into it.
+  it('turns into the success screen once the Safe exists', async () => {
     await deploy()
     state.receipt?.resolve({ status: 'success' })
 
-    await waitFor(() => expect(screen.getByText(/safe deployed/i)).toBeDefined())
-    const link = screen.getByRole('link', { name: /view the safe on etherscan/i })
-    expect(link.getAttribute('href')).toBe(`https://sepolia.etherscan.io/address/${ADDRESS}`)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^safe deployed$/i })).toBeDefined(),
+    )
+    expect(screen.getByText(/live on sepolia and ready to use/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: /open in safe wallet/i }).getAttribute('href')).toBe(
+      `https://app.safe.global/home?safe=sep:${ADDRESS}`,
+    )
+
+    // Nothing of the screen that was asking is left: not the title it had, not the warning, not the
+    // saltNonce, and not a button offering to deploy something that already exists.
+    expect(screen.queryByRole('heading', { name: /deploy this safe/i })).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByText(/saltnonce/i)).toBeNull()
     // Closing is all that is left, and it no longer warns about abandoning anything. Scoped to the
     // footer, because the dialog's own X is also named "Close" and is back now that busy is false.
     const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement
