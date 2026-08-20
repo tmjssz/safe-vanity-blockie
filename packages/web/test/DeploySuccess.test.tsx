@@ -82,6 +82,23 @@ describe('DeploySuccess', () => {
     expect(link.getAttribute('target')).toBe('_blank')
   })
 
+  // Monospace and sans on one line have different cap heights, so centring the boxes (which is what
+  // `items-center` does) leaves the hash sitting a hair above the words either side of it. Aligning
+  // baselines is what puts them on the same line to the eye; the copy button, being taller than the
+  // text, is centred instead so it does not hang off that baseline.
+  it('sits the hash and the link on one baseline', () => {
+    renderSuccess()
+    const line = screen.getByText('Transaction').parentElement as HTMLElement
+    expect(line.className).toMatch(/items-baseline/)
+    expect(line.className).not.toMatch(/items-center/)
+    // One line on any real screen; wrapping is left as the escape hatch for a pathologically narrow
+    // one, where overflowing off the side would be worse.
+    expect(line.className).toMatch(/sm:flex-nowrap/)
+    expect(screen.getByRole('button', { name: /copy transaction hash/i }).className).toMatch(
+      /self-center/,
+    )
+  })
+
   // Where the user actually goes next. The prefix is what tells Safe which chain, so an address
   // without it opens the wrong network's Safe or nothing at all.
   it('offers to open the Safe in Safe Wallet, on the chain it is on', () => {

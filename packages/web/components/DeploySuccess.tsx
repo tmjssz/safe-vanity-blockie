@@ -80,13 +80,21 @@ export function DeploySuccess({ address, txHash, chainId }: DeploySuccessProps) 
       {/* One caption line. The pending state gives the hash a row of its own because it is the
           thing being watched; by now it is a receipt, so it is abbreviated and stays out of the
           way of the address above it — the full string is on the clipboard and on the explorer. */}
-      <p className="flex flex-wrap items-center justify-center gap-1.5 text-xs text-muted-foreground">
+      {/* `items-baseline`, not `items-center`: the hash is monospace and the words either side of it
+          are not, and centring the boxes leaves their baselines a hair apart — which is exactly what
+          reads as "these are not on the same line". The copy button is taller than the text, so it
+          is centred within that baseline row instead of hanging off it.
+
+          Nowrap from `sm` up, where the line's 309px always fits: on anything narrower, wrapping is
+          a better failure than running off the side. */}
+      <p className="flex flex-wrap items-baseline justify-center gap-1.5 text-xs text-muted-foreground sm:flex-nowrap">
         <span>Transaction</span>
         <code className="font-mono">{`${txHash.slice(0, 6)}…${txHash.slice(-4)}`}</code>
         <CopyButton
           value={txHash}
           label="Copy transaction hash"
           copiedMessage="Transaction hash copied"
+          className="self-center"
         />
         {explorer && (
           <>
