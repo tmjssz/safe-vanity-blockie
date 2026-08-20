@@ -75,6 +75,11 @@ export interface MiningViewProps {
    * lose).
    */
   onStartOver: () => void
+  /**
+   * The Safe currently being deployed, if any, so its tile can say so. Owned by the page, which is
+   * where the deploy dialog and its state live.
+   */
+  deployingAddress?: string
   /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
 }
@@ -86,6 +91,7 @@ export function MiningView({
   paused = false,
   onPauseToggle,
   onStartOver,
+  deployingAddress,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
@@ -369,6 +375,7 @@ export function MiningView({
           mining={state.running}
           filters={filters}
           bestContrast={state.bestContrast}
+          deployingAddress={deployingAddress}
           onSelect={onSelect}
         />
       </section>

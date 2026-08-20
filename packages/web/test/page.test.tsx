@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 import Page from '../app/page'
 import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
@@ -704,6 +704,219 @@ describe('Page', () => {
     await release()
   })
 
+  describe('a deploy closed while it is still running', () => {
+    /**
+     * The header slot the dialog portals its stand-in into. The layout renders it in production;
+     * this file renders the page alone, so the group provides it and then asserts the pill lands
+     * there rather than merely existing somewhere.
+     */
+    let slot: HTMLElement
+
+    beforeEach(async () => {
+      const { DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+      slot = document.createElement('div')
+      slot.id = DEPLOY_STATUS_SLOT_ID
+      document.body.append(slot)
+    })
+
+    // In afterEach rather than at the end of each test: a test that fails before its last line
+    // would otherwise leave an element behind whose id shadows the next one's, and the dialog would
+    // portal into the wrong one.
+    afterEach(() => slot.remove())
+
+    /** Deploys candidate A far enough that a transaction exists, then closes the dialog. */
+    async function minimise(user: ReturnType<typeof userEvent.setup>) {
+      buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+      const release = pendingReceipt()
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+      await user.click(deployButton())
+      await screen.findByText(/waiting for confirmation on the chain/i, {}, { timeout: 5000 })
+      await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+      return release
+    }
+
+    // The headline: "Close and keep waiting" was a one-way door. The sequence carried on, the
+    // toast eventually reported it, and the dialog that could have shown the transaction was gone.
+    it('leaves a way back in the header, and reopens the same deploy with its status', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      expect(screen.queryByRole('dialog')).toBeNull()
+      // In the header, not merely on the page.
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await user.click(within(slot).getByRole('button'))
+
+      // The same dialog, not a fresh one: the transaction it was waiting on is still on screen.
+      expect(await screen.findByRole('dialog')).toBeDefined()
+      expect(screen.getByText('0xhash')).toBeDefined()
+      expect(screen.getByText(/waiting for confirmation on the chain/i)).toBeDefined()
+      // The header keeps it while the deploy is still running, dialog open or not: it stops being
+      // a stand-in and becomes the one place a running deploy is always visible. It drops away when
+      // the deploy settles in front of the user — see the dialog's own tests for that half.
+
+      await release(new Error('boom'))
+    })
+
+    // The reported bug: the first close worked, and the second one lost the deploy. The page was
+    // deciding whether to keep the dialog mounted from its own pause flag, which the FIRST close
+    // clears (mining has to be handed back), so the second close read "nothing outstanding" and
+    // unmounted the dialog the pill was pointing at.
+    it('survives being closed, reopened and closed again', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await user.click(within(slot).getByRole('button'))
+      expect(await screen.findByRole('dialog')).toBeDefined()
+
+      await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(slot.textContent).toMatch(/confirming/i)
+      // And it is still the same deploy, with the same transaction still on it.
+      await user.click(within(slot).getByRole('button'))
+      expect(screen.getByText('0xhash')).toBeDefined()
+
+      await release(new Error('boom'))
+    })
+
+    // The header is where a deploy is visible for as long as it is running, and that starts at the
+    // press: a user who scrolls the grid or opens the pattern filter should not have to remember
+    // that something is going on.
+    it('shows the status from the moment deploy is pressed, with the dialog still open', async () => {
+      buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+      const release = pendingReceipt()
+      render(<Page />)
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+      expect(slot.textContent).toBe('')
+
+      await user.click(deployButton())
+
+      await waitFor(() => expect(slot.textContent).toMatch(/deploying|confirming/i))
+      expect(screen.getByRole('dialog')).toBeDefined()
+
+      await release(new Error('boom'))
+    })
+
+    // A deploy that settles while nobody is looking has to say so where the user last saw it.
+    it('reports the outcome on the way back when the deploy settles while it is closed', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+      await user.click(within(slot).getByRole('button'))
+      expect(await screen.findByText(/the chain said no/i)).toBeDefined()
+    })
+
+    // Once it has been read there is nothing left to stand in for, and a control in the header
+    // offering to reopen a finished deploy is furniture.
+    it('takes the way back away once the settled deploy has been closed again', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+
+      await user.click(within(slot).getByRole('button'))
+      // "Close", not "Close and keep waiting": the deploy has settled, so there is nothing left to
+      // wait for. Scoped to the footer, because the dialog's own X is named "Close" too.
+      const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement
+      await user.click(within(footer).getByRole('button', { name: /^close$/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(slot.textContent).toBe('')
+    })
+
+    // The page already ignores a card activated while a send is in flight. The same rule has to
+    // cover this window, or a click on the grid would quietly destroy the state the pill is
+    // pointing at — which is worse than the old behaviour, because the pill promised it was there.
+    // Refusing was right; refusing SILENTLY was not. A grid that stops responding reads as broken
+    // rather than as a rule, so the refusal now says what it is waiting for.
+    it('explains itself when a result is activated while a deploy is running', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+      const warning = await screen.findByRole('dialog')
+      expect(warning.textContent).toMatch(/deploy is already in progress/i)
+      // Still A's deploy underneath, and still the only thing in the header.
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      // And it offers the thing the user was otherwise denied a route to.
+      await user.click(screen.getByRole('button', { name: /view the deploy/i }))
+      const deploy = await screen.findByRole('dialog')
+      expect(deploy.textContent).toContain(CANDIDATE_A.address)
+      expect(deploy.textContent).not.toMatch(/deploy is already in progress/i)
+
+      await release(new Error('boom'))
+    })
+
+    // Its own tile offers "View the deploy", so activating it is a request to come back rather than
+    // something to refuse: warning a user off the very deploy they are pointing at would be absurd.
+    it('reopens the deploy when its own result is activated', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toContain(CANDIDATE_A.address)
+      expect(dialog.textContent).not.toMatch(/deploy is already in progress/i)
+
+      await release(new Error('boom'))
+    })
+
+    it('lets the warning be dismissed without changing anything', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      const opened = window.location.href
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+      await user.click(screen.getByRole('button', { name: /keep waiting/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(window.location.href).toBe(opened)
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await release(new Error('boom'))
+    })
+
+    // Once it has settled there is nothing left to protect: the outcome has been reported, and a
+    // pill that went on wedging the grid would be a finished deploy holding the app hostage.
+    it('takes a new result once the outstanding deploy has settled', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toContain(CANDIDATE_B.address)
+      expect(dialog.textContent).not.toMatch(/deploy is already in progress/i)
+      expect(slot.textContent).toBe('')
+    })
+  })
+
   // The other half of that dismissal, and the reason `deploying` cannot be a single shared
   // boolean. "Close and keep waiting" leaves the wallet holding A's transaction and hands mining
   // back — deliberately, above — but A's sequence is still running, and its `finally` still calls
@@ -725,6 +938,20 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
     expect(screen.getByText('running')).toBeDefined()
+
+    // Back, rather than straight to another card: closing mid-flight now keeps A's dialog mounted
+    // so the header pill can bring it back, and the grid will not take a new result while that
+    // deploy is running (see "explains itself when a result is activated while a deploy is
+    // running"). A traversal is the route that is left.
+    //
+    // TWICE, and the first one is not redundant: closing pushed the base URL over A's own entry, so
+    // the first Back lands back ON that entry and reopens A — which is the behaviour that entry is
+    // for. The second leaves it, unmounting the dialog, which is what makes the attempt below
+    // genuinely abandoned and what puts the grid back in play.
+    await traverse(() => window.history.back())
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    await traverse(() => window.history.back())
+    expect(screen.queryByRole('dialog')).toBeNull()
 
     const releaseB = pendingDeploy()
     await user.click(screen.getByRole('button', { name: 'select-b' }))
@@ -2433,7 +2660,15 @@ describe('Page', () => {
 
     // Nothing moved: the same dialog, the same in-flight sequence, the same URL. In particular
     // mining is still paused and the selector still disabled — an unmount here would have handed
-    // both back while the wallet still had the transaction.
+    // both back while the wallet still had the transaction. What HAS changed is that the refusal
+    // now says so rather than looking like a dead grid, so the deploy dialog is asserted on by
+    // name rather than as "the dialog".
+    expect(await screen.findByText(/deploy is already in progress/i)).toBeDefined()
+    // Dismissed before the assertions below, as a user would: the warning is modal, so while it is
+    // up the deploy dialog behind it is out of the accessibility tree and out of reach of a role
+    // query — which is exactly what a modal is for.
+    await user.click(screen.getByRole('button', { name: /keep waiting/i }))
+
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_B.address)
     expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()

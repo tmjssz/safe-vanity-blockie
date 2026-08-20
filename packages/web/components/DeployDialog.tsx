@@ -10,7 +10,8 @@ import {
   Loader2,
   ShieldAlert,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
 import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
@@ -19,6 +20,7 @@ import { useCopy } from '../lib/use-copy'
 import { explorerFor } from '../lib/wagmi'
 import { Blockie } from './Blockie'
 import { CopyButton } from './CopyButton'
+import { type DeployPhase, DeployStatusPill } from './DeployStatusPill'
 import { OwnerList } from './OwnerList'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
@@ -33,6 +35,16 @@ import {
   DialogPortal,
   DialogTitle,
 } from './ui/dialog'
+
+/**
+ * The layout renders an empty element with this id in the header, and this dialog portals its
+ * stand-in into it for the window where it has been closed while its transaction is still going.
+ * Declared here, next to the state it is derived from, so the layout can render the slot without
+ * importing anything about deploying. Same arrangement as HEADER_CHAIN_SLOT_ID and the mining
+ * status bar's own slot, and for the same reason: the state belongs to the component, the place
+ * belongs to the chrome.
+ */
+export const DEPLOY_STATUS_SLOT_ID = 'header-deploy-slot'
 
 /**
  * Whether the wallet turned the request down, rather than something failing.
@@ -79,6 +91,17 @@ export interface DeployDialogProps {
    */
   onDeployStart: (attempt: DeployAttempt) => void
   onDeploySettled: (attempt: DeployAttempt) => void
+  /**
+   * How far this dialog's deploy has got, whenever that changes and once on mount.
+   *
+   * The page needs it to decide whether closing may unmount this component. It cannot use its own
+   * pause flag for that: the pause is handed back the first time the dialog is closed mid-flight
+   * (that is the whole point of "Close and keep waiting"), so a second close would read "nothing
+   * outstanding" and throw away the running deploy's state — which is exactly the bug this exists
+   * to make impossible. Reported on mount as well, so a page still holding the previous dialog's
+   * phase is corrected by the next one rather than by remembering to clear it.
+   */
+  onPhaseChange?: (phase: DeployPhase) => void
 }
 
 export function DeployDialog({
@@ -88,6 +111,7 @@ export function DeployDialog({
   onOpenChange,
   onDeployStart,
   onDeploySettled,
+  onPhaseChange,
 }: DeployDialogProps) {
   const { isConnected, address, chainId } = useAccount()
   const { switchChain } = useSwitchChain()
@@ -108,6 +132,42 @@ export function DeployDialog({
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
   const explorer = explorerFor(config.chainId)
   const submitted = txHash !== undefined || completed
+  /**
+   * How far this deploy has got, as one value. The status panel below and the header pill are two
+   * views of it, so they cannot disagree about what is happening.
+   *
+   * `error` is read before `completed` and `txHash` on purpose: a revert or a mismatch is the
+   * outcome, whatever else already happened.
+   */
+  const phase: DeployPhase = error
+    ? 'failed'
+    : completed
+      ? 'done'
+      : txHash
+        ? 'pending'
+        : busy
+          ? 'sending'
+          : 'idle'
+
+  useEffect(() => {
+    onPhaseChange?.(phase)
+  }, [phase, onPhaseChange])
+
+  // And 'idle' on the way out. A dialog that is gone has no phase, and the page reads this to
+  // decide whether the grid may take a new result: without it, a traversal that unmounts this
+  // component mid-deploy would leave the page holding "sending" for a dialog that no longer
+  // exists, refusing every result from then on. Its own effect, so it fires only on unmount
+  // rather than between every phase change.
+  useEffect(() => () => onPhaseChange?.('idle'), [onPhaseChange])
+
+  // Resolved during the first render in the browser, with the effect as the fallback for a mount
+  // order the first render cannot see — the same arrangement MiningView uses for the status bar.
+  const [pillSlot, setPillSlot] = useState<HTMLElement | null>(() =>
+    typeof document === 'undefined' ? null : document.getElementById(DEPLOY_STATUS_SLOT_ID),
+  )
+  useEffect(() => {
+    setPillSlot(document.getElementById(DEPLOY_STATUS_SLOT_ID))
+  }, [])
   /**
    * Whether the dialog is reporting rather than asking.
    *
@@ -152,21 +212,47 @@ export function DeployDialog({
     toast.error(message)
   }
 
+  /**
+   * Whether the header carries this deploy.
+   *
+   * From the press until the outcome has been seen, which is two rules rather than one:
+   *
+   * - while it is running, always — open or closed. A deploy takes as long as a chain takes, and
+   *   the user is meant to be able to scroll the grid or change a filter meanwhile without losing
+   *   sight of it.
+   * - once it has settled, only while this dialog is closed. In front of the user the dialog is
+   *   already saying it, and a pill beside it would be the same news twice; closed, it is the only
+   *   thing that can bring the outcome back on screen.
+   */
+  const settled = phase === 'done' || phase === 'failed'
+  const pill =
+    phase === 'idle' || (settled && open) ? null : (
+      <DeployStatusPill
+        phase={phase}
+        address={candidate.address}
+        onOpen={() => onOpenChange(true)}
+      />
+    )
+
   return (
-    /* NON-MODAL, and that is a deliberate reversal. As a modal this dialog laid a `z-50` overlay
-       over the whole viewport, trapped focus and `aria-hidden`-ed everything behind it — which
-       includes the sticky header, and therefore the chain selector. The chain could not be
-       changed without closing the result first. Raising the header above the overlay instead
-       would have let a mouse through while leaving the control invisible to keyboard and screen
-       reader users, which is worse than not offering it at all; non-modal is the honest version:
-       Radix drops the overlay entirely (`DialogOverlay` renders nothing at all when
-       `modal={false}`), stops trapping focus and hides nothing, so the page behind really is the
-       page — and the backdrop below is this component's own, drawn precisely so it can stop where
-       the header starts. What follows from it is handled in page.tsx: the header's chain carries
-       the open selection with it, and a card behind this dialog is out of a pointer's reach but
-       still in the accessibility tree. */
-    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
-      {/* The backdrop, and the reason it is not `inset-0`. It darkens and blurs everything BELOW
+    <>
+      {/* In place if no slot is mounted, as MiningView does with the status bar: a header that has
+          not rendered the slot is not a reason for the only way back to a running deploy to
+          disappear. */}
+      {pillSlot && pill ? createPortal(pill, pillSlot) : pill}
+      /* NON-MODAL, and that is a deliberate reversal. As a modal this dialog laid a `z-50` overlay
+      over the whole viewport, trapped focus and `aria-hidden`-ed everything behind it — which
+      includes the sticky header, and therefore the chain selector. The chain could not be changed
+      without closing the result first. Raising the header above the overlay instead would have let
+      a mouse through while leaving the control invisible to keyboard and screen reader users, which
+      is worse than not offering it at all; non-modal is the honest version: Radix drops the overlay
+      entirely (`DialogOverlay` renders nothing at all when `modal={false}`), stops trapping focus
+      and hides nothing, so the page behind really is the page — and the backdrop below is this
+      component's own, drawn precisely so it can stop where the header starts. What follows from it
+      is handled in page.tsx: the header's chain carries the open selection with it, and a card
+      behind this dialog is out of a pointer's reach but still in the accessibility tree. */
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+        {/* The backdrop, and the reason it is not `inset-0`. It darkens and blurs everything BELOW
           the sticky header — `top-14` is that header's own `h-14` in app/layout.tsx, the same
           relationship MiningStatusBar's `top-14` already depends on — and nothing above it, so the
           one control this dialog went non-modal for stays lit, unblurred and usable while the rest
@@ -192,17 +278,17 @@ export function DeployDialog({
           Escape, the X and the footer button. Inside DialogPortal so it mounts and unmounts with
           the dialog and lands in the same portal layer, before the content and therefore under
           it. */}
-      <DialogPortal>
-        <div
-          data-slot="deploy-dialog-backdrop"
-          aria-hidden="true"
-          className="fixed inset-x-0 top-14 bottom-0 z-45 bg-background/60 backdrop-blur-sm"
-          onClick={() => {
-            if (!busy) onOpenChange(false)
-          }}
-        />
-      </DialogPortal>
-      {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
+        <DialogPortal>
+          <div
+            data-slot="deploy-dialog-backdrop"
+            aria-hidden="true"
+            className="fixed inset-x-0 top-14 bottom-0 z-45 bg-background/60 backdrop-blur-sm"
+            onClick={() => {
+              if (!busy) onOpenChange(false)
+            }}
+          />
+        </DialogPortal>
+        {/* While the sequence is in flight this dialog is the ONLY place its outcome can be read
           inline, and closing it unmounts the dialog outright — page.tsx renders it only while a
           candidate is selected, keyed on that candidate's address, and clears the selection when
           it closes. So the *accidental* dismissals are blocked: Escape and the X while busy,
@@ -235,25 +321,25 @@ export function DeployDialog({
           centred, `100dvh-7rem` cannot reach under the layout's `h-14` sticky bar at any viewport
           height, so the control this dialog exists to leave usable is never covered by it. Below
           that the content scrolls inside the dialog, as it already did. */}
-      <DialogContent
-        className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-[560px]"
-        showCloseButton={!busy}
-        onEscapeKeyDown={(event) => {
-          if (busy) event.preventDefault()
-        }}
-        onInteractOutside={(event) => {
-          event.preventDefault()
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Deploy this Safe</DialogTitle>
-          <DialogDescription>
-            Your wallet will ask you to confirm a transaction that spends gas
-            {chainName ? ` on ${chainName}` : ''}.
-          </DialogDescription>
-        </DialogHeader>
+        <DialogContent
+          className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-[560px]"
+          showCloseButton={!busy}
+          onEscapeKeyDown={(event) => {
+            if (busy) event.preventDefault()
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Deploy this Safe</DialogTitle>
+            <DialogDescription>
+              Your wallet will ask you to confirm a transaction that spends gas
+              {chainName ? ` on ${chainName}` : ''}.
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* The caveat is repeated here on purpose: this is the screen where money is actually
+          {/* The caveat is repeated here on purpose: this is the screen where money is actually
             spent, and it is the last place it can still do any good. role="note" rather than the
             Alert default, though — it is static copy that is always here, so as a live region it
             would compete permanently with the real status/error below.
@@ -261,168 +347,168 @@ export function DeployDialog({
             Gone once the transaction is away: "check the address before you confirm" is advice
             about a decision that has already been taken by then, and the status it would be
             sitting above is the thing to read instead. */}
-        {!submitted && (
-          <Alert role="note" variant="warning">
-            <ShieldAlert className="h-4 w-4" />
-            {/* The same box the About dialog and the results callout draw, in the same amber and
+          {!submitted && (
+            <Alert role="note" variant="warning">
+              <ShieldAlert className="h-4 w-4" />
+              {/* The same box the About dialog and the results callout draw, in the same amber and
                 with the lead running into the body rather than stacked above it. Met three times in
                 one session it has to read as one warning, not three that begin alike. The wording
                 stays this screen's own: "the address below", "before you confirm" — the others are
                 read while browsing, this one while about to spend. */}
-            <AlertDescription>
-              <p>
-                <strong className="font-medium">A matching identicon is cosmetic.</strong> Check
-                every character of the address below before you confirm. A look-alike blockie is a
-                known phishing vector.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
+              <AlertDescription>
+                <p>
+                  <strong className="font-medium">A matching identicon is cosmetic.</strong> Check
+                  every character of the address below before you confirm. A look-alike blockie is a
+                  known phishing vector.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
 
-        {/* One card rather than the two stacked ones this replaces. They held the identity and the
+          {/* One card rather than the two stacked ones this replaces. They held the identity and the
             config that produces it, which is one subject, and the seam between them read as two
             unrelated blocks of small print.
 
             `bg-card`, the same fill the Pattern filter card has: this is the one raised surface in
             the dialog, and against the dialog's own background a bordered box with no fill reads as
             a hairline rather than as the thing to look at. */}
-        <div className="rounded-lg border bg-card">
-          <div className="flex items-center gap-3 p-4">
-            {/* The identicon is what a look-alike attack imitates, so this is the one picture in
+          <div className="rounded-lg border bg-card">
+            <div className="flex items-center gap-3 p-4">
+              {/* The identicon is what a look-alike attack imitates, so this is the one picture in
                 the app worth drawing large: it is compared against the tile that was clicked, and
                 against whatever the wallet shows next. */}
-            <Blockie
-              address={candidate.address}
-              size={96}
-              className="size-24 shrink-0 overflow-hidden rounded-md [&>svg]:size-full"
-            />
-            {/* `flex-1`: the column takes the rest of the row rather than sizing to its longest
+              <Blockie
+                address={candidate.address}
+                size={96}
+                className="size-24 shrink-0 overflow-hidden rounded-md [&>svg]:size-full"
+              />
+              {/* `flex-1`: the column takes the rest of the row rather than sizing to its longest
                 child, which is what lets the address below run the full width of the card. */}
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <span className="flex items-center gap-1">
-                {/* One line, unbroken and ungrouped: chunking an address makes it easier to skim
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <span className="flex items-center gap-1">
+                  {/* One line, unbroken and ungrouped: chunking an address makes it easier to skim
                     and harder to compare, and comparing is the only thing this screen is for. Full
                     strength, because it is the thing being read — everything else in this card is
                     context for it. The copy beside it is the same control as every other copy on
                     the screen; being the important one is the address's job, not the button's. */}
-                {/* Sized to fill the line, measured in a browser rather than guessed: 42
+                  {/* Sized to fill the line, measured in a browser rather than guessed: 42
                     characters come to 340px against 340px of room at 13.5px, a fit with nothing to
                     spare. 13px keeps ~12px of slack for a monospace fallback wider than the 0.6em
                     advance this stack mostly shares — `truncate` is a backstop, and an address with
                     its tail quietly clipped is exactly the failure this screen exists to
                     prevent. */}
-                <code className="min-w-0 truncate font-mono text-[13px] text-foreground">
-                  {candidate.address}
-                </code>
-                <CopyButton
-                  value={candidate.address}
-                  label="Copy Safe address"
-                  copiedMessage="Safe address copied"
-                  failedMessage="Could not copy automatically. Select the address and copy it manually."
-                />
-              </span>
-              {/* The caption, and everything the tile could not say. No expression, contrast or
+                  <code className="min-w-0 truncate font-mono text-[13px] text-foreground">
+                    {candidate.address}
+                  </code>
+                  <CopyButton
+                    value={candidate.address}
+                    label="Copy Safe address"
+                    copiedMessage="Safe address copied"
+                    failedMessage="Could not copy automatically. Select the address and copy it manually."
+                  />
+                </span>
+                {/* The caption, and everything the tile could not say. No expression, contrast or
                   colour-count chips: three badges of mining trivia sat directly under the address
                   they were competing with, on the screen where nothing may compete with it. */}
-              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <Badge variant="secondary" className="font-mono">
-                  {formatScore(candidate.score, candidate.maxScore)}
-                </Badge>
-                {/* The label stays quiet and the value does not: the saltNonce is the other thing
+                <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="font-mono">
+                    {formatScore(candidate.score, candidate.maxScore)}
+                  </Badge>
+                  {/* The label stays quiet and the value does not: the saltNonce is the other thing
                     here worth copying, since it is what reproduces this address. */}
-                <span className="truncate">
-                  expression match · saltNonce{' '}
-                  <span className="text-foreground">{candidate.saltNonce}</span>
+                  <span className="truncate">
+                    expression match · saltNonce{' '}
+                    <span className="text-foreground">{candidate.saltNonce}</span>
+                  </span>
+                  <CopyButton
+                    value={candidate.saltNonce}
+                    label="Copy saltNonce"
+                    copiedMessage="saltNonce copied"
+                    failedMessage="Could not copy automatically. Select the saltNonce and copy it manually."
+                  />
                 </span>
-                <CopyButton
-                  value={candidate.saltNonce}
-                  label="Copy saltNonce"
-                  copiedMessage="saltNonce copied"
-                  failedMessage="Could not copy automatically. Select the saltNonce and copy it manually."
-                />
-              </span>
+              </div>
             </div>
-          </div>
 
-          <div className="border-t p-4">
-            {/* Always mounted, even while empty. A live region only announces changes to a
+            <div className="border-t p-4">
+              {/* Always mounted, even while empty. A live region only announces changes to a
                 container that was already there when the text arrived — mounting it together with
                 its first message announces nothing at all, and this is where "confirm in your
                 wallet", the transaction and "Safe deployed" all appear. */}
-            <div aria-live="polite">
-              {showStatus && (
-                <div className="flex flex-col gap-2 text-sm">
-                  <span className="flex items-center gap-2">
-                    {error ? (
-                      <CircleAlert
-                        className="size-4 shrink-0 text-destructive"
-                        aria-hidden="true"
-                      />
-                    ) : completed ? (
-                      <Check className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
-                    ) : (
-                      <Loader2
-                        className="size-4 shrink-0 animate-spin text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    )}
-                    {/* The error branches clear `status`, so this headline names the state and the
+              <div aria-live="polite">
+                {showStatus && (
+                  <div className="flex flex-col gap-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      {error ? (
+                        <CircleAlert
+                          className="size-4 shrink-0 text-destructive"
+                          aria-hidden="true"
+                        />
+                      ) : completed ? (
+                        <Check className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                      ) : (
+                        <Loader2
+                          className="size-4 shrink-0 animate-spin text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      )}
+                      {/* The error branches clear `status`, so this headline names the state and the
                         alert below carries the detail. No "Working…" fallback: the handler sets a
                         status in the same batch as `busy`, so an empty one here only ever meant
                         something had gone wrong. */}
-                    <span className="min-w-0">
-                      {error ? 'The deployment stopped.' : (status ?? 'Working on it…')}
-                    </span>
-                  </span>
-                  {txHash && (
-                    // The label and the two controls on one line, the hash on its own beneath it.
-                    // A hash is 66 characters and this card is 480px wide, so alongside them it
-                    // could only be shown clipped — an incomplete reference to the one thing that
-                    // says what the gas was spent on. It wraps instead, which fits because the
-                    // config rows have given way to this by the time it appears.
-                    <span className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span className="shrink-0">Transaction</span>
-                        <CopyButton
-                          value={txHash}
-                          label="Copy transaction hash"
-                          copiedMessage="Transaction hash copied"
-                        />
-                        {explorer && (
-                          <a
-                            href={explorer.tx(txHash)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
-                          >
-                            on {explorer.name}
-                            <ExternalLink className="size-3" aria-hidden="true" />
-                          </a>
-                        )}
+                      <span className="min-w-0">
+                        {error ? 'The deployment stopped.' : (status ?? 'Working on it…')}
                       </span>
-                      {/* Full strength, like the address and the saltNonce above: it is a value to
-                          be read off the screen, not a caption. */}
-                      <code className="font-mono break-all text-foreground">{txHash}</code>
                     </span>
-                  )}
-                  {/* The point of the whole screen, once it has happened: somewhere to go and see
+                    {txHash && (
+                      // The label and the two controls on one line, the hash on its own beneath it.
+                      // A hash is 66 characters and this card is 480px wide, so alongside them it
+                      // could only be shown clipped — an incomplete reference to the one thing that
+                      // says what the gas was spent on. It wraps instead, which fits because the
+                      // config rows have given way to this by the time it appears.
+                      <span className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <span className="shrink-0">Transaction</span>
+                          <CopyButton
+                            value={txHash}
+                            label="Copy transaction hash"
+                            copiedMessage="Transaction hash copied"
+                          />
+                          {explorer && (
+                            <a
+                              href={explorer.tx(txHash)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                              on {explorer.name}
+                              <ExternalLink className="size-3" aria-hidden="true" />
+                            </a>
+                          )}
+                        </span>
+                        {/* Full strength, like the address and the saltNonce above: it is a value to
+                          be read off the screen, not a caption. */}
+                        <code className="font-mono break-all text-foreground">{txHash}</code>
+                      </span>
+                    )}
+                    {/* The point of the whole screen, once it has happened: somewhere to go and see
                       the Safe that now exists. */}
-                  {completed && explorer && (
-                    <a
-                      href={explorer.address(candidate.address)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      View the Safe on {explorer.name}
-                      <ExternalLink className="size-3.5" aria-hidden="true" />
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
+                    {completed && explorer && (
+                      <a
+                        href={explorer.address(candidate.address)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        View the Safe on {explorer.name}
+                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
 
-            {/* What the address is derived from, and what a reader can still change their mind
+              {/* What the address is derived from, and what a reader can still change their mind
                 about. Replaced by the status above once a deploy is under way, because by then
                 none of it can change and all of it is between the reader and the outcome.
 
@@ -434,24 +520,24 @@ export function DeployDialog({
                 SENDER's. Nothing there drifts and nothing lies, but until this block existed the
                 dialog never named the owners at all, so that state was merely self-consistent
                 rather than self-evident. */}
-            {!showStatus && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-                {/* Singular when there is one: "Owners" over a single row is the kind of small
+              {!showStatus && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+                  {/* Singular when there is one: "Owners" over a single row is the kind of small
                     wrongness that makes a reader wonder what else is generated rather than read. */}
-                <dt className="text-muted-foreground">
-                  {config.owners.length === 1 ? 'Owner' : 'Owners'}
-                </dt>
-                <dd className="min-w-0">
-                  <OwnerList owners={config.owners} />
-                </dd>
-                <dt className="text-muted-foreground">Threshold</dt>
-                <dd>
-                  {config.threshold} of {config.owners.length}{' '}
-                  {config.owners.length === 1 ? 'signer' : 'signers'}
-                </dd>
-                <dt className="text-muted-foreground">Safe version</dt>
-                <dd className="font-mono">{config.safeVersion}</dd>
-                {/* No chain row. These three are what the ADDRESS is derived from and what a user
+                  <dt className="text-muted-foreground">
+                    {config.owners.length === 1 ? 'Owner' : 'Owners'}
+                  </dt>
+                  <dd className="min-w-0">
+                    <OwnerList owners={config.owners} />
+                  </dd>
+                  <dt className="text-muted-foreground">Threshold</dt>
+                  <dd>
+                    {config.threshold} of {config.owners.length}{' '}
+                    {config.owners.length === 1 ? 'signer' : 'signers'}
+                  </dd>
+                  <dt className="text-muted-foreground">Safe version</dt>
+                  <dd className="font-mono">{config.safeVersion}</dd>
+                  {/* No chain row. These three are what the ADDRESS is derived from and what a user
                     cannot change without invalidating it; the chain is not one of them — the same
                     address is this Safe's address on all six non-mainnet chains (measured; see
                     lib/config.ts), and it is a live control in the header that can move while this
@@ -459,12 +545,12 @@ export function DeployDialog({
                     have made it the one line in this block that changes under the reader. Where the
                     gas goes is still named, once, in the description above — which is the sentence
                     about spending money, and which follows the header. */}
-              </dl>
-            )}
+                </dl>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* One row, where a labelled input, a button and two paragraphs used to be. All of it said
+          {/* One row, where a labelled input, a button and two paragraphs used to be. All of it said
             one thing — you can leave with the link instead — and said it at the size of the deploy
             step itself.
 
@@ -473,45 +559,51 @@ export function DeployDialog({
             non-secure origin. The share link is the only way to keep a mined saltNonce without
             deploying, so "copy link address" has to still be there as a fallback. A modified click
             is left alone, so cmd-click still opens the link. */}
-        {!showStatus && (
-          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground">
-              Deploy later instead? The address exists whether or not you deploy now.
-            </p>
-            <a
-              href={shareUrl}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey) return
-                event.preventDefault()
-                share.copy()
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {share.copied ? (
-                <Check className="size-4" aria-hidden="true" />
-              ) : (
-                <Link2 className="size-4" aria-hidden="true" />
-              )}
-              Copy share link
-            </a>
-          </div>
-        )}
+          {!showStatus && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">
+                Deploy later instead? The address exists whether or not you deploy now.
+              </p>
+              <a
+                href={shareUrl}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey) return
+                  event.preventDefault()
+                  share.copy()
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                {share.copied ? (
+                  <Check className="size-4" aria-hidden="true" />
+                ) : (
+                  <Link2 className="size-4" aria-hidden="true" />
+                )}
+                Copy share link
+              </a>
+            </div>
+          )}
 
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription className="break-all">{error}</AlertDescription>
-          </Alert>
-        )}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription className="break-all">{error}</AlertDescription>
+            </Alert>
+          )}
 
-        <DialogFooter>
-          <DialogClose asChild>
-            {/* Never reads as "cancel the deployment" while one is running: nothing here can
+          <DialogFooter>
+            <DialogClose asChild>
+              {/* Never reads as "cancel the deployment" while one is running: nothing here can
                 recall a transaction the wallet has been handed. */}
-            <Button type="button" variant="ghost">
-              {completed ? 'Close' : busy || txHash ? 'Close and keep waiting' : 'Cancel'}
-            </Button>
-          </DialogClose>
-          {/* One primary action, whatever the state, so there is never a choice to make about
+              {/* Three states, keyed on the same fact the rest of this dialog is: while the
+                sequence is running, leaving does not stop it, and the label is the warning. Once
+                there is a transaction it is a report, so there is nothing left to wait for —
+                "keep waiting" over a deploy that had already reverted read as though something
+                were still pending. And a failure before anything was sent puts the dialog back to
+                asking, where the way out is a plain Cancel. */}
+              <Button type="button" variant="ghost">
+                {busy ? 'Close and keep waiting' : submitted ? 'Close' : 'Cancel'}
+              </Button>
+            </DialogClose>
+            {/* One primary action, whatever the state, so there is never a choice to make about
               which button is the way forward.
 
               Connecting is not in the brief's state machine but is reachable from a share link
@@ -521,187 +613,188 @@ export function DeployDialog({
               injected(), and EIP-6963 discovery only ever appends to that list. It does mean a
               browser announcing several wallets connects the first rather than offering a choice;
               the header's ConnectButton is the one that lists them all. */}
-          {!isConnected && (
-            <Button
-              type="button"
-              disabled={isConnecting || connectors.length === 0}
-              onClick={() => {
-                const connector = connectors[0]
-                if (connector) connect({ connector })
-              }}
-            >
-              Connect a wallet
-            </Button>
-          )}
-          {/* Named, not "Switch network to continue": the chain is the one thing about this deploy
+            {!isConnected && (
+              <Button
+                type="button"
+                disabled={isConnecting || connectors.length === 0}
+                onClick={() => {
+                  const connector = connectors[0]
+                  if (connector) connect({ connector })
+                }}
+              >
+                Connect a wallet
+              </Button>
+            )}
+            {/* Named, not "Switch network to continue": the chain is the one thing about this deploy
               the user may not have noticed changing, and a button that says which chain it is
               switching to is the last chance to catch it. */}
-          {wrongChain && !submitted && (
-            <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
-              <ArrowLeftRight aria-hidden="true" />
-              Switch to {chainName ?? `chain ${config.chainId}`}
-            </Button>
-          )}
-          {/* Gone once the transaction is away: there is nothing left to press, and the status
+            {wrongChain && !submitted && (
+              <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
+                <ArrowLeftRight aria-hidden="true" />
+                Switch to {chainName ?? `chain ${config.chainId}`}
+              </Button>
+            )}
+            {/* Gone once the transaction is away: there is nothing left to press, and the status
               inside the card is what the dialog is for by then. */}
-          {isConnected && !wrongChain && !submitted && (
-            <Button
-              type="button"
-              // `!client` is the state the removed "Waiting for the wallet client…" line reported.
-              // It reads as a disabled button rather than a line of prose because that is what it
-              // is: the deploy handler returns immediately without one, so an enabled button here
-              // would be a control that silently does nothing.
-              disabled={busy || !client}
-              aria-busy={busy}
-              onClick={async () => {
-                if (!client || !address) return
-                setError(undefined)
-                setBusy(true)
-                // This press, and only this press. Fresh per attempt rather than per dialog: a
-                // failed deploy leaves this dialog mounted and its button live, so one instance
-                // can hold more than one attempt over its life.
-                const attempt: DeployAttempt = Symbol('deploy attempt')
-                // Hoisted so the catch block can still report them if something fails after the
-                // point they were set — a lost hash (or a lost "we don't know") after gas may
-                // already be spent is worse than an error.
-                let hash: `0x${string}` | undefined
-                let sendDispatched = false
-                try {
-                  setStatus('Reading Safe constants…')
-                  // Mining stops here rather than when the candidate was selected: everything
-                  // below reads an address the user is about to spend gas on.
-                  onDeployStart(attempt)
-                  const { loadSafeConstants } = await import('@safe-vanity-blockie/safe-config')
-                  const { chainById } = await import('../lib/wagmi')
-                  // Re-read rather than reuse anything already computed for mining: that is what
-                  // keeps this an independent constants source for the deriver cross-check below,
-                  // not a re-check of our own cached values.
-                  const setup = await loadSafeConstants({
-                    rpcUrl: chainById(config.chainId).rpcUrls.default.http[0],
-                    owners: config.owners,
-                    threshold: config.threshold,
-                    safeVersion: config.safeVersion,
-                  })
+            {isConnected && !wrongChain && !submitted && (
+              <Button
+                type="button"
+                // `!client` is the state the removed "Waiting for the wallet client…" line reported.
+                // It reads as a disabled button rather than a line of prose because that is what it
+                // is: the deploy handler returns immediately without one, so an enabled button here
+                // would be a control that silently does nothing.
+                disabled={busy || !client}
+                aria-busy={busy}
+                onClick={async () => {
+                  if (!client || !address) return
+                  setError(undefined)
+                  setBusy(true)
+                  // This press, and only this press. Fresh per attempt rather than per dialog: a
+                  // failed deploy leaves this dialog mounted and its button live, so one instance
+                  // can hold more than one attempt over its life.
+                  const attempt: DeployAttempt = Symbol('deploy attempt')
+                  // Hoisted so the catch block can still report them if something fails after the
+                  // point they were set — a lost hash (or a lost "we don't know") after gas may
+                  // already be spent is worse than an error.
+                  let hash: `0x${string}` | undefined
+                  let sendDispatched = false
+                  try {
+                    setStatus('Reading Safe constants…')
+                    // Mining stops here rather than when the candidate was selected: everything
+                    // below reads an address the user is about to spend gas on.
+                    onDeployStart(attempt)
+                    const { loadSafeConstants } = await import('@safe-vanity-blockie/safe-config')
+                    const { chainById } = await import('../lib/wagmi')
+                    // Re-read rather than reuse anything already computed for mining: that is what
+                    // keeps this an independent constants source for the deriver cross-check below,
+                    // not a re-check of our own cached values.
+                    const setup = await loadSafeConstants({
+                      rpcUrl: chainById(config.chainId).rpcUrls.default.http[0],
+                      owners: config.owners,
+                      threshold: config.threshold,
+                      safeVersion: config.safeVersion,
+                    })
 
-                  setStatus('Checking the address before spending anything…')
-                  const { buildDeploymentPlan } = await import('../lib/deploy')
-                  const plan = await buildDeploymentPlan({
-                    setup,
-                    saltNonce: candidate.saltNonce,
-                    provider: client.transport as never,
-                    signer: address,
-                    chainId: config.chainId,
-                  })
+                    setStatus('Checking the address before spending anything…')
+                    const { buildDeploymentPlan } = await import('../lib/deploy')
+                    const plan = await buildDeploymentPlan({
+                      setup,
+                      saltNonce: candidate.saltNonce,
+                      provider: client.transport as never,
+                      signer: address,
+                      chainId: config.chainId,
+                    })
 
-                  // Ties the plan built for the send path to the candidate the user actually picked
-                  // and is looking at on screen. Cannot diverge today (both derive from the same
-                  // saltNonce and config), but a saltNonce arriving from elsewhere (e.g. a share
-                  // link) would make this reachable, so it is checked before anything is spent.
-                  if (plan.address.toLowerCase() !== candidate.address.toLowerCase()) {
-                    throw new Error(
-                      `Deployment plan address ${plan.address} does not match the selected ` +
-                        `candidate ${candidate.address}. Refusing to deploy.`,
+                    // Ties the plan built for the send path to the candidate the user actually picked
+                    // and is looking at on screen. Cannot diverge today (both derive from the same
+                    // saltNonce and config), but a saltNonce arriving from elsewhere (e.g. a share
+                    // link) would make this reachable, so it is checked before anything is spent.
+                    if (plan.address.toLowerCase() !== candidate.address.toLowerCase()) {
+                      throw new Error(
+                        `Deployment plan address ${plan.address} does not match the selected ` +
+                          `candidate ${candidate.address}. Refusing to deploy.`,
+                      )
+                    }
+
+                    setStatus(`Sending: confirm in your wallet to deploy ${plan.address}…`)
+                    // useConnectorClient() returns a plain viem Client, not one extended with wallet
+                    // actions, so sendTransaction is called as a standalone action against it.
+                    const { sendTransaction } = await import('viem/actions')
+                    sendDispatched = true
+                    hash = await sendTransaction(client, {
+                      to: plan.transaction.to as `0x${string}`,
+                      value: BigInt(plan.transaction.value),
+                      data: plan.transaction.data as `0x${string}`,
+                    })
+                    setTxHash(hash)
+                    // The hash gets a row of its own in the status panel below, with a copy and
+                    // a link to the explorer, so the sentence no longer carries it.
+                    setStatus('Sent. Waiting for confirmation on the chain…')
+
+                    const { createPublicClient, http } = await import('viem')
+                    const publicClient = createPublicClient({
+                      chain: chainById(config.chainId),
+                      transport: http(),
+                    })
+                    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+                    if (receipt.status !== 'success') {
+                      setStatus(undefined)
+                      // Mirrored into a toast on every terminal branch below, and never *instead*
+                      // of the inline message: <Toaster/> is mounted in app/layout.tsx, outside
+                      // every subtree that can unmount here, so it is the only channel that
+                      // survives "Start over" or closing this dialog while the send is still in
+                      // flight — which now unmounts it, and with it every inline message. The
+                      // inline copy stays because a toast is on a timer and this is something the
+                      // user has to act on.
+                      reportError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
+                      return
+                    }
+
+                    // The transaction succeeded, but success only means the calldata protocol-kit
+                    // built for `plan.address` executed without reverting — it does not by itself
+                    // prove a Safe now exists at that address. Read the address the deployment
+                    // actually produced back out of the receipt's logs and cross-check it before
+                    // telling the user it worked.
+                    const { getSafeAddressFromDeploymentTx } = await import(
+                      '@safe-global/protocol-kit'
                     )
-                  }
+                    const deployed = getSafeAddressFromDeploymentTx(receipt, config.safeVersion)
+                    if (deployed.toLowerCase() !== plan.address.toLowerCase()) {
+                      setStatus(undefined)
+                      reportError(
+                        `Deployed address ${deployed} does not match the predicted ${plan.address}. ` +
+                          `Transaction ${hash}.`,
+                      )
+                      return
+                    }
 
-                  setStatus(`Sending: confirm in your wallet to deploy ${plan.address}…`)
-                  // useConnectorClient() returns a plain viem Client, not one extended with wallet
-                  // actions, so sendTransaction is called as a standalone action against it.
-                  const { sendTransaction } = await import('viem/actions')
-                  sendDispatched = true
-                  hash = await sendTransaction(client, {
-                    to: plan.transaction.to as `0x${string}`,
-                    value: BigInt(plan.transaction.value),
-                    data: plan.transaction.data as `0x${string}`,
-                  })
-                  setTxHash(hash)
-                  // The hash gets a row of its own in the status panel below, with a copy and
-                  // a link to the explorer, so the sentence no longer carries it.
-                  setStatus('Sent. Waiting for confirmation on the chain…')
-
-                  const { createPublicClient, http } = await import('viem')
-                  const publicClient = createPublicClient({
-                    chain: chainById(config.chainId),
-                    transport: http(),
-                  })
-                  const receipt = await publicClient.waitForTransactionReceipt({ hash })
-                  if (receipt.status !== 'success') {
+                    setCompleted(true)
+                    // Short inline, explicit in the toast: the panel already shows the address and
+                    // the transaction as their own rows, while the toast is the copy that outlives
+                    // this dialog and has to stand on its own.
+                    setStatus('Safe deployed.')
+                    toast.success(`Safe deployed at ${deployed}. Transaction ${hash}.`)
+                  } catch (thrown) {
                     setStatus(undefined)
-                    // Mirrored into a toast on every terminal branch below, and never *instead*
-                    // of the inline message: <Toaster/> is mounted in app/layout.tsx, outside
-                    // every subtree that can unmount here, so it is the only channel that
-                    // survives "Start over" or closing this dialog while the send is still in
-                    // flight — which now unmounts it, and with it every inline message. The
-                    // inline copy stays because a toast is on a timer and this is something the
-                    // user has to act on.
-                    reportError(`Deployment reverted. Gas was spent. Transaction ${hash}.`)
-                    return
+                    const message = thrown instanceof Error ? thrown.message : String(thrown)
+                    if (isWalletRejection(thrown)) {
+                      // Checked before the `sendDispatched` branch below, which would otherwise tell
+                      // a user who had just pressed "reject" that their transaction might be out
+                      // there: viem throws this one before anything reaches the network.
+                      reportError('You rejected the request in your wallet. Nothing was sent.')
+                    } else if (hash) {
+                      reportError(
+                        `${message} Transaction ${hash} was already sent. Check its status before retrying.`,
+                      )
+                    } else if (sendDispatched) {
+                      reportError(
+                        `${message} The transaction may already have been broadcast. Check your ` +
+                          "wallet's activity list before retrying.",
+                      )
+                    } else {
+                      reportError(message)
+                    }
+                  } finally {
+                    setBusy(false)
+                    onDeploySettled(attempt)
                   }
-
-                  // The transaction succeeded, but success only means the calldata protocol-kit
-                  // built for `plan.address` executed without reverting — it does not by itself
-                  // prove a Safe now exists at that address. Read the address the deployment
-                  // actually produced back out of the receipt's logs and cross-check it before
-                  // telling the user it worked.
-                  const { getSafeAddressFromDeploymentTx } = await import(
-                    '@safe-global/protocol-kit'
-                  )
-                  const deployed = getSafeAddressFromDeploymentTx(receipt, config.safeVersion)
-                  if (deployed.toLowerCase() !== plan.address.toLowerCase()) {
-                    setStatus(undefined)
-                    reportError(
-                      `Deployed address ${deployed} does not match the predicted ${plan.address}. ` +
-                        `Transaction ${hash}.`,
-                    )
-                    return
-                  }
-
-                  setCompleted(true)
-                  // Short inline, explicit in the toast: the panel already shows the address and
-                  // the transaction as their own rows, while the toast is the copy that outlives
-                  // this dialog and has to stand on its own.
-                  setStatus('Safe deployed.')
-                  toast.success(`Safe deployed at ${deployed}. Transaction ${hash}.`)
-                } catch (thrown) {
-                  setStatus(undefined)
-                  const message = thrown instanceof Error ? thrown.message : String(thrown)
-                  if (isWalletRejection(thrown)) {
-                    // Checked before the `sendDispatched` branch below, which would otherwise tell
-                    // a user who had just pressed "reject" that their transaction might be out
-                    // there: viem throws this one before anything reaches the network.
-                    reportError('You rejected the request in your wallet. Nothing was sent.')
-                  } else if (hash) {
-                    reportError(
-                      `${message} Transaction ${hash} was already sent. Check its status before retrying.`,
-                    )
-                  } else if (sendDispatched) {
-                    reportError(
-                      `${message} The transaction may already have been broadcast. Check your ` +
-                        "wallet's activity list before retrying.",
-                    )
-                  } else {
-                    reportError(message)
-                  }
-                } finally {
-                  setBusy(false)
-                  onDeploySettled(attempt)
-                }
-              }}
-            >
-              {busy ? (
-                <>
-                  <Loader2 className="animate-spin" aria-hidden="true" />
-                  Waiting for wallet…
-                </>
-              ) : client ? (
-                'Deploy Safe'
-              ) : (
-                'Connecting to your wallet…'
-              )}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                }}
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                    Waiting for wallet…
+                  </>
+                ) : client ? (
+                  'Deploy Safe'
+                ) : (
+                  'Connecting to your wallet…'
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

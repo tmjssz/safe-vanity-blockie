@@ -234,6 +234,29 @@ describe('MiningView', () => {
     })
   })
 
+  // The page owns the deploy; the grid owns the picture. This is the wire between them, and a tile
+  // that does not know it is being deployed is a wall of two hundred identical-looking results with
+  // gas being spent on one of them.
+  it('marks the tile whose result the page says is deploying', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [CANDIDATE] }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        deployingAddress={CANDIDATE.address}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.animate-spin')).not.toBeNull()
+    expect(screen.getByRole('button', { name: /view the deploy in progress/i })).toBeDefined()
+  })
+
   it('renders one ResultCard per candidate and shows the scanned count once loaded', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = { ...IDLE_STATE, running: true, scanned: 4200, candidates: [CANDIDATE] }

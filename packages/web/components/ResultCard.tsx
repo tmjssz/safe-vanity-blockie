@@ -3,6 +3,7 @@ import { memo } from 'react'
 import { Blockie } from './Blockie'
 import { ContrastSwatch } from './ContrastSwatch'
 import { CopyButton } from './CopyButton'
+import { SpinnerOverlay } from './SpinnerOverlay'
 import { Card } from './ui/card'
 
 /**
@@ -31,6 +32,11 @@ export interface ResultCardProps {
    * so the memo below keeps working: a new filters object arrives on every publish.
    */
   filterGuaranteesTwoColour: boolean
+  /**
+   * Whether THIS result is the one currently being deployed. One tile in the grid at most, and it
+   * has to be findable without hovering anything: gas is being spent on it.
+   */
+  deploying?: boolean
   /** Opens the detail view for this candidate; see ResultsGrid and app/page.tsx. */
   onSelect: (candidate: Candidate) => void
 }
@@ -47,6 +53,7 @@ export interface ResultCardProps {
 export const ResultCard = memo(function ResultCard({
   candidate,
   filterGuaranteesTwoColour,
+  deploying = false,
   onSelect,
 }: ResultCardProps) {
   const expression = Object.values(candidate.regions).join('/') || '—'
@@ -77,6 +84,9 @@ export const ResultCard = memo(function ResultCard({
           address={candidate.address}
           className="block w-full overflow-hidden rounded-md [&>svg]:size-full"
         />
+        {/* Not hover-gated, unlike the overlay below: the point is to find this tile in a wall of
+            two hundred while scrolling past, without touching anything. */}
+        {deploying && <SpinnerOverlay iconClassName="size-8" className="z-10 rounded-md" />}
         {/* Over the picture's top-right corner rather than beside it — a heading-sized percentage
             was most of the old tile's remaining height. The dark chrome is fixed in both themes
             because what sits behind it is a blockie's own colours, not the page. Above the hover
@@ -115,7 +125,9 @@ export const ResultCard = memo(function ResultCard({
             aria-hidden="true"
             className="rounded-md bg-white px-3 py-1 text-sm font-semibold text-black shadow-sm"
           >
-            Deploy
+            {/* Pressing it cannot start a second deploy — the page refuses, and says why — so
+                offering to would be a lie. It goes back to the one already running. */}
+            {deploying ? 'View the deploy' : 'Deploy'}
           </span>
           {/* The one thing the tile can do that opening it cannot: take the address away without
               a dialog. Beside the pill rather than under it — two rows of controls hid most of the
@@ -168,7 +180,11 @@ export const ResultCard = memo(function ResultCard({
         // Up to two hundred tiles on screen at once, so "which result is this?" has to be in the
         // name itself: the score identifies it at a glance and the address identifies it exactly.
         // The address is truncated on the tile, so the name is the only place it is complete.
-        aria-label={`Deploy ${percent} match ${candidate.address}`}
+        aria-label={
+          deploying
+            ? `View the deploy in progress for ${candidate.address}`
+            : `Deploy ${percent} match ${candidate.address}`
+        }
         // An explicit aria-label overrides the tile's contents, which would otherwise silence the
         // metadata below it — a screen-reader user could no longer compare contrast, or tell a
         // two-colour result from a three-colour one, without opening the detail view.

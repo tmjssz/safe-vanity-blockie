@@ -101,6 +101,39 @@ describe('ResultsGrid', () => {
     expect(screen.getAllByText(/two colours/i)).toHaveLength(2)
   })
 
+  // One tile at most, picked by address rather than by position: the grid re-sorts under the user
+  // while a deploy runs, so an index would follow the wrong picture within a second.
+  it('marks only the tile whose result is being deployed', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        deployingAddress="0xb"
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const spinners = container.querySelectorAll('.animate-spin')
+    expect(spinners).toHaveLength(1)
+    const marked = screen.getByRole('button', { name: /view the deploy in progress for 0xb/i })
+    expect(marked.closest('[data-slot="card"]')?.contains(spinners[0])).toBe(true)
+  })
+
+  it('marks nothing while no deploy is running', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120)]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('.animate-spin')).toBeNull()
+  })
+
   it('shows skeletons while mining with nothing found yet', () => {
     const { container } = render(
       <ResultsGrid

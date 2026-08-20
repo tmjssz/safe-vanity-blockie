@@ -26,6 +26,12 @@ export interface ResultsGridProps {
   filters: FaceFilters
   /** Highest contrast among candidates the other filters accept; see MinerState.bestContrast. */
   bestContrast?: number
+  /**
+   * The Safe currently being deployed, if any. An address rather than an index: the leaderboard
+   * re-sorts under the user while a deploy runs, so a position would follow the wrong picture
+   * within a second.
+   */
+  deployingAddress?: string
   onSelect: (candidate: Candidate) => void
 }
 
@@ -51,6 +57,7 @@ export function ResultsGrid({
   mining,
   filters,
   bestContrast,
+  deployingAddress,
   onSelect,
 }: ResultsGridProps) {
   // Three states, and the difference between the first two is the whole point: candidates found
@@ -117,6 +124,9 @@ export function ResultsGrid({
             // Read here rather than inside the tile: whether "two colours" says anything about a
             // result is a property of the filters, which the tile has no reason to know about.
             filterGuaranteesTwoColour={filters.twoColor}
+            // Compared here so each tile gets a boolean: a shared address string would re-render
+            // every memoised tile in the grid whenever the deploy target changed.
+            deploying={candidate.address === deployingAddress}
             onSelect={onSelect}
           />
         ))}

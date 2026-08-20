@@ -166,6 +166,45 @@ describe('ResultCard', () => {
     expect(overlay.className).toMatch(/group-focus-within:/)
   })
 
+  describe('the result being deployed', () => {
+    // A wall of two hundred identical-looking tiles, one of which is having gas spent on it: which
+    // one has to be visible without hovering anything, and it is the same mark the header pill and
+    // the in-progress dialog carry.
+    it('turns a spinner over the blockie', () => {
+      const { container } = renderCard({ deploying: true })
+      const blockie = screen.getByRole('img')
+      const stack = blockie.parentElement as HTMLElement
+      expect(stack.className).toMatch(/relative/)
+      expect(stack.querySelector('.animate-spin')).not.toBeNull()
+      // Not hover-gated: the overlay that fades in is a different thing.
+      expect(
+        container.querySelector('.animate-spin')?.closest('[data-testid="result-overlay"]'),
+      ).toBeNull()
+    })
+
+    it('leaves every other tile alone', () => {
+      const { container } = renderCard()
+      expect(container.querySelector('.animate-spin')).toBeNull()
+    })
+
+    // Pressing it cannot start a second deploy, so offering to would be a lie: it goes back to the
+    // one already running.
+    it('offers to view the deploy rather than to start one', () => {
+      renderCard({ deploying: true })
+      const overlay = screen.getByTestId('result-overlay')
+      expect(overlay.textContent).toMatch(/view the deploy/i)
+      expect(overlay.textContent).not.toMatch(/^deploy$/i)
+    })
+
+    it('names itself as the way back to the deploy in progress', () => {
+      renderCard({ deploying: true })
+      const name = screen
+        .getByRole('button', { name: /view the deploy/i })
+        .getAttribute('aria-label')
+      expect(name).toContain(candidate.address)
+    })
+  })
+
   // Side by side, not stacked: two rows of controls over a 214px picture hid most of the thing
   // the overlay is drawn on top of.
   it('sets the deploy pill and the copy control on one line', () => {

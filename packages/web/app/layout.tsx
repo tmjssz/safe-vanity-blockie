@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { AppTitle, StartOverProvider } from '../components/AppTitle'
 import { HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConnectButton } from '../components/ConnectButton'
+import { DEPLOY_STATUS_SLOT_ID } from '../components/DeployDialog'
 import { Footer } from '../components/Footer'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Toaster } from '../components/ui/sonner'
@@ -59,6 +60,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                       consequential control here and reads that way in the corner it is furthest
                       from. */}
                   <ThemeToggle />
+                  {/* An outstanding deploy lands here, portaled in by the dialog that owns it, for
+                      the window where that dialog has been closed while its transaction is still
+                      going. Left of the chain picker because it is the more urgent of the two and
+                      because the chain is the thing it was deployed against. Same arrangement, and
+                      the same reason: the state belongs to the dialog, the place belongs to the
+                      chrome. */}
+                  <div id={DEPLOY_STATUS_SLOT_ID} className="contents" />
                   <div id={HEADER_CHAIN_SLOT_ID} className="contents" />
                   <ConnectButton />
                 </div>

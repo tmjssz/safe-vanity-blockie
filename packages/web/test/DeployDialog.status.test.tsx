@@ -210,6 +210,143 @@ describe('DeployDialog after submission', () => {
     ).toBe(false)
   })
 
+  // "Close and keep waiting" is not a cancel — nothing can recall a transaction a wallet already
+  // has — but until the pill existed it was a one-way door: the sequence carried on and the only
+  // thing that could show it was gone.
+  it('leaves a way back in the header once it is closed mid-flight', async () => {
+    const { DeployDialog, DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+    const slot = document.createElement('div')
+    slot.id = DEPLOY_STATUS_SLOT_ID
+    document.body.append(slot)
+
+    const onOpenChange = vi.fn()
+    const props = {
+      candidate,
+      config,
+      onOpenChange,
+      onDeployStart: vi.fn(),
+      onDeploySettled: vi.fn(),
+    }
+    const { rerender } = render(<DeployDialog open {...props} />)
+
+    // Nothing yet: an untouched dialog has nothing outstanding to stand in for.
+    expect(slot.textContent).toBe('')
+
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    // From the press, not from the close: a deploy is under way, and the header is where that has
+    // to be visible however the user moves around the page next.
+    await waitFor(() => expect(slot.textContent).toMatch(/deploying|confirming/i))
+    await screen.findByText(HASH, {}, { timeout: 5000 })
+    rerender(<DeployDialog open={false} {...props} />)
+
+    expect(slot.textContent).toMatch(/confirming/i)
+    await userEvent.click(within(slot).getByRole('button'))
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+
+    slot.remove()
+  })
+
+  // Once it has settled with the dialog in front of the user, the dialog is saying it: a pill
+  // beside it would be the same news twice.
+  it('drops the header status when the deploy settles with the dialog open', async () => {
+    const { DeployDialog, DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+    const slot = document.createElement('div')
+    slot.id = DEPLOY_STATUS_SLOT_ID
+    document.body.append(slot)
+
+    render(
+      <DeployDialog
+        open
+        candidate={candidate}
+        config={config}
+        onOpenChange={vi.fn()}
+        onDeployStart={vi.fn()}
+        onDeploySettled={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    await waitFor(() => expect(slot.textContent).toMatch(/confirming/i))
+
+    state.receipt?.resolve({ status: 'success' })
+    await waitFor(() => expect(screen.getByText(/safe deployed/i)).toBeDefined())
+
+    expect(slot.textContent).toBe('')
+    slot.remove()
+  })
+
+  // …but settling while it is closed is exactly when the pill has to stay: it is the only thing
+  // that can bring the outcome back on screen.
+  it('keeps the header status when the deploy settles while it is closed', async () => {
+    const { DeployDialog, DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+    const slot = document.createElement('div')
+    slot.id = DEPLOY_STATUS_SLOT_ID
+    document.body.append(slot)
+
+    const props = {
+      candidate,
+      config,
+      onOpenChange: vi.fn(),
+      onDeployStart: vi.fn(),
+      onDeploySettled: vi.fn(),
+    }
+    const { rerender } = render(<DeployDialog open {...props} />)
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    await waitFor(() => expect(slot.textContent).toMatch(/confirming/i))
+
+    rerender(<DeployDialog open={false} {...props} />)
+    state.receipt?.resolve({ status: 'success' })
+
+    await waitFor(() => expect(slot.textContent).toMatch(/deployed/i))
+    slot.remove()
+  })
+
+  // What the page needs in order to decide whether closing this dialog may unmount it.
+  it('reports each phase it moves through', async () => {
+    const { DeployDialog } = await import('../components/DeployDialog')
+    const onPhaseChange = vi.fn()
+    render(
+      <DeployDialog
+        open
+        candidate={candidate}
+        config={config}
+        onOpenChange={vi.fn()}
+        onDeployStart={vi.fn()}
+        onDeploySettled={vi.fn()}
+        onPhaseChange={onPhaseChange}
+      />,
+    )
+    // On mount, so a page holding the last dialog's phase is corrected by the next one.
+    expect(onPhaseChange).toHaveBeenCalledWith('idle')
+
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    await waitFor(() => expect(onPhaseChange).toHaveBeenCalledWith('pending'))
+
+    state.receipt?.resolve({ status: 'success' })
+    await waitFor(() => expect(onPhaseChange).toHaveBeenCalledWith('done'))
+  })
+
+  // An untouched dialog has nothing to stand in for, and a pill for it would be a control in the
+  // header that reopens a form the user closed on purpose.
+  it('leaves nothing in the header when it is closed without a deploy', async () => {
+    const { DeployDialog, DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+    const slot = document.createElement('div')
+    slot.id = DEPLOY_STATUS_SLOT_ID
+    document.body.append(slot)
+
+    render(
+      <DeployDialog
+        open={false}
+        candidate={candidate}
+        config={config}
+        onOpenChange={vi.fn()}
+        onDeployStart={vi.fn()}
+        onDeploySettled={vi.fn()}
+      />,
+    )
+    expect(slot.textContent).toBe('')
+    slot.remove()
+  })
+
   // The status is where "confirm in your wallet", the transaction and "Safe deployed" all arrive,
   // and a live region only announces changes to a container that was already mounted.
   it('announces each step through a region that was there before the first message', async () => {
