@@ -151,6 +151,53 @@ describe('DeployDialog after submission', () => {
     expect(within(footer).queryByRole('button', { name: /keep waiting/i })).toBeNull()
   })
 
+  // The other half of the spinner bug: once the transaction is a fact, a failure has to stay in the
+  // status view — there is a hash to keep — but it must stop claiming to be working on something.
+  it('stops spinning when the transaction fails after it was sent', async () => {
+    await deploy()
+    state.receipt?.resolve({ status: 'reverted' })
+
+    await waitFor(() => expect(screen.getByText(/deployment reverted/i)).toBeDefined())
+    expect(screen.queryByText(/working/i)).toBeNull()
+    expect(document.querySelector('.animate-spin')).toBeNull()
+    // The hash outlives the failure: it is the only way to look up what the gas was spent on.
+    expect(screen.getByText(HASH)).toBeDefined()
+    expect(screen.getByRole('link', { name: /on etherscan/i })).toBeDefined()
+  })
+
+  // The commonest error of all, and the one the wallet answers instantly. It has to read as a
+  // decision the user made rather than as a fault, and it must not suggest that a transaction may
+  // be out there: viem rejects before broadcasting.
+  it('reports a rejection in the wallet as nothing having been sent', async () => {
+    const { sendTransaction } = await import('viem/actions')
+    vi.mocked(sendTransaction).mockRejectedValueOnce(
+      Object.assign(new Error('User rejected the request.'), {
+        name: 'UserRejectedRequestError',
+      }),
+    )
+
+    const { DeployDialog } = await import('../components/DeployDialog')
+    render(
+      <DeployDialog
+        open
+        candidate={candidate}
+        config={config}
+        onOpenChange={vi.fn()}
+        onDeployStart={vi.fn()}
+        onDeploySettled={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+
+    const alert = await screen.findByText(/rejected/i, {}, { timeout: 5000 })
+    expect(alert.textContent).toMatch(/nothing was sent/i)
+    expect(alert.textContent).not.toMatch(/may already have been broadcast/i)
+    // Back to asking: nothing was spent, so the deploy button is live again.
+    expect(
+      (screen.getByRole('button', { name: /^deploy safe$/i }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+  })
+
   // The status is where "confirm in your wallet", the transaction and "Safe deployed" all arrive,
   // and a live region only announces changes to a container that was already mounted.
   it('announces each step through a region that was there before the first message', async () => {

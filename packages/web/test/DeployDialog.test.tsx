@@ -458,6 +458,36 @@ describe('DeployDialog', () => {
     expect(onDeploySettled).toHaveBeenCalledOnce()
   })
 
+  // The bug this pins: a failure before anything was sent left the status panel on screen with a
+  // spinner and the word "Working…", because the panel treated "there is an error" as "there is
+  // something in progress". Nothing is in progress — the wallet said no, or the read failed — and
+  // the dialog has to go back to asking.
+  it('stops spinning when a deploy fails before anything was sent', async () => {
+    await renderDialog()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
+
+    expect(screen.queryByText(/working/i)).toBeNull()
+    expect(document.querySelector('.animate-spin')).toBeNull()
+  })
+
+  // Nothing was spent, so everything the dialog was offering before the attempt is still on offer:
+  // the config to check, the share link to leave with, and the button to try again.
+  it('goes back to asking after a failure that spent nothing', async () => {
+    await renderDialog()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /^deploy safe$/i }))
+    await screen.findByText(/Could not read Safe constants/, {}, { timeout: 5000 })
+
+    expect(screen.getByText(/^threshold$/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: /copy share link/i })).toBeDefined()
+    const retry = screen.getByRole('button', { name: /^deploy safe$/i })
+    expect((retry as HTMLButtonElement).disabled).toBe(false)
+  })
+
   // Moved from DeployPanel.test.tsx: the panel that used to carry the score, the big blockie and
   // the share link is gone, and this dialog is now the only place any of them can be read.
   it('shows the score as a percentage, not a raw fraction', async () => {

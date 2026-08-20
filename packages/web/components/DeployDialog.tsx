@@ -1,7 +1,15 @@
 'use client'
 
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
-import { ArrowLeftRight, Check, ExternalLink, Link2, Loader2, ShieldAlert } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  Check,
+  CircleAlert,
+  ExternalLink,
+  Link2,
+  Loader2,
+  ShieldAlert,
+} from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
@@ -25,6 +33,23 @@ import {
   DialogPortal,
   DialogTitle,
 } from './ui/dialog'
+
+/**
+ * Whether the wallet turned the request down, rather than something failing.
+ *
+ * It matters because it is the commonest outcome of pressing deploy, and because the generic
+ * branches below would otherwise describe it wrongly: `sendTransaction` throwing after the request
+ * was dispatched normally means "this may already have been broadcast", which for a rejection is
+ * both false and alarming. viem raises `UserRejectedRequestError` before anything reaches the
+ * network; EIP-1193 wallets carry code 4001 for the same thing. Matched on all three, name first,
+ * because a bundler can rename the class but not the string it carries.
+ */
+function isWalletRejection(thrown: unknown): boolean {
+  if (typeof thrown !== 'object' || thrown === null) return false
+  const { name, message, code } = thrown as { name?: string; message?: string; code?: unknown }
+  if (name === 'UserRejectedRequestError' || code === 4001) return true
+  return /user rejected|user denied|rejected the request/i.test(message ?? '')
+}
 
 /**
  * One deploy attempt, as a value the page can compare. Opaque on purpose: nothing may be read off
@@ -82,10 +107,20 @@ export function DeployDialog({
   const wrongChain = isConnected && chainId !== config.chainId
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
   const explorer = explorerFor(config.chainId)
-  // Submitted, sending, done or failed: any of them means the verification card has nothing left
-  // to verify and the offer to deploy later has nothing left to offer.
-  const showStatus = busy || completed || txHash !== undefined || error !== undefined
   const submitted = txHash !== undefined || completed
+  /**
+   * Whether the dialog is reporting rather than asking.
+   *
+   * Deliberately NOT "there is an error". A failure before anything was sent — the wallet said no,
+   * the constants read did not answer — leaves nothing in progress and nothing spent, so the dialog
+   * has to go back to asking: the config to check, the share link to leave with, and the button to
+   * try again. Counting `error` here is what left a spinner and the word "Working…" on screen after
+   * a rejected transaction, describing work that had already stopped.
+   *
+   * After submission it stays, error or not: there is a hash, and it is the only way to look up
+   * what the gas was spent on.
+   */
+  const showStatus = busy || submitted
 
   /**
    * The share link, absolute because it is copied and pasted elsewhere; page.tsx pushes the same
@@ -318,7 +353,12 @@ export function DeployDialog({
               {showStatus && (
                 <div className="flex flex-col gap-2 text-sm">
                   <span className="flex items-center gap-2">
-                    {completed ? (
+                    {error ? (
+                      <CircleAlert
+                        className="size-4 shrink-0 text-destructive"
+                        aria-hidden="true"
+                      />
+                    ) : completed ? (
                       <Check className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
                     ) : (
                       <Loader2
@@ -326,7 +366,13 @@ export function DeployDialog({
                         aria-hidden="true"
                       />
                     )}
-                    <span className="min-w-0">{status ?? 'Working…'}</span>
+                    {/* The error branches clear `status`, so this headline names the state and the
+                        alert below carries the detail. No "Working…" fallback: the handler sets a
+                        status in the same batch as `busy`, so an empty one here only ever meant
+                        something had gone wrong. */}
+                    <span className="min-w-0">
+                      {error ? 'The deployment stopped.' : (status ?? 'Working on it…')}
+                    </span>
                   </span>
                   {txHash && (
                     <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -610,7 +656,12 @@ export function DeployDialog({
                 } catch (thrown) {
                   setStatus(undefined)
                   const message = thrown instanceof Error ? thrown.message : String(thrown)
-                  if (hash) {
+                  if (isWalletRejection(thrown)) {
+                    // Checked before the `sendDispatched` branch below, which would otherwise tell
+                    // a user who had just pressed "reject" that their transaction might be out
+                    // there: viem throws this one before anything reaches the network.
+                    reportError('You rejected the request in your wallet. Nothing was sent.')
+                  } else if (hash) {
                     reportError(
                       `${message} Transaction ${hash} was already sent. Check its status before retrying.`,
                     )
