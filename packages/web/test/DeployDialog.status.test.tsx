@@ -127,6 +127,18 @@ describe('DeployDialog after submission', () => {
     expect(link.getAttribute('href')).toBe(`https://sepolia.etherscan.io/tx/${HASH}`)
   })
 
+  // A hash is 66 characters and the card is 480px wide, so on one line it was being clipped with
+  // an ellipsis: the reference to the thing the gas was spent on, shown incompletely. It wraps
+  // instead — there is room below it now that the config rows have given way.
+  it('shows the whole transaction hash rather than clipping it', async () => {
+    await deploy()
+
+    const hash = screen.getByText(HASH)
+    expect(hash.textContent).toBe(HASH)
+    expect(hash.className).toMatch(/break-all/)
+    expect(hash.className).not.toMatch(/truncate/)
+  })
+
   it('says it is waiting on the chain, not on the wallet', async () => {
     await deploy()
     expect(screen.getByText(/waiting for confirmation on the chain/i)).toBeDefined()

@@ -375,25 +375,34 @@ export function DeployDialog({
                     </span>
                   </span>
                   {txHash && (
-                    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="shrink-0">Transaction</span>
-                      <code className="min-w-0 truncate font-mono">{txHash}</code>
-                      <CopyButton
-                        value={txHash}
-                        label="Copy transaction hash"
-                        copiedMessage="Transaction hash copied"
-                      />
-                      {explorer && (
-                        <a
-                          href={explorer.tx(txHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
-                        >
-                          on {explorer.name}
-                          <ExternalLink className="size-3" aria-hidden="true" />
-                        </a>
-                      )}
+                    // The label and the two controls on one line, the hash on its own beneath it.
+                    // A hash is 66 characters and this card is 480px wide, so alongside them it
+                    // could only be shown clipped — an incomplete reference to the one thing that
+                    // says what the gas was spent on. It wraps instead, which fits because the
+                    // config rows have given way to this by the time it appears.
+                    <span className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="shrink-0">Transaction</span>
+                        <CopyButton
+                          value={txHash}
+                          label="Copy transaction hash"
+                          copiedMessage="Transaction hash copied"
+                        />
+                        {explorer && (
+                          <a
+                            href={explorer.tx(txHash)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                          >
+                            on {explorer.name}
+                            <ExternalLink className="size-3" aria-hidden="true" />
+                          </a>
+                        )}
+                      </span>
+                      {/* Full strength, like the address and the saltNonce above: it is a value to
+                          be read off the screen, not a caption. */}
+                      <code className="font-mono break-all text-foreground">{txHash}</code>
                     </span>
                   )}
                   {/* The point of the whole screen, once it has happened: somewhere to go and see
