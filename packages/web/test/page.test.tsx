@@ -351,7 +351,15 @@ beforeEach(() => {
 })
 
 // Clicking a result opens the dialog directly — there is no intermediate panel or trigger left.
-const deployButton = () => screen.getByRole('button', { name: /^deploy this safe$/i })
+const deployButton = () => screen.getByRole('button', { name: /^deploy safe$/i })
+
+/**
+ * The share link the open dialog carries, read off the anchor that holds it now: the labelled
+ * input the dialog used to render is gone, and the href is both what a click copies and what is
+ * left when the clipboard is unavailable. See DeployDialog.
+ */
+const shareLinkAnchor = () => screen.getByRole('link', { name: /copy share link/i })
+const shareLink = () => shareLinkAnchor().getAttribute('href') as string
 
 /**
  * Makes `buildDeploymentPlan` hang until the returned callback releases it, so the window in
@@ -447,10 +455,10 @@ describe('Page', () => {
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toContain(CANDIDATE_A.address)
     expect(dialog.textContent).toContain(CANDIDATE_A.saltNonce)
-    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(shareLinkAnchor()).toBeDefined()
     expect(deployButton()).toBeDefined()
     // The two-step flow's own controls are gone with it.
-    expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /deploy this safe/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /back to mining/i })).toBeNull()
   })
 
@@ -469,7 +477,7 @@ describe('Page', () => {
     // Not "a URL containing the saltNonce": the *same* link the dialog renders, character for
     // character. Two encoders that agree today are two encoders that can drift tomorrow, and the
     // one in the bar is the one users copy.
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
     expect(window.location.href).toBe(shared)
 
     await traverse(() => window.history.back())
@@ -502,7 +510,7 @@ describe('Page', () => {
     expect(window.location.hash).toBe('#results')
     // Still the one builder, so the bar and the copyable field are the same string — the property
     // the test above pins, now that there is more in the URL than `config`.
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
     expect(window.location.href).toBe(shared)
 
     // And closing puts the page back exactly where it was, rather than at the root.
@@ -550,7 +558,7 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
 
     await traverse(() => window.history.back())
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -560,9 +568,7 @@ describe('Page', () => {
     // The same candidate, and the same share link — the selection is restored from the entry
     // rather than reconstructed out of the URL, so the candidate/config pairing is the original.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      shared,
-    )
+    expect(shareLink()).toBe(shared)
     expect(window.location.href).toBe(shared)
   })
 
@@ -578,7 +584,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(window.location.search).toContain('config=')
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
 
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
@@ -589,9 +595,7 @@ describe('Page', () => {
     // The same result, from the entry the close left behind — and the same paired config, so the
     // share link the reopened dialog renders is the original character for character.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      shared,
-    )
+    expect(shareLink()).toBe(shared)
     expect(window.location.href).toBe(shared)
 
     // And Forward from there is the close again: base URL, no dialog.
@@ -621,9 +625,7 @@ describe('Page', () => {
 
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toContain(CANDIDATE_B.address)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
   })
 
   it('closes the dialog and resumes mining when Back is pressed while the wallet prompt is open', async () => {
@@ -795,10 +797,8 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
-    ).toBeDefined()
-    expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(await screen.findByText(/safe deployed/i)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
 
     // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
     // the element position and only `key={selected.address}` forces a fresh instance.
@@ -816,7 +816,7 @@ describe('Page', () => {
     // success status naming A's address, and not the permanently disabled button.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.queryByText(CANDIDATE_A.address)).toBeNull()
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(screen.queryByText(/safe deployed/i)).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -834,9 +834,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
-    expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
-    ).toBeDefined()
+    expect(await screen.findByText(/safe deployed/i)).toBeDefined()
 
     // Escape is allowed once the sequence has settled — and closing clears the selection, so the
     // grid underneath is immediately clickable again.
@@ -846,7 +844,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-b' }))
 
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(screen.queryByText(/safe deployed/i)).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -890,7 +888,7 @@ describe('Page', () => {
     expect(dialog.textContent).toContain('12345')
     // Everything the dialog carries for a mined result carries here too, including a link that
     // reproduces this same address.
-    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(shareLinkAnchor()).toBeDefined()
     expect(deployButton()).toBeDefined()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
 
@@ -912,9 +910,7 @@ describe('Page', () => {
     // plan from something else entirely.
     await user.click(deployButton())
 
-    expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${expected.address}`, 'i')),
-    ).toBeDefined()
+    expect(await screen.findByText(/safe deployed/i)).toBeDefined()
     // The dialog's own independent constants re-read asked about the link's Safe, not the
     // recipient's — `toHaveBeenLastCalledWith`, so this is the deploy path's read and not the
     // page's earlier one.
@@ -1134,7 +1130,7 @@ describe('Page', () => {
     const address = dialog.textContent
 
     const sharedConfig = () => {
-      const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+      const url = shareLink()
       return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
         .config
     }
@@ -1165,9 +1161,7 @@ describe('Page', () => {
     getSafeAddressFromDeploymentTxMock.mockReturnValue(shownAddress)
     fireEvent.click(deployButton())
 
-    expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${shownAddress}`, 'i')),
-    ).toBeDefined()
+    expect(await screen.findByText(/safe deployed/i)).toBeDefined()
     expect(loadSafeConstantsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ owners: LINK_OWNERS }),
     )
@@ -1270,9 +1264,7 @@ describe('Page', () => {
     // The sender's candidate, and the same share link — not a second reconstruction, and not a
     // config re-derived from the URL.
     expect(screen.getByRole('dialog').textContent).toBe(address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      received,
-    )
+    expect(shareLink()).toBe(received)
     // Not latched as an incoming link: no overlay over the dialog, and no second constants read
     // for a reconstruction that already happened. (One call, from the mount.)
     expect(spinner()).toBeNull()
@@ -1330,8 +1322,7 @@ describe('Page', () => {
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    const minedUrl = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement)
-      .value
+    const minedUrl = shareLink()
     expect(window.location.href).toBe(minedUrl)
 
     await user.keyboard('{Escape}')
@@ -1443,9 +1434,7 @@ describe('Page', () => {
     // And the entry bookkeeping came out of it straight: opening a result still pushes its own
     // entry, and closing it still pushes the bare page over that one.
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -1753,7 +1742,7 @@ describe('Page', () => {
     // Still open: the send may already have reached the wallet, and closing here is what strands
     // the deploy with nowhere to report a hash.
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // …and the way out that is left does not read as "cancel the deployment", because nothing
     // here can recall a transaction the wallet already has.
     expect(screen.queryByRole('button', { name: /^cancel$/i })).toBeNull()
@@ -1778,8 +1767,9 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    // Gas is now committed: the transaction is broadcast and only the receipt is outstanding.
-    await screen.findByText(/Sent 0xhash/i)
+    // Gas is now committed: the transaction is broadcast and only the receipt is outstanding. The
+    // hash has a row of its own in the dialog's status panel now, so the phase is what to wait on.
+    await screen.findByText(/waiting for confirmation on the chain/i)
 
     unmount()
 
@@ -1882,7 +1872,7 @@ describe('Page', () => {
 
     const message = await screen.findByText(/Deployment reverted\. Gas was spent\./i)
     expect(message.textContent).toContain('0xhash')
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(screen.queryByText(/safe deployed/i)).toBeNull()
   })
 
   it('T2: cross-checks the receipt logs against the predicted address before claiming success', async () => {
@@ -1899,7 +1889,7 @@ describe('Page', () => {
     const message = await screen.findByText(/does not match the predicted/i)
     expect(message.textContent).toContain(THIRD)
     expect(message.textContent).toContain(CANDIDATE_A.address)
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(screen.queryByText(/safe deployed/i)).toBeNull()
   })
 
   it('T2: warns that the transaction may already be broadcast when the send itself fails', async () => {
@@ -1955,7 +1945,7 @@ describe('Page', () => {
   // The decoded config a `?config=` link renders, so a test can say what chain the dialog is
   // offering rather than trusting the URL to look right.
   const sharedChainId = () => {
-    const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const url = shareLink()
     return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
       .config?.chainId
   }
@@ -1995,9 +1985,7 @@ describe('Page', () => {
     // And a result opened now offers a link for the chain the user is on.
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(sharedChainId()).toBe(137)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
   })
 
   // Crossing the mainnet boundary is the one switch that changes every address on screen, so it
@@ -2167,7 +2155,8 @@ describe('Page', () => {
     const address = (screen.getByRole('dialog').textContent ?? '').match(/0x[0-9a-f]{40}/i)?.[0]
     expect(address).toBe(CANDIDATE_A.address)
     expect(sharedChainId()).toBe(11155111)
-    expect(screen.getByRole('button', { name: /switch network to continue/i })).toBeDefined()
+    // Named after the chain it switches to, which is the config's — see DeployDialog.
+    expect(screen.getByRole('button', { name: /^switch to sepolia$/i })).toBeDefined()
 
     await chooseChain(user, /polygon/i)
 
@@ -2180,13 +2169,11 @@ describe('Page', () => {
     expect(screen.getByRole('dialog').textContent).not.toContain('Sepolia')
     // The wrong-chain comparison is made against the carried config, so the gate opens and the
     // button that spends the gas appears — on the chain the header is showing.
-    expect(screen.queryByRole('button', { name: /switch network to continue/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /switch to/i })).toBeNull()
     expect(deployButton()).toBeDefined()
     // The address bar is still the same string as the copyable link, and both name Polygon: a
     // link copied out of here after the switch has to reproduce what this dialog would deploy.
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
     expect(
       decodeConfigParam(new URLSearchParams(window.location.search).get('config') ?? '').config
         ?.chainId,
@@ -2323,24 +2310,24 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     const opened = window.location.href
     await user.click(deployButton())
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
 
     await user.click(screen.getByText('paused'))
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
 
     // The backdrop is still there — it still blocks the page — it just does not dismiss.
     expect(backdrop()).not.toBeNull()
     await user.click(backdrop() as HTMLElement)
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // Nothing was pushed either: a URL moving under a dialog that stayed put would mean
     // `closeSelection` ran halfway.
     expect(window.location.href).toBe(opened)
 
     await user.keyboard('{Escape}')
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // The X is gone for the same window, so the pointer has nothing accidental left either.
     expect(screen.queryByRole('button', { name: /^close$/i })).toBeNull()
 
@@ -2412,9 +2399,7 @@ describe('Page', () => {
 
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_A.address)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
 
     // One push, not a close and an open: Back lands on the first result's own entry rather than
     // on a base URL a dismissal would have pushed in between.
@@ -2451,7 +2436,7 @@ describe('Page', () => {
     // both back while the wallet still had the transaction.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_B.address)
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     expect(window.location.href).toBe(opened)
     expect(screen.getByText('paused')).toBeDefined()
     expect((screen.getByRole('combobox', { name: /^chain$/i }) as HTMLButtonElement).disabled).toBe(
@@ -2492,10 +2477,8 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
-    ).toBeDefined()
-    expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(await screen.findByText(/safe deployed/i)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
 
     walletChain = 137
     await chooseChain(user, /polygon/i)
@@ -2504,7 +2487,7 @@ describe('Page', () => {
     // a Deploy button that can actually be pressed.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
     expect(screen.getByRole('dialog').textContent).toContain('Polygon')
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(screen.queryByText(/safe deployed/i)).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
     expect(sharedChainId()).toBe(137)
   })

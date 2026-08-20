@@ -1,14 +1,17 @@
 'use client'
 
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
-import { ShieldAlert } from 'lucide-react'
+import { ArrowLeftRight, Check, ExternalLink, Link2, Loader2, ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAccount, useConnect, useConnectorClient, useSwitchChain } from 'wagmi'
 import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
-import { Blockie, DecorativeBlockie } from './Blockie'
+import { shareConfigPath } from '../lib/deep-link'
+import { useCopy } from '../lib/use-copy'
+import { explorerFor } from '../lib/wagmi'
+import { Blockie } from './Blockie'
 import { CopyButton } from './CopyButton'
-import { ShareConfig } from './ShareConfig'
+import { OwnerList } from './OwnerList'
 import { Alert, AlertDescription } from './ui/alert'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -69,9 +72,40 @@ export function DeployDialog({
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
   const [completed, setCompleted] = useState(false)
+  /**
+   * The transaction, once there is one. This is what "after submission" means: everything before it
+   * is preparation the user can still walk away from, and everything after it is a fact on a chain.
+   * The dialog reads it to decide whether it is still asking for a deploy or reporting one.
+   */
+  const [txHash, setTxHash] = useState<string | undefined>()
 
   const wrongChain = isConnected && chainId !== config.chainId
   const chainName = SUPPORTED_CHAINS.find((entry) => entry.id === config.chainId)?.name
+  const explorer = explorerFor(config.chainId)
+  // Submitted, sending, done or failed: any of them means the verification card has nothing left
+  // to verify and the offer to deploy later has nothing left to offer.
+  const showStatus = busy || completed || txHash !== undefined || error !== undefined
+  const submitted = txHash !== undefined || completed
+
+  /**
+   * The share link, absolute because it is copied and pasted elsewhere; page.tsx pushes the same
+   * path into the address bar relative, where the origin is already there.
+   *
+   * The saltNonce in the spread is the entire payload: without it the link degrades from
+   * "reproduces this exact address" to "prefills four form fields", silently.
+   */
+  const shareUrl = `${typeof window === 'undefined' ? '' : window.location.origin}${shareConfigPath(
+    { ...config, saltNonce: candidate.saltNonce },
+  )}`
+  const share = useCopy({
+    value: shareUrl,
+    copiedMessage: 'Share link copied',
+    // The anchor below is a real link to this URL, so a browser without clipboard access (any
+    // non-secure origin) still has a way to get it out. That is deliberate: the share link is the
+    // only way to keep a mined saltNonce without deploying, so a failed copy must not be the end
+    // of the road.
+    failedMessage: 'Could not copy automatically. Use the link\'s own "copy link address" instead.',
+  })
 
   /**
    * Writes a terminal failure to both channels at once. The inline Alert is the one the user acts
@@ -167,7 +201,7 @@ export function DeployDialog({
           height, so the control this dialog exists to leave usable is never covered by it. Below
           that the content scrolls inside the dialog, as it already did. */}
       <DialogContent
-        className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-2xl"
+        className="max-h-[calc(100dvh-7rem)] overflow-y-auto sm:max-w-[560px]"
         showCloseButton={!busy}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault()
@@ -187,175 +221,247 @@ export function DeployDialog({
         {/* The caveat is repeated here on purpose: this is the screen where money is actually
             spent, and it is the last place it can still do any good. role="note" rather than the
             Alert default, though — it is static copy that is always here, so as a live region it
-            would compete permanently with the real status/error below. */}
-        <Alert role="note" variant="warning">
-          <ShieldAlert className="h-4 w-4" />
-          {/* The same box the About dialog and the results callout draw, in the same amber and
-              with the lead running into the body rather than stacked above it. Met three times in
-              one session it has to read as one warning, not three that begin alike. The wording
-              stays this screen's own: "the address below", "before you confirm" — the others are
-              read while browsing, this one while about to spend. */}
-          <AlertDescription>
-            <p>
-              <strong className="font-medium">A matching identicon is cosmetic.</strong> Check every
-              character of the address below before you confirm. A look-alike blockie is a known
-              phishing vector.
-            </p>
-          </AlertDescription>
-        </Alert>
+            would compete permanently with the real status/error below.
 
-        {/* 128px, as the deleted DeployPanel drew it: this is the only place the identicon can
-            still be compared against the card that was clicked, and a 64px copy is too small to
-            check a look-alike against. */}
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border p-4">
-          <Blockie address={candidate.address} size={128} />
-          <div className="flex min-w-0 flex-col items-start gap-2">
-            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <Badge variant="secondary">{formatScore(candidate.score, candidate.maxScore)}</Badge>
-              {/* The tile shows this number bare, for want of room. Here it gets its denominator:
-                  a percentage of nothing named is not a figure anyone can act on. */}
-              <span className="text-xs text-muted-foreground">
-                match to the closest accepted expression
+            Gone once the transaction is away: "check the address before you confirm" is advice
+            about a decision that has already been taken by then, and the status it would be
+            sitting above is the thing to read instead. */}
+        {!submitted && (
+          <Alert role="note" variant="warning">
+            <ShieldAlert className="h-4 w-4" />
+            {/* The same box the About dialog and the results callout draw, in the same amber and
+                with the lead running into the body rather than stacked above it. Met three times in
+                one session it has to read as one warning, not three that begin alike. The wording
+                stays this screen's own: "the address below", "before you confirm" — the others are
+                read while browsing, this one while about to spend. */}
+            <AlertDescription>
+              <p>
+                <strong className="font-medium">A matching identicon is cosmetic.</strong> Check
+                every character of the address below before you confirm. A look-alike blockie is a
+                known phishing vector.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* One card rather than the two stacked ones this replaces. They held the identity and the
+            config that produces it, which is one subject, and the seam between them read as two
+            unrelated blocks of small print.
+
+            `bg-card`, the same fill the Pattern filter card has: this is the one raised surface in
+            the dialog, and against the dialog's own background a bordered box with no fill reads as
+            a hairline rather than as the thing to look at. */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-3 p-4">
+            {/* The identicon is what a look-alike attack imitates, so this is the one picture in
+                the app worth drawing large: it is compared against the tile that was clicked, and
+                against whatever the wallet shows next. */}
+            <Blockie
+              address={candidate.address}
+              size={96}
+              className="size-24 shrink-0 overflow-hidden rounded-md [&>svg]:size-full"
+            />
+            {/* `flex-1`: the column takes the rest of the row rather than sizing to its longest
+                child, which is what lets the address below run the full width of the card. */}
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <span className="flex items-center gap-1">
+                {/* One line, unbroken and ungrouped: chunking an address makes it easier to skim
+                    and harder to compare, and comparing is the only thing this screen is for. Full
+                    strength, because it is the thing being read — everything else in this card is
+                    context for it. The copy beside it is the same control as every other copy on
+                    the screen; being the important one is the address's job, not the button's. */}
+                {/* Sized to fill the line, measured in a browser rather than guessed: 42
+                    characters come to 340px against 340px of room at 13.5px, a fit with nothing to
+                    spare. 13px keeps ~12px of slack for a monospace fallback wider than the 0.6em
+                    advance this stack mostly shares — `truncate` is a backstop, and an address with
+                    its tail quietly clipped is exactly the failure this screen exists to
+                    prevent. */}
+                <code className="min-w-0 truncate font-mono text-[13px] text-foreground">
+                  {candidate.address}
+                </code>
+                <CopyButton
+                  value={candidate.address}
+                  label="Copy Safe address"
+                  copiedMessage="Safe address copied"
+                  failedMessage="Could not copy automatically. Select the address and copy it manually."
+                />
               </span>
-            </span>
-            {/* Copy buttons rather than "select the 42 characters without missing one": this is
-                the screen whose whole job is getting an address somewhere else intact. Beside the
-                value, not under it, so which control copies which line is never in doubt. */}
-            <span className="flex min-w-0 items-start gap-1">
-              <code className="break-all text-sm">{candidate.address}</code>
-              <CopyButton
-                value={candidate.address}
-                label="Copy address"
-                copiedMessage="Address copied"
-                failedMessage="Could not copy automatically. Select the address and copy it manually."
-                className="mt-0.5"
-              />
-            </span>
-            <span className="flex min-w-0 items-start gap-1">
-              {/* The saltNonce is what reproduces this address; until now the only way to keep one
-                  was the share link, which carries the whole config with it. */}
-              <code className="break-all text-xs text-muted-foreground">
-                saltNonce {candidate.saltNonce}
-              </code>
-              <CopyButton
-                value={candidate.saltNonce}
-                label="Copy saltNonce"
-                copiedMessage="saltNonce copied"
-                failedMessage="Could not copy automatically. Select the saltNonce and copy it manually."
-              />
-            </span>
-            {/* What the result was mined for. The tile carries these two in eleven-pixel type with
-                the word "contrast" left to a tooltip, and it marks the colour count only when the
-                filter is not already guaranteeing it — so for a three-colour result this is the
-                only place it is stated at all. */}
-            <span
-              data-testid="result-traits"
-              className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-            >
-              <Badge variant="outline">{Object.values(candidate.regions).join('/') || '—'}</Badge>
-              <Badge variant="outline">contrast {candidate.contrast}</Badge>
-              <Badge variant="outline">
-                {candidate.twoColor ? 'two colours' : 'three colours'}
-              </Badge>
-            </span>
+              {/* The caption, and everything the tile could not say. No expression, contrast or
+                  colour-count chips: three badges of mining trivia sat directly under the address
+                  they were competing with, on the screen where nothing may compete with it. */}
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <Badge variant="secondary" className="font-mono">
+                  {formatScore(candidate.score, candidate.maxScore)}
+                </Badge>
+                {/* The label stays quiet and the value does not: the saltNonce is the other thing
+                    here worth copying, since it is what reproduces this address. */}
+                <span className="truncate">
+                  expression match · saltNonce{' '}
+                  <span className="text-foreground">{candidate.saltNonce}</span>
+                </span>
+                <CopyButton
+                  value={candidate.saltNonce}
+                  label="Copy saltNonce"
+                  copiedMessage="saltNonce copied"
+                  failedMessage="Could not copy automatically. Select the saltNonce and copy it manually."
+                />
+              </span>
+            </div>
+          </div>
+
+          <div className="border-t p-4">
+            {/* Always mounted, even while empty. A live region only announces changes to a
+                container that was already there when the text arrived — mounting it together with
+                its first message announces nothing at all, and this is where "confirm in your
+                wallet", the transaction and "Safe deployed" all appear. */}
+            <div aria-live="polite">
+              {showStatus && (
+                <div className="flex flex-col gap-2 text-sm">
+                  <span className="flex items-center gap-2">
+                    {completed ? (
+                      <Check className="size-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                    ) : (
+                      <Loader2
+                        className="size-4 shrink-0 animate-spin text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="min-w-0">{status ?? 'Working…'}</span>
+                  </span>
+                  {txHash && (
+                    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="shrink-0">Transaction</span>
+                      <code className="min-w-0 truncate font-mono">{txHash}</code>
+                      <CopyButton
+                        value={txHash}
+                        label="Copy transaction hash"
+                        copiedMessage="Transaction hash copied"
+                      />
+                      {explorer && (
+                        <a
+                          href={explorer.tx(txHash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          on {explorer.name}
+                          <ExternalLink className="size-3" aria-hidden="true" />
+                        </a>
+                      )}
+                    </span>
+                  )}
+                  {/* The point of the whole screen, once it has happened: somewhere to go and see
+                      the Safe that now exists. */}
+                  {completed && explorer && (
+                    <a
+                      href={explorer.address(candidate.address)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      View the Safe on {explorer.name}
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* What the address is derived from, and what a reader can still change their mind
+                about. Replaced by the status above once a deploy is under way, because by then
+                none of it can change and all of it is between the reader and the outcome.
+
+                Whose Safe this is, read from `config` — this component's own prop, which page.tsx
+                pairs with the candidate the address came from — and never from anything the page
+                holds separately, because the two can legitimately differ: a share-link recipient
+                can submit their own config while the link is still reconstructing, and then the
+                Configure card behind this dialog summarises THEIR owners while this deploys the
+                SENDER's. Nothing there drifts and nothing lies, but until this block existed the
+                dialog never named the owners at all, so that state was merely self-consistent
+                rather than self-evident. */}
+            {!showStatus && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+                {/* Singular when there is one: "Owners" over a single row is the kind of small
+                    wrongness that makes a reader wonder what else is generated rather than read. */}
+                <dt className="text-muted-foreground">
+                  {config.owners.length === 1 ? 'Owner' : 'Owners'}
+                </dt>
+                <dd className="min-w-0">
+                  <OwnerList owners={config.owners} />
+                </dd>
+                <dt className="text-muted-foreground">Threshold</dt>
+                <dd>
+                  {config.threshold} of {config.owners.length}{' '}
+                  {config.owners.length === 1 ? 'signer' : 'signers'}
+                </dd>
+                <dt className="text-muted-foreground">Safe version</dt>
+                <dd className="font-mono">{config.safeVersion}</dd>
+                {/* No chain row. These three are what the ADDRESS is derived from and what a user
+                    cannot change without invalidating it; the chain is not one of them — the same
+                    address is this Safe's address on all six non-mainnet chains (measured; see
+                    lib/config.ts), and it is a live control in the header that can move while this
+                    dialog is open. Listing it here as though it were a property of the config would
+                    have made it the one line in this block that changes under the reader. Where the
+                    gas goes is still named, once, in the description above — which is the sentence
+                    about spending money, and which follows the header. */}
+              </dl>
+            )}
           </div>
         </div>
 
-        {/* Whose Safe this is. Read from `config` — this component's own prop, which page.tsx
-            pairs with the candidate the address came from — and never from anything the page
-            holds separately, because the two can legitimately differ: a share-link recipient can
-            submit their own config while the link is still reconstructing, and then the Configure
-            card behind this dialog summarises THEIR owners while this deploys the SENDER's.
-            Nothing there drifts and nothing lies, but until this block existed the dialog never
-            named the owners at all, so that state was merely self-consistent rather than
-            self-evident — and a recipient who had edited the prefill to their own address could
-            reasonably read the dialog as a result of their own search and spend gas creating a
-            Safe they do not control.
+        {/* One row, where a labelled input, a button and two paragraphs used to be. All of it said
+            one thing — you can leave with the link instead — and said it at the size of the deploy
+            step itself.
 
-            Owners in full, not a count: the owner set is what determines control of the Safe, and
-            "1 owner" is nothing a user can check on the one screen whose entire job is checking.
-            `break-all` for the same reason the address above uses it. Subordinate to the blockie
-            and the address by size and weight — those remain the thing being verified. */}
-        {/* No heading of its own: three labelled rows inside a dialog whose title already says
-            what is being deployed, and "Safe config" was a label for the thing its own labels
-            were naming. */}
-        <div className="flex flex-col gap-2 rounded-lg border p-4">
-          <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-            <dt className="text-muted-foreground">Owners</dt>
-            <dd className="flex min-w-0 flex-col gap-1.5">
-              {/* Each owner beside the identicon its address produces. This is the screen where
-                  the Safe is paid for, and the owner set is what determines control of it: a
-                  reader who recognises their own blockie has a check that reading 42 hex
-                  characters does not give them. Decorative, since the address is right there. */}
-              {config.owners.map((owner) => (
-                <span key={owner} className="flex min-w-0 items-start gap-2">
-                  <DecorativeBlockie
-                    address={owner}
-                    size={16}
-                    slot="owner-identicon"
-                    className="mt-0.5 size-4 rounded-sm"
-                  />
-                  <code className="break-all">{owner}</code>
-                </span>
-              ))}
-            </dd>
-            <dt className="text-muted-foreground">Threshold</dt>
-            {/* "signers" always, including at 1 of 1: "N of M signers" is how a multisig
-                threshold is written, and it is the same phrase the status bar uses. */}
-            <dd>
-              {config.threshold} of {config.owners.length} signers
-            </dd>
-            <dt className="text-muted-foreground">Safe version</dt>
-            <dd>
-              <Badge variant="secondary" className="font-mono">
-                {config.safeVersion}
-              </Badge>
-            </dd>
-            {/* No chain row. These three are what the ADDRESS is derived from and what a user
-                cannot change without invalidating it; the chain is not one of them — the same
-                address is this Safe's address on all six non-mainnet chains (measured; see
-                lib/config.ts), and it is a live control in the header that can move while this
-                dialog is open. Listing it here as though it were a property of the config would
-                have made it the one line in this block that changes under the reader. Where the
-                gas goes is still named, once, in the description above — which is the sentence
-                about spending money, and which follows the header. */}
-          </dl>
-        </div>
+            A real <a> to the share URL, not a button: clicking copies (that is what the row
+            offers), but the href is what remains when the clipboard is unavailable, which is every
+            non-secure origin. The share link is the only way to keep a mined saltNonce without
+            deploying, so "copy link address" has to still be there as a fallback. A modified click
+            is left alone, so cmd-click still opens the link. */}
+        {!showStatus && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+            <p className="text-sm text-muted-foreground">
+              Deploy later instead? The address exists whether or not you deploy now.
+            </p>
+            <a
+              href={shareUrl}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return
+                event.preventDefault()
+                share.copy()
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              {share.copied ? (
+                <Check className="size-4" aria-hidden="true" />
+              ) : (
+                <Link2 className="size-4" aria-hidden="true" />
+              )}
+              Copy share link
+            </a>
+          </div>
+        )}
 
-        <p className="text-sm text-muted-foreground">
-          You do not have to deploy now: this address exists whether or not you do, so you can copy
-          the share link and deploy it later, on any chain with the canonical Safe contracts.
-        </p>
-
-        {/* The saltNonce in the spread is the entire payload: without it the link degrades from
-            "reproduces this exact address" to "prefills four form fields", silently. This moved
-            here from DeployPanel, which was the only place a mined result could be preserved
-            without deploying it — closing this dialog now has to be able to leave with the link,
-            or that escape route disappears with the panel. */}
-        <ShareConfig config={{ ...config, saltNonce: candidate.saltNonce }} />
-
-        {/* Always mounted, even while empty. A live region only announces changes to a container
-            that was already there when the text arrived — mounting the <p> together with its
-            first message (which is what `{status && …}` did) announces nothing at all, and this
-            is where the transaction hash and "Safe deployed at 0x…" appear. */}
-        <div aria-live="polite">{status && <p className="text-sm break-all">{status}</p>}</div>
         {error && (
           <Alert variant="destructive">
             <AlertDescription className="break-all">{error}</AlertDescription>
           </Alert>
         )}
-        {!client && isConnected && <p className="text-sm">Waiting for the wallet client…</p>}
 
         <DialogFooter>
           <DialogClose asChild>
             {/* Never reads as "cancel the deployment" while one is running: nothing here can
                 recall a transaction the wallet has been handed. */}
             <Button type="button" variant="ghost">
-              {busy ? 'Close and keep waiting' : 'Cancel'}
+              {completed ? 'Close' : busy || txHash ? 'Close and keep waiting' : 'Cancel'}
             </Button>
           </DialogClose>
-          {/* Sits where the deploy button will be once there is a wallet, rather than as a line of
-              prose further up: connecting is the next action here, so it belongs among the
+          {/* One primary action, whatever the state, so there is never a choice to make about
+              which button is the way forward.
+
+              Connecting is not in the brief's state machine but is reachable from a share link
+              opened in a fresh browser, and it lands where the deploy button will be rather than
+              in a line of prose further up: it is the next action here, so it belongs among the
               actions. `connectors[0]` is safe to reach for — lib/wagmi always configures
               injected(), and EIP-6963 discovery only ever appends to that list. It does mean a
               browser announcing several wallets connects the first rather than offering a choice;
@@ -369,18 +475,29 @@ export function DeployDialog({
                 if (connector) connect({ connector })
               }}
             >
-              Connect a wallet to deploy
+              Connect a wallet
             </Button>
           )}
-          {wrongChain && (
+          {/* Named, not "Switch network to continue": the chain is the one thing about this deploy
+              the user may not have noticed changing, and a button that says which chain it is
+              switching to is the last chance to catch it. */}
+          {wrongChain && !submitted && (
             <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
-              Switch network to continue
+              <ArrowLeftRight aria-hidden="true" />
+              Switch to {chainName ?? `chain ${config.chainId}`}
             </Button>
           )}
-          {isConnected && !wrongChain && (
+          {/* Gone once the transaction is away: there is nothing left to press, and the status
+              inside the card is what the dialog is for by then. */}
+          {isConnected && !wrongChain && !submitted && (
             <Button
               type="button"
-              disabled={busy || completed}
+              // `!client` is the state the removed "Waiting for the wallet client…" line reported.
+              // It reads as a disabled button rather than a line of prose because that is what it
+              // is: the deploy handler returns immediately without one, so an enabled button here
+              // would be a control that silently does nothing.
+              disabled={busy || !client}
+              aria-busy={busy}
               onClick={async () => {
                 if (!client || !address) return
                 setError(undefined)
@@ -442,7 +559,10 @@ export function DeployDialog({
                     value: BigInt(plan.transaction.value),
                     data: plan.transaction.data as `0x${string}`,
                   })
-                  setStatus(`Sent ${hash}. Waiting for confirmation…`)
+                  setTxHash(hash)
+                  // The hash gets a row of its own in the status panel below, with a copy and
+                  // a link to the explorer, so the sentence no longer carries it.
+                  setStatus('Sent. Waiting for confirmation on the chain…')
 
                   const { createPublicClient, http } = await import('viem')
                   const publicClient = createPublicClient({
@@ -482,9 +602,11 @@ export function DeployDialog({
                   }
 
                   setCompleted(true)
-                  const success = `Safe deployed at ${deployed}. Transaction ${hash}.`
-                  setStatus(success)
-                  toast.success(success)
+                  // Short inline, explicit in the toast: the panel already shows the address and
+                  // the transaction as their own rows, while the toast is the copy that outlives
+                  // this dialog and has to stand on its own.
+                  setStatus('Safe deployed.')
+                  toast.success(`Safe deployed at ${deployed}. Transaction ${hash}.`)
                 } catch (thrown) {
                   setStatus(undefined)
                   const message = thrown instanceof Error ? thrown.message : String(thrown)
@@ -506,7 +628,16 @@ export function DeployDialog({
                 }
               }}
             >
-              {busy ? 'Deploying…' : 'Deploy this Safe'}
+              {busy ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                  Waiting for wallet…
+                </>
+              ) : client ? (
+                'Deploy Safe'
+              ) : (
+                'Connecting to your wallet…'
+              )}
             </Button>
           )}
         </DialogFooter>
