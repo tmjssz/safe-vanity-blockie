@@ -141,7 +141,7 @@ describe('Footer', () => {
   // The footer must not carry the caveat as standing text: echoing it in chrome is what turns it
   // into scenery, which is the one thing this warning cannot afford. Behind the About dialog is a
   // different matter — that is asked for, not passively displayed.
-  it('does not repeat the phishing caveat already carried by the SecurityNotice alert', () => {
+  it('does not carry the phishing caveat as standing text', () => {
     render(<Footer />)
     expect(screen.queryByText(/phishing/i)).toBeNull()
   })

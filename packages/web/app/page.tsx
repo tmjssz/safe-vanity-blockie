@@ -8,10 +8,11 @@ import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
 import { type DeployAttempt, DeployDialog } from '../components/DeployDialog'
+import { DeployInProgressDialog } from '../components/DeployInProgressDialog'
+import type { DeployPhase } from '../components/DeployStatusPill'
 import { FaceSection } from '../components/FaceSection'
 import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
-import { SecurityNotice } from '../components/SecurityNotice'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import {
   chainSwitchDiscardsResults,
@@ -118,6 +119,40 @@ function HomeContent() {
   // `plan.address !== candidate.address` refusal, which is a last-resort backstop and should never
   // be the thing that notices.
   const [selection, setSelection] = useState<Selection | undefined>()
+  /**
+   * The selection whose dialog has been closed while its deploy was still running.
+   *
+   * Held as the selection object itself rather than as a boolean, so it cannot outlive what it
+   * describes: every other `setSelection` caller hands over a NEWLY BUILT selection, so
+   * `minimised !== selection` becomes true on its own and the dialog opens without any of them
+   * having to know this exists. The one caller that can hand back an identical object is the
+   * popstate reconciliation, which restores what it stored — so that one clears this by hand.
+   *
+   * What it buys: the dialog stays mounted while it is closed, which is the whole fix. Its
+   * `status`, `txHash` and `error` are React state inside it, and unmounting is what used to throw
+   * them away — leaving a running deploy with nothing on screen that could ever show it again.
+   */
+  const [minimised, setMinimised] = useState<Selection | undefined>()
+  /**
+   * The open dialog's own account of how far its deploy has got, reported by it.
+   *
+   * This, and not `deploying`, is what decides whether closing may unmount that dialog. The two
+   * differ precisely where it matters: `deploying` is a pause, and the first close mid-flight hands
+   * it back deliberately — so reading it a second time said "nothing outstanding" and threw away
+   * the state of a deploy that was still running. Reset to idle by the dialog itself on mount.
+   */
+  const [deployPhase, setDeployPhase] = useState<DeployPhase>('idle')
+  // Running, as opposed to settled or never started: the window in which closing must keep the
+  // dialog alive, because there is an outcome still to come and nowhere else to receive it.
+  const deployRunning = deployPhase === 'sending' || deployPhase === 'pending'
+  /**
+   * Set when the grid was activated during that window, which is when the page has to refuse.
+   *
+   * A boolean would do — the dialog it opens names the deploy in the way, not the result that was
+   * refused — but nothing is lost by holding what the user reached for, and it reads as what
+   * happened rather than as a flag.
+   */
+  const [blockedByDeploy, setBlockedByDeploy] = useState<Candidate | undefined>()
   // True only while a deploy transaction is in flight. Opening a candidate's deploy dialog
   // deliberately does NOT pause mining (design spec, behaviour rule 3): the wallet confirmation
   // is the one moment a user must read an address carefully, so that — not merely looking at a
@@ -457,22 +492,40 @@ function HomeContent() {
   // this with no dialog open and, usually, a bare URL — that must not stack up base entries — and
   // a dialog closed on a URL that never named it (nothing pushed, nothing to undo) leaves the bar
   // where it is.
+  /**
+   * Takes `?config=` back out of the address bar, as a push so the result stays one Back away.
+   *
+   * Split out of `closeSelection` because minimising needs exactly this half and none of the rest:
+   * the dialog is off screen either way, so the bar must stop naming it either way.
+   *
+   * Only `config` is dropped, rather than reaching for a bare '/': anything else in the bar (a path
+   * this app is mounted under, a hash, an analytics param) belongs to whoever put it there and
+   * closing a dialog is not the moment to throw it away. Conditional on the bar actually naming a
+   * result, which is the same rule as everywhere else here: only write history where there is
+   * something to write.
+   */
+  const dropSelectionUrl = useCallback(() => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('config')) return
+    url.searchParams.delete('config')
+    window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
+
   const closeSelection = useCallback(() => {
     setSelection(undefined)
+    // With the selection, or a later traversal onto the same stored object would reopen its dialog
+    // closed.
+    setMinimised(undefined)
+    // The dialog that was reporting this is going; its phase describes nothing now.
+    setDeployPhase('idle')
     // Belt and braces, and the only remaining place it can be done: the deploy sequence's own
     // `finally` clears this, but if the dialog is dismissed while a wallet prompt is still open,
     // nothing else would hand mining back until (or unless) that promise settles — and `paused`
     // is a HOST pause, which the status bar's own Resume deliberately cannot clear. The dismissed
     // attempt is disowned with it, so its own settle cannot later release a different one.
     abandonDeploy()
-    const url = new URL(window.location.href)
-    if (!url.searchParams.has('config')) return
-    // Only `config` is dropped, rather than reaching for a bare '/': anything else in the bar
-    // (a path this app is mounted under, a hash, an analytics param) belongs to whoever put it
-    // there and closing a dialog is not the moment to throw it away.
-    url.searchParams.delete('config')
-    window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
-  }, [abandonDeploy])
+    dropSelectionUrl()
+  }, [abandonDeploy, dropSelectionUrl])
 
   // The other half of both pushes above, and the one place a traversal is reconciled. It listens
   // for the traversal itself rather than reacting to a changed useSearchParams(): "Back reopens
@@ -515,6 +568,10 @@ function HomeContent() {
       // Whatever the URL names, including nothing: an entry naming a result puts it back — with
       // its own config, the pairing intact — and a base entry closes the dialog.
       setSelection(restored)
+      // Cleared by hand here, and only here: this is the one caller that can hand back the very
+      // object `minimised` is holding (it restores what it stored), which would otherwise reopen
+      // that dialog closed.
+      setMinimised(undefined)
       // Same reason as closing by hand, above, and the same disowning: a traversal off a dialog
       // mid-send abandons that attempt exactly as the footer's "Close and keep waiting" does.
       abandonDeploy()
@@ -774,12 +831,31 @@ function HomeContent() {
   // of the user says what is happening in it.
   const selectFromGrid = useCallback(
     (candidate: Candidate) => {
-      if (!config || deploying) return
-      const selection = { candidate, config }
-      setSelection(selection)
-      pushSelectionUrl(selection)
+      if (!config) return
+      // Keyed on the deploy's own phase rather than on `deploying`, which is a pause and is handed
+      // back the moment the dialog is closed: a deploy that is still running has to keep the grid
+      // out whether its dialog is on screen or behind the header pill, because a swap here unmounts
+      // the component holding its status while a wallet still has the transaction.
+      //
+      // And it says so. Refusing was always right; refusing in silence made a working rule look
+      // like a broken grid.
+      if (deployRunning) {
+        // The tile that IS the running deploy offers to view it, not to start one, so activating it
+        // is a request to come back rather than something to refuse.
+        if (candidate.address === selection?.candidate.address) {
+          setMinimised(undefined)
+          return
+        }
+        setBlockedByDeploy(candidate)
+        return
+      }
+      // Named `opened` rather than `selection`: the state of that name is read above, and a local
+      // const would shadow it for this whole block.
+      const opened = { candidate, config }
+      setSelection(opened)
+      pushSelectionUrl(opened)
     },
-    [config, deploying, pushSelectionUrl],
+    [config, deployRunning, selection, pushSelectionUrl],
   )
 
   return (
@@ -893,18 +969,10 @@ function HomeContent() {
             than a half-mounted search with an empty leaderboard and a status bar reading zero. */}
         {config && (
           <>
-            {/* The caveat is about how to read a result, so it appears where results do, at the
-                full content width the Face card and the grid use. It used to line up with the
-                Configure card's narrower measure; that card is not on screen during a run any
-                more, so the narrow column it belonged to no longer exists.
-
-                Before a run there is nothing on screen to mistrust — and a permanent banner over
-                an empty starting screen is the fastest way to teach someone that this panel is
-                scenery, which is the one thing this warning cannot afford to become. Once up it
-                stays up, through a stop and through every result found, until "Start over"
-                clears the run itself. */}
-            <SecurityNotice />
-
+            {/* No standing phishing caveat here. A banner that is on screen for the whole run is
+                the fastest way to teach someone it is scenery, and the caveat is already carried
+                where it is actually read: the idle Configure card, the About dialog, and the
+                deploy dialog, where the address is confirmed and money is spent. */}
             <FaceSection
               mouths={mouths}
               filters={filters}
@@ -925,6 +993,9 @@ function HomeContent() {
               paused={miningPaused}
               onPauseToggle={toggleMining}
               onStartOver={startOver}
+              // Only while it is actually running: a settled deploy's tile is an ordinary result
+              // again, and a spinner over it would say work was still happening.
+              deployingAddress={deployRunning ? selection?.candidate.address : undefined}
               onSelect={selectFromGrid}
             />
           </>
@@ -979,21 +1050,53 @@ function HomeContent() {
             true after the chain moves, and there is nothing in this component worth preserving
             across one — no fetch, no accumulated input, and never an in-flight send, since a carry
             cannot happen while one is (the selector is disabled for exactly that window). */}
+        {/* Why nothing happened. Rendered whenever the grid was refused, and it outlives nothing:
+            the deploy it names is the open selection, so dismissing it changes no state at all. */}
+        <DeployInProgressDialog
+          open={blockedByDeploy !== undefined && selection !== undefined}
+          address={selection?.candidate.address ?? ''}
+          onOpenChange={(next) => {
+            if (!next) setBlockedByDeploy(undefined)
+          }}
+          onView={() => {
+            setBlockedByDeploy(undefined)
+            // Straight to the deploy the refusal was about, whether it was behind the pill or
+            // already on screen.
+            setMinimised(undefined)
+          }}
+        />
         {selection && (
           <DeployDialog
             key={`${selection.candidate.address}:${selection.config.chainId}`}
-            open
+            open={minimised !== selection}
             candidate={selection.candidate}
             config={selection.config}
             onOpenChange={(next) => {
-              if (next) return
-              // Clears the selection, hands mining back and pushes the base URL over the one
-              // naming this result, so the address bar never names a dialog that is no longer on
-              // screen — and this result stays one Back away.
+              if (next) {
+                // The header pill, asking for the dialog it stands in for back.
+                setMinimised(undefined)
+                return
+              }
+              if (deployRunning) {
+                // A deploy is still running and nothing can recall it, so this is not a close but
+                // a step back from it: the selection stays, which keeps THIS component mounted and
+                // its status, transaction and outcome with it, and the pill it portals into the
+                // header is what brings it back. Mining is still handed over and the URL still
+                // stops naming a dialog that is not on screen — both of those are about what the
+                // user can see and do now, and neither is what was being thrown away.
+                setMinimised(selection)
+                abandonDeploy()
+                dropSelectionUrl()
+                return
+              }
+              // Nothing outstanding: clears the selection, hands mining back and pushes the base
+              // URL over the one naming this result, so the address bar never names a dialog that
+              // is no longer on screen — and this result stays one Back away.
               closeSelection()
             }}
             onDeployStart={beginDeploy}
             onDeploySettled={settleDeploy}
+            onPhaseChange={setDeployPhase}
           />
         )}
       </div>

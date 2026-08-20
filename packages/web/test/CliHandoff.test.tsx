@@ -87,7 +87,7 @@ describe('npxCommandFor', () => {
 describe('CliHandoff', () => {
   it('shows nothing but its trigger until asked', () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    expect(screen.getByRole('button', { name: /run this search/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /run on your machine/i })).toBeDefined()
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.queryByText(/full set of faces/i)).toBeNull()
   })
@@ -98,9 +98,9 @@ describe('CliHandoff', () => {
     const user = userEvent.setup()
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
 
-    await user.click(screen.getByRole('button', { name: /run this search/i }))
+    await user.click(screen.getByRole('button', { name: /run on your machine/i }))
     const dialog = await screen.findByRole('dialog')
-    expect(dialog.textContent).toMatch(/run this search on your machine/i)
+    expect(dialog.textContent).toMatch(/run on your machine/i)
 
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -108,13 +108,13 @@ describe('CliHandoff', () => {
 
   it('explains why a user would want the CLI', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     expect(screen.getByText(/longer/i)).toBeDefined()
   })
 
   it('warns that a narrowed subset of expressions has no builtin CLI target', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     expect(screen.getByText(/full set of faces/i)).toBeDefined()
   })
 
@@ -126,7 +126,7 @@ describe('CliHandoff', () => {
         filters={{ twoColor: false, minContrast: 300 }}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     expect(screen.getByText(/--no-two-color/)).toBeDefined()
     expect(screen.getByText(/--min-contrast 300/)).toBeDefined()
   })
@@ -141,7 +141,7 @@ describe('CliHandoff', () => {
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
 
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    fireEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    fireEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     // Read off the block rather than via getByText: the command is multi-line now, and the
     // default matcher collapses whitespace in the element while comparing against the raw string.
@@ -160,7 +160,7 @@ describe('CliHandoff', () => {
   // of text, so what gets copied is still pasteable straight into a shell.
   it('wraps the command instead of scrolling it out of sight', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const block = (await screen.findByRole('dialog')).querySelector('pre')!
     expect(block.className).toMatch(/whitespace-pre-wrap/)
@@ -172,7 +172,7 @@ describe('CliHandoff', () => {
   // command a quarter of its width on every line to keep one corner clear.
   it('puts the copy control on its own row under the command, inside the block', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const block = (await screen.findByRole('dialog')).querySelector('[data-slot="command-block"]')!
     const copy = screen.getByRole('button', { name: /copy/i })
@@ -186,7 +186,7 @@ describe('CliHandoff', () => {
   // around it is one frame too many.
   it('offers the copy control as a link, not a bordered button', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const copy = screen.getByRole('button', { name: /copy/i })
     expect(copy.getAttribute('data-variant')).toBe('link')
@@ -196,7 +196,7 @@ describe('CliHandoff', () => {
   // width back. This pins the reserve being gone rather than the exact padding that replaced it.
   it('lets the command use the full width of the block', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const command = (await screen.findByRole('dialog')).querySelector('pre')!
     expect(command.className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
@@ -207,7 +207,7 @@ describe('CliHandoff', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
-    fireEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    fireEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
 
     expect(writeText).toHaveBeenCalledTimes(1)

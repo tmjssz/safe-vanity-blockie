@@ -326,6 +326,116 @@ describe('useMiner', () => {
   // on those paths the clock stands still only until something re-publishes — a filter change,
   // say — at which point it silently absorbs however long the user spent reading the error, and
   // the rate collapses by the same factor.
+  describe('the display order', () => {
+    const addresses = (result: { current: ReturnType<typeof useMiner> }) =>
+      result.current.state.candidates.map((entry) => entry.address)
+
+    // Three candidates whose score order, contrast order and arrival order all differ, so no two
+    // sorts below can agree by accident.
+    const first = candidate('0xa', 130, true, 100)
+    const second = candidate('0xb', 120, true, 400)
+    const third = candidate('0xc', 125, true, 250)
+
+    const withAll = () => {
+      const { result } = renderHook(() => useMiner())
+      act(() => result.current.start(startInput))
+      // Emitted in separate messages, because arrival order is the one thing a single batch
+      // cannot express.
+      act(() => instances[0].emit({ type: 'progress', scanned: 10, candidates: [first] }))
+      act(() => instances[0].emit({ type: 'progress', scanned: 20, candidates: [second] }))
+      act(() => instances[0].emit({ type: 'progress', scanned: 30, candidates: [third] }))
+      return result
+    }
+
+    it('ranks by the leaderboard order until asked otherwise', () => {
+      expect(addresses(withAll())).toEqual(['0xa', '0xc', '0xb'])
+    })
+
+    it('ranks by contrast, highest first', () => {
+      const result = withAll()
+      act(() => result.current.setSort('contrast'))
+      expect(addresses(result)).toEqual(['0xb', '0xc', '0xa'])
+    })
+
+    // What "newest" has to mean here: the board is score-ranked and keeps the best 200, so the
+    // only order that answers "what just turned up?" is the order things entered it. A saltNonce
+    // cannot stand in for it — the workers scan disjoint ranges in parallel, so a high nonce is
+    // not a late find.
+    it('ranks by arrival, most recent first', () => {
+      const result = withAll()
+      act(() => result.current.setSort('newest'))
+      expect(addresses(result)).toEqual(['0xc', '0xb', '0xa'])
+    })
+
+    it('keeps arrival order stable as later candidates land', () => {
+      const result = withAll()
+      act(() => result.current.setSort('newest'))
+      act(() =>
+        instances[1].emit({
+          type: 'progress',
+          scanned: 40,
+          candidates: [candidate('0xd', 121, true, 111)],
+        }),
+      )
+      expect(addresses(result)).toEqual(['0xd', '0xc', '0xb', '0xa'])
+    })
+
+    // Same reasoning as the filters: ordering is a display concern, and re-ordering an
+    // already-mined board must not cost a nonce of progress.
+    it('reorders without restarting the workers', () => {
+      const result = withAll()
+      const posted = instances.map((worker) => worker.posted.length)
+
+      act(() => result.current.setSort('contrast'))
+
+      expect(instances).toHaveLength(2)
+      expect(instances.map((worker) => worker.posted.length)).toEqual(posted)
+      expect(instances.some((worker) => worker.terminated)).toBe(false)
+      expect(result.current.state.running).toBe(true)
+    })
+
+    // Everything in one worker message turned up at the same moment, so there is no arrival order
+    // to read between them — and the board's order within a batch is score order, which would be
+    // a made-up sequence if it were treated as one.
+    it('leaves candidates that arrived together in leaderboard order', () => {
+      const { result } = renderHook(() => useMiner())
+      act(() => result.current.start(startInput))
+      act(() =>
+        instances[0].emit({
+          type: 'progress',
+          scanned: 10,
+          candidates: [candidate('0xlow', 100, true, 400), candidate('0xhigh', 130, true, 100)],
+        }),
+      )
+      act(() => result.current.setSort('newest'))
+
+      expect(addresses(result)).toEqual(['0xhigh', '0xlow'])
+    })
+
+    it('starts a fresh run over, rather than carrying the old arrival numbers into it', () => {
+      const result = withAll()
+      act(() => result.current.setSort('newest'))
+      act(() => result.current.start(startInput))
+      act(() =>
+        instances[2].emit({
+          type: 'progress',
+          scanned: 10,
+          candidates: [candidate('0xe', 100, true, 100)],
+        }),
+      )
+      act(() =>
+        instances[2].emit({
+          type: 'progress',
+          scanned: 20,
+          candidates: [candidate('0xf', 99, true, 100)],
+        }),
+      )
+      // Nothing from the previous run is on the board, and the new finds are numbered from
+      // scratch rather than sorting below rows that no longer exist.
+      expect(addresses(result)).toEqual(['0xf', '0xe'])
+    })
+  })
+
   describe('elapsed time after a run ends without stop()', () => {
     const ranFor = (ms: number) => {
       const hook = renderHook(() => useMiner())

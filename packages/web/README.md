@@ -11,8 +11,8 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
 
 One page, top to bottom: a sticky header carrying the theme toggle and the wallet button, a sticky
 mining bar pinned directly below it, the security caveat, **Configure**, **Face**, and **Results** —
-with a "Run this search on your machine instead" disclosure above the grid that hands you the
-equivalent `npx` command.
+with a "Run on your machine" disclosure beside the grid's heading that hands you the equivalent
+`npx` command.
 
 There is no separate deploy step: **clicking any result card opens its deploy dialog**, carrying
 that candidate's score, a full-size identicon, its address and `saltNonce`, its share link and the

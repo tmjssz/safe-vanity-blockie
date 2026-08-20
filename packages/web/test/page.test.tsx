@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 import Page from '../app/page'
 import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
@@ -351,7 +351,30 @@ beforeEach(() => {
 })
 
 // Clicking a result opens the dialog directly — there is no intermediate panel or trigger left.
-const deployButton = () => screen.getByRole('button', { name: /^deploy this safe$/i })
+const deployButton = () => screen.getByRole('button', { name: /^deploy safe$/i })
+
+/**
+ * The share link the open dialog carries, read off the anchor that holds it now: the labelled
+ * input the dialog used to render is gone, and the href is both what a click copies and what is
+ * left when the clipboard is unavailable. See DeployDialog.
+ */
+/**
+ * The open dialog's subtitle: on a post-submit screen, the outcome's own words.
+ *
+ * Read through `aria-describedby` rather than by text, because the dialog keeps an sr-only live
+ * region carrying the same words — that is how an outcome is announced across a swap that replaces
+ * every visible part of the dialog — so a plain text query matches twice.
+ */
+const dialogReason = () => {
+  const id = screen.getByRole('dialog').getAttribute('aria-describedby') as string
+  return document.getElementById(id)?.textContent ?? ''
+}
+
+/** The success screen's headline, by role: the same words are in the live region. */
+const deployed = () => screen.queryByRole('heading', { name: /^safe deployed$/i })
+
+const shareLinkAnchor = () => screen.getByRole('link', { name: /copy share link/i })
+const shareLink = () => shareLinkAnchor().getAttribute('href') as string
 
 /**
  * Makes `buildDeploymentPlan` hang until the returned callback releases it, so the window in
@@ -447,11 +470,27 @@ describe('Page', () => {
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toContain(CANDIDATE_A.address)
     expect(dialog.textContent).toContain(CANDIDATE_A.saltNonce)
-    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(shareLinkAnchor()).toBeDefined()
     expect(deployButton()).toBeDefined()
     // The two-step flow's own controls are gone with it.
-    expect(screen.queryByRole('button', { name: /deploy this safe…/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /deploy this safe/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /back to mining/i })).toBeNull()
+  })
+
+  // A block comment is a comment in an expression position and TEXT in a JSX child position, so
+  // wrapping a component's return in a fragment can silently turn a note into a paragraph of source
+  // code on the page. It happened once, to the note above the deploy dialog, and nothing caught it:
+  // every other assertion in this suite looks for something specific, and stray prose is the
+  // absence of nothing. This looks at the whole page instead, with a dialog open over it.
+  it('renders none of the app source code onto the page', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await user.click(screen.getByRole('button', { name: 'select-a' }))
+    expect(screen.getByRole('dialog')).toBeDefined()
+
+    expect(document.body.textContent ?? '').not.toMatch(/\/\*|\*\//)
   })
 
   // The headline of the URL/history work: the address bar has to name the result that is open,
@@ -469,7 +508,7 @@ describe('Page', () => {
     // Not "a URL containing the saltNonce": the *same* link the dialog renders, character for
     // character. Two encoders that agree today are two encoders that can drift tomorrow, and the
     // one in the bar is the one users copy.
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
     expect(window.location.href).toBe(shared)
 
     await traverse(() => window.history.back())
@@ -502,7 +541,7 @@ describe('Page', () => {
     expect(window.location.hash).toBe('#results')
     // Still the one builder, so the bar and the copyable field are the same string — the property
     // the test above pins, now that there is more in the URL than `config`.
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
     expect(window.location.href).toBe(shared)
 
     // And closing puts the page back exactly where it was, rather than at the root.
@@ -550,7 +589,7 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
 
     await traverse(() => window.history.back())
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -560,9 +599,7 @@ describe('Page', () => {
     // The same candidate, and the same share link — the selection is restored from the entry
     // rather than reconstructed out of the URL, so the candidate/config pairing is the original.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      shared,
-    )
+    expect(shareLink()).toBe(shared)
     expect(window.location.href).toBe(shared)
   })
 
@@ -578,7 +615,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(window.location.search).toContain('config=')
-    const shared = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const shared = shareLink()
 
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
@@ -589,9 +626,7 @@ describe('Page', () => {
     // The same result, from the entry the close left behind — and the same paired config, so the
     // share link the reopened dialog renders is the original character for character.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      shared,
-    )
+    expect(shareLink()).toBe(shared)
     expect(window.location.href).toBe(shared)
 
     // And Forward from there is the close again: base URL, no dialog.
@@ -621,9 +656,7 @@ describe('Page', () => {
 
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toContain(CANDIDATE_B.address)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
   })
 
   it('closes the dialog and resumes mining when Back is pressed while the wallet prompt is open', async () => {
@@ -669,9 +702,12 @@ describe('Page', () => {
     await release()
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
-    // Closing the dialog leaves mining running rather than stranding it paused, and puts the
-    // grid back in front of the user.
-    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+    // Closing the dialog leaves mining running rather than stranding it paused, and puts the grid
+    // back in front of the user. "Close", not "Cancel": the attempt above failed, so what is on
+    // screen is the failure screen rather than the form.
+    // Scoped to the footer: the dialog's own X is named "Close" too.
+    const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement
+    await user.click(within(footer).getByRole('button', { name: /^close$/i }))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText('running')).toBeDefined()
     expect(screen.getByTestId('mining-view')).toBeDefined()
@@ -702,6 +738,225 @@ describe('Page', () => {
     await release()
   })
 
+  describe('a deploy closed while it is still running', () => {
+    /**
+     * The header slot the dialog portals its stand-in into. The layout renders it in production;
+     * this file renders the page alone, so the group provides it and then asserts the pill lands
+     * there rather than merely existing somewhere.
+     */
+    let slot: HTMLElement
+
+    beforeEach(async () => {
+      const { DEPLOY_STATUS_SLOT_ID } = await import('../components/DeployDialog')
+      slot = document.createElement('div')
+      slot.id = DEPLOY_STATUS_SLOT_ID
+      document.body.append(slot)
+    })
+
+    // In afterEach rather than at the end of each test: a test that fails before its last line
+    // would otherwise leave an element behind whose id shadows the next one's, and the dialog would
+    // portal into the wrong one.
+    afterEach(() => slot.remove())
+
+    /** Deploys candidate A far enough that a transaction exists, then closes the dialog. */
+    async function minimise(user: ReturnType<typeof userEvent.setup>) {
+      buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+      const release = pendingReceipt()
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+      await user.click(deployButton())
+      await screen.findByRole('heading', { name: /^deploying safe$/i }, { timeout: 5000 })
+      await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+      return release
+    }
+
+    // The headline: "Close and keep waiting" was a one-way door. The sequence carried on, the
+    // toast eventually reported it, and the dialog that could have shown the transaction was gone.
+    it('leaves a way back in the header, and reopens the same deploy with its status', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      expect(screen.queryByRole('dialog')).toBeNull()
+      // In the header, not merely on the page.
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await user.click(within(slot).getByRole('button'))
+
+      // The same dialog, not a fresh one: the transaction it was waiting on is still on screen.
+      expect(await screen.findByRole('dialog')).toBeDefined()
+      expect(screen.getByRole('heading', { name: /^deploying safe$/i })).toBeDefined()
+      // The hash is middle-truncated on this screen, so what is asserted is that it is still here
+      // to be copied rather than the literal string the mock returns.
+      expect(screen.getByRole('button', { name: /copy transaction hash/i })).toBeDefined()
+      // The header keeps it while the deploy is still running, dialog open or not: it stops being
+      // a stand-in and becomes the one place a running deploy is always visible. It drops away when
+      // the deploy settles in front of the user — see the dialog's own tests for that half.
+
+      await release(new Error('boom'))
+    })
+
+    // The reported bug: the first close worked, and the second one lost the deploy. The page was
+    // deciding whether to keep the dialog mounted from its own pause flag, which the FIRST close
+    // clears (mining has to be handed back), so the second close read "nothing outstanding" and
+    // unmounted the dialog the pill was pointing at.
+    it('survives being closed, reopened and closed again', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await user.click(within(slot).getByRole('button'))
+      expect(await screen.findByRole('dialog')).toBeDefined()
+
+      await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(slot.textContent).toMatch(/confirming/i)
+      // And it is still the same deploy, with the same transaction still on it.
+      await user.click(within(slot).getByRole('button'))
+      expect(screen.getByRole('heading', { name: /^deploying safe$/i })).toBeDefined()
+      // The hash is middle-truncated on this screen, so what is asserted is that it is still here
+      // to be copied rather than the literal string the mock returns.
+      expect(screen.getByRole('button', { name: /copy transaction hash/i })).toBeDefined()
+
+      await release(new Error('boom'))
+    })
+
+    // The header is where a deploy is visible for as long as it is running, and that starts at the
+    // press: a user who scrolls the grid or opens the pattern filter should not have to remember
+    // that something is going on.
+    it('shows the status from the moment deploy is pressed, with the dialog still open', async () => {
+      buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(CANDIDATE_A.address))
+      const release = pendingReceipt()
+      render(<Page />)
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+      expect(slot.textContent).toBe('')
+
+      await user.click(deployButton())
+
+      await waitFor(() => expect(slot.textContent).toMatch(/deploying|confirming/i))
+      expect(screen.getByRole('dialog')).toBeDefined()
+
+      await release(new Error('boom'))
+    })
+
+    // A deploy that settles while nobody is looking has to say so where the user last saw it.
+    it('reports the outcome on the way back when the deploy settles while it is closed', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+      await user.click(within(slot).getByRole('button'))
+      await screen.findByRole('heading', { name: /^deployment failed$/i })
+      expect(dialogReason()).toMatch(/the chain said no/i)
+    })
+
+    // Once it has been read there is nothing left to stand in for, and a control in the header
+    // offering to reopen a finished deploy is furniture.
+    it('takes the way back away once the settled deploy has been closed again', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+
+      await user.click(within(slot).getByRole('button'))
+      // "Close", not "Close and keep waiting": the deploy has settled, so there is nothing left to
+      // wait for. Scoped to the footer, because the dialog's own X is named "Close" too.
+      const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement
+      await user.click(within(footer).getByRole('button', { name: /^close$/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(slot.textContent).toBe('')
+    })
+
+    // The page already ignores a card activated while a send is in flight. The same rule has to
+    // cover this window, or a click on the grid would quietly destroy the state the pill is
+    // pointing at — which is worse than the old behaviour, because the pill promised it was there.
+    // Refusing was right; refusing SILENTLY was not. A grid that stops responding reads as broken
+    // rather than as a rule, so the refusal now says what it is waiting for.
+    it('explains itself when a result is activated while a deploy is running', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+      const warning = await screen.findByRole('dialog')
+      expect(warning.textContent).toMatch(/deploy is already in progress/i)
+      // Still A's deploy underneath, and still the only thing in the header.
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      // And it offers the thing the user was otherwise denied a route to.
+      await user.click(screen.getByRole('button', { name: /view the deploy/i }))
+      const deploy = await screen.findByRole('dialog')
+      expect(deploy.textContent).toContain(CANDIDATE_A.address)
+      expect(deploy.textContent).not.toMatch(/deploy is already in progress/i)
+
+      await release(new Error('boom'))
+    })
+
+    // Its own tile offers "View the deploy", so activating it is a request to come back rather than
+    // something to refuse: warning a user off the very deploy they are pointing at would be absurd.
+    it('reopens the deploy when its own result is activated', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toContain(CANDIDATE_A.address)
+      expect(dialog.textContent).not.toMatch(/deploy is already in progress/i)
+
+      await release(new Error('boom'))
+    })
+
+    it('lets the warning be dismissed without changing anything', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      const opened = window.location.href
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+      await user.click(screen.getByRole('button', { name: /keep waiting/i }))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(window.location.href).toBe(opened)
+      expect(slot.textContent).toMatch(/confirming/i)
+
+      await release(new Error('boom'))
+    })
+
+    // Once it has settled there is nothing left to protect: the outcome has been reported, and a
+    // pill that went on wedging the grid would be a finished deploy holding the app hostage.
+    it('takes a new result once the outstanding deploy has settled', async () => {
+      render(<Page />)
+      const user = userEvent.setup()
+
+      const release = await minimise(user)
+      await release(new Error('the chain said no'))
+      await waitFor(() => expect(slot.textContent).toMatch(/stopped/i))
+
+      await user.click(screen.getByRole('button', { name: 'select-b' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toContain(CANDIDATE_B.address)
+      expect(dialog.textContent).not.toMatch(/deploy is already in progress/i)
+      expect(slot.textContent).toBe('')
+    })
+  })
+
   // The other half of that dismissal, and the reason `deploying` cannot be a single shared
   // boolean. "Close and keep waiting" leaves the wallet holding A's transaction and hands mining
   // back — deliberately, above — but A's sequence is still running, and its `finally` still calls
@@ -723,6 +978,20 @@ describe('Page', () => {
 
     await user.click(screen.getByRole('button', { name: /close and keep waiting/i }))
     expect(screen.getByText('running')).toBeDefined()
+
+    // Back, rather than straight to another card: closing mid-flight now keeps A's dialog mounted
+    // so the header pill can bring it back, and the grid will not take a new result while that
+    // deploy is running (see "explains itself when a result is activated while a deploy is
+    // running"). A traversal is the route that is left.
+    //
+    // TWICE, and the first one is not redundant: closing pushed the base URL over A's own entry, so
+    // the first Back lands back ON that entry and reopens A — which is the behaviour that entry is
+    // for. The second leaves it, unmounting the dialog, which is what makes the attempt below
+    // genuinely abandoned and what puts the grid back in play.
+    await traverse(() => window.history.back())
+    expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+    await traverse(() => window.history.back())
+    expect(screen.queryByRole('dialog')).toBeNull()
 
     const releaseB = pendingDeploy()
     await user.click(screen.getByRole('button', { name: 'select-b' }))
@@ -796,9 +1065,9 @@ describe('Page', () => {
     await user.click(deployButton())
 
     expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
+      await screen.findByRole('heading', { name: /^safe deployed$/i }, { timeout: 5000 }),
     ).toBeDefined()
-    expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
 
     // Hands the page candidate B while the dialog is still mounted — no close, so React reuses
     // the element position and only `key={selected.address}` forces a fresh instance.
@@ -816,7 +1085,7 @@ describe('Page', () => {
     // success status naming A's address, and not the permanently disabled button.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.queryByText(CANDIDATE_A.address)).toBeNull()
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(deployed()).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -835,7 +1104,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
     expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
+      await screen.findByRole('heading', { name: /^safe deployed$/i }, { timeout: 5000 }),
     ).toBeDefined()
 
     // Escape is allowed once the sequence has settled — and closing clears the selection, so the
@@ -846,7 +1115,7 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-b' }))
 
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(deployed()).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -890,7 +1159,7 @@ describe('Page', () => {
     expect(dialog.textContent).toContain('12345')
     // Everything the dialog carries for a mined result carries here too, including a link that
     // reproduces this same address.
-    expect(screen.getByRole('textbox', { name: /share link/i })).toBeDefined()
+    expect(shareLinkAnchor()).toBeDefined()
     expect(deployButton()).toBeDefined()
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
 
@@ -913,7 +1182,7 @@ describe('Page', () => {
     await user.click(deployButton())
 
     expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${expected.address}`, 'i')),
+      await screen.findByRole('heading', { name: /^safe deployed$/i }, { timeout: 5000 }),
     ).toBeDefined()
     // The dialog's own independent constants re-read asked about the link's Safe, not the
     // recipient's — `toHaveBeenLastCalledWith`, so this is the deploy path's read and not the
@@ -929,7 +1198,11 @@ describe('Page', () => {
       expect.objectContaining({ saltNonce: '12345', chainId: CONFIG.chainId }),
     )
     // And the last-resort guard never had anything to catch.
-    expect(screen.queryByText(/does not match the selected candidate/i)).toBeNull()
+    expect(
+      screen.queryByText(/does not match the selected candidate/i, {
+        ignore: '[aria-live] *, [aria-live]',
+      }),
+    ).toBeNull()
   })
 
   // Resolving a link is a real wait — an RPC round trip for the constants, then keccak's wasm
@@ -1134,7 +1407,7 @@ describe('Page', () => {
     const address = dialog.textContent
 
     const sharedConfig = () => {
-      const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+      const url = shareLink()
       return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
         .config
     }
@@ -1166,12 +1439,16 @@ describe('Page', () => {
     fireEvent.click(deployButton())
 
     expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${shownAddress}`, 'i')),
+      await screen.findByRole('heading', { name: /^safe deployed$/i }, { timeout: 5000 }),
     ).toBeDefined()
     expect(loadSafeConstantsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ owners: LINK_OWNERS }),
     )
-    expect(screen.queryByText(/does not match the selected candidate/i)).toBeNull()
+    expect(
+      screen.queryByText(/does not match the selected candidate/i, {
+        ignore: '[aria-live] *, [aria-live]',
+      }),
+    ).toBeNull()
   })
 
   it('NEW-1 regression: a share-link user who closes the deploy dialog is not stranded paused forever', async () => {
@@ -1270,9 +1547,7 @@ describe('Page', () => {
     // The sender's candidate, and the same share link — not a second reconstruction, and not a
     // config re-derived from the URL.
     expect(screen.getByRole('dialog').textContent).toBe(address)
-    expect((screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value).toBe(
-      received,
-    )
+    expect(shareLink()).toBe(received)
     // Not latched as an incoming link: no overlay over the dialog, and no second constants read
     // for a reconstruction that already happened. (One call, from the mount.)
     expect(spinner()).toBeNull()
@@ -1330,8 +1605,7 @@ describe('Page', () => {
     await waitFor(() => expect(screen.getByText('running')).toBeDefined())
 
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    const minedUrl = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement)
-      .value
+    const minedUrl = shareLink()
     expect(window.location.href).toBe(minedUrl)
 
     await user.keyboard('{Escape}')
@@ -1443,9 +1717,7 @@ describe('Page', () => {
     // And the entry bookkeeping came out of it straight: opening a result still pushes its own
     // entry, and closing it still pushes the bare page over that one.
     await user.click(screen.getByRole('button', { name: 'select-a' }))
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
     await user.keyboard('{Escape}')
     await waitFor(() => expect(window.location.search).toBe(''))
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -1657,35 +1929,19 @@ describe('Page', () => {
     expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
   })
 
-  // The caveat is about reading a result, so it appears where results do. Before a run there is
-  // nothing to mistrust yet, and a permanent banner over an empty starting screen is the fastest
-  // way to teach someone that this particular panel is scenery — which is the one thing this
-  // warning cannot afford to become.
-  it('shows the phishing caveat only once a run exists', async () => {
-    render(<Page />)
-
-    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
-
-    await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
-    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
-  })
-
-  // "Stays visible from then on": stopping mining does not take it away, because the results it
-  // is about are still on screen.
-  it('keeps the caveat up once mining stops, and drops it only on start over', async () => {
+  // A banner carried for the whole run is the fastest way to teach someone it is scenery, so the
+  // page itself carries no standing caveat. It is stated where it is actually read instead: the
+  // idle Configure card, the About dialog, and the deploy dialog, each asserted in its own suite.
+  it('carries no standing phishing caveat, idle or mining', async () => {
     render(<Page />)
     const user = userEvent.setup()
 
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    expect(screen.queryByText(/known phishing vector/i)).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
-    expect(screen.getByText(/known phishing vector/i)).toBeDefined()
-
-    // Full width, like the Face card and the grid below it, rather than the Configure card's
-    // narrow measure — the card it used to line up with is not on screen during a run.
-    const note = screen.getByRole('note')
-    expect(note.closest('[class*="max-w-[520px]"]')).toBeNull()
-
-    await user.click(screen.getByRole('button', { name: 'start-over' }))
     expect(screen.queryByText(/known phishing vector/i)).toBeNull()
   })
 
@@ -1769,7 +2025,7 @@ describe('Page', () => {
     // Still open: the send may already have reached the wallet, and closing here is what strands
     // the deploy with nowhere to report a hash.
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // …and the way out that is left does not read as "cancel the deployment", because nothing
     // here can recall a transaction the wallet already has.
     expect(screen.queryByRole('button', { name: /^cancel$/i })).toBeNull()
@@ -1794,8 +2050,9 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    // Gas is now committed: the transaction is broadcast and only the receipt is outstanding.
-    await screen.findByText(/Sent 0xhash/i)
+    // Gas is now committed: the transaction is broadcast and only the receipt is outstanding, which
+    // is exactly the dialog's pending screen.
+    await screen.findByRole('heading', { name: /^deploying safe$/i })
 
     unmount()
 
@@ -1878,9 +2135,9 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    const message = await screen.findByText(/does not match the selected candidate/i)
-    expect(message.textContent).toContain(CANDIDATE_A.address)
-    expect(message.textContent).toContain(CANDIDATE_B.address)
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
+    expect(dialogReason()).toContain(CANDIDATE_A.address)
+    expect(dialogReason()).toContain(CANDIDATE_B.address)
     // Nothing is spent: the refusal happens before the send, not after it.
     expect(sendTransactionMock).not.toHaveBeenCalled()
   })
@@ -1896,9 +2153,10 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    const message = await screen.findByText(/Deployment reverted\. Gas was spent\./i)
-    expect(message.textContent).toContain('0xhash')
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
+    expect(dialogReason()).toMatch(/Deployment reverted\. Gas was spent\./i)
+    expect(dialogReason()).toContain('0xhash')
+    expect(deployed()).toBeNull()
   })
 
   it('T2: cross-checks the receipt logs against the predicted address before claiming success', async () => {
@@ -1912,10 +2170,10 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     await user.click(deployButton())
 
-    const message = await screen.findByText(/does not match the predicted/i)
-    expect(message.textContent).toContain(THIRD)
-    expect(message.textContent).toContain(CANDIDATE_A.address)
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
+    expect(dialogReason()).toContain(THIRD)
+    expect(dialogReason()).toContain(CANDIDATE_A.address)
+    expect(deployed()).toBeNull()
   })
 
   it('T2: warns that the transaction may already be broadcast when the send itself fails', async () => {
@@ -1930,8 +2188,9 @@ describe('Page', () => {
 
     // `sendDispatched` is set before the await precisely so this branch survives a throw from
     // inside sendTransaction, where gas may already have been committed.
-    const message = await screen.findByText(/may already have been broadcast/i)
-    expect(message.textContent).toContain('the wallet never answered')
+    await screen.findByRole('heading', { name: /^deployment failed$/i }, { timeout: 5000 })
+    expect(dialogReason()).toMatch(/may already have been broadcast/i)
+    expect(dialogReason()).toContain('the wallet never answered')
   })
 
   it('seeds the default expression selection from ALL_MOUTH_NAMES, not a hardcoded list', async () => {
@@ -1971,7 +2230,7 @@ describe('Page', () => {
   // The decoded config a `?config=` link renders, so a test can say what chain the dialog is
   // offering rather than trusting the URL to look right.
   const sharedChainId = () => {
-    const url = (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value
+    const url = shareLink()
     return decodeConfigParam(new URL(url, 'http://localhost').searchParams.get('config') ?? '')
       .config?.chainId
   }
@@ -2011,9 +2270,7 @@ describe('Page', () => {
     // And a result opened now offers a link for the chain the user is on.
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(sharedChainId()).toBe(137)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
   })
 
   // Crossing the mainnet boundary is the one switch that changes every address on screen, so it
@@ -2183,7 +2440,8 @@ describe('Page', () => {
     const address = (screen.getByRole('dialog').textContent ?? '').match(/0x[0-9a-f]{40}/i)?.[0]
     expect(address).toBe(CANDIDATE_A.address)
     expect(sharedChainId()).toBe(11155111)
-    expect(screen.getByRole('button', { name: /switch network to continue/i })).toBeDefined()
+    // Named after the chain it switches to, which is the config's — see DeployDialog.
+    expect(screen.getByRole('button', { name: /^switch to sepolia$/i })).toBeDefined()
 
     await chooseChain(user, /polygon/i)
 
@@ -2196,13 +2454,11 @@ describe('Page', () => {
     expect(screen.getByRole('dialog').textContent).not.toContain('Sepolia')
     // The wrong-chain comparison is made against the carried config, so the gate opens and the
     // button that spends the gas appears — on the chain the header is showing.
-    expect(screen.queryByRole('button', { name: /switch network to continue/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /switch to/i })).toBeNull()
     expect(deployButton()).toBeDefined()
     // The address bar is still the same string as the copyable link, and both name Polygon: a
     // link copied out of here after the switch has to reproduce what this dialog would deploy.
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
     expect(
       decodeConfigParam(new URLSearchParams(window.location.search).get('config') ?? '').config
         ?.chainId,
@@ -2339,24 +2595,24 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     const opened = window.location.href
     await user.click(deployButton())
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
 
     await user.click(screen.getByText('paused'))
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
 
     // The backdrop is still there — it still blocks the page — it just does not dismiss.
     expect(backdrop()).not.toBeNull()
     await user.click(backdrop() as HTMLElement)
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // Nothing was pushed either: a URL moving under a dialog that stayed put would mean
     // `closeSelection` ran halfway.
     expect(window.location.href).toBe(opened)
 
     await user.keyboard('{Escape}')
     expect(screen.getByRole('dialog')).toBeDefined()
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     // The X is gone for the same window, so the pointer has nothing accidental left either.
     expect(screen.queryByRole('button', { name: /^close$/i })).toBeNull()
 
@@ -2428,9 +2684,7 @@ describe('Page', () => {
 
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_B.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_A.address)
-    expect(window.location.href).toBe(
-      (screen.getByRole('textbox', { name: /share link/i }) as HTMLInputElement).value,
-    )
+    expect(window.location.href).toBe(shareLink())
 
     // One push, not a close and an open: Back lands on the first result's own entry rather than
     // on a base URL a dismissal would have pushed in between.
@@ -2464,10 +2718,18 @@ describe('Page', () => {
 
     // Nothing moved: the same dialog, the same in-flight sequence, the same URL. In particular
     // mining is still paused and the selector still disabled — an unmount here would have handed
-    // both back while the wallet still had the transaction.
+    // both back while the wallet still had the transaction. What HAS changed is that the refusal
+    // now says so rather than looking like a dead grid, so the deploy dialog is asserted on by
+    // name rather than as "the dialog".
+    expect(await screen.findByText(/deploy is already in progress/i)).toBeDefined()
+    // Dismissed before the assertions below, as a user would: the warning is modal, so while it is
+    // up the deploy dialog behind it is out of the accessibility tree and out of reach of a role
+    // query — which is exactly what a modal is for.
+    await user.click(screen.getByRole('button', { name: /keep waiting/i }))
+
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
     expect(screen.getByRole('dialog').textContent).not.toContain(CANDIDATE_B.address)
-    expect(screen.getByRole('button', { name: /deploying…/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /waiting for wallet/i })).toBeDefined()
     expect(window.location.href).toBe(opened)
     expect(screen.getByText('paused')).toBeDefined()
     expect((screen.getByRole('combobox', { name: /^chain$/i }) as HTMLButtonElement).disabled).toBe(
@@ -2509,9 +2771,9 @@ describe('Page', () => {
     await user.click(deployButton())
 
     expect(
-      await screen.findByText(new RegExp(`Safe deployed at ${CANDIDATE_A.address}`, 'i')),
+      await screen.findByRole('heading', { name: /^safe deployed$/i }, { timeout: 5000 }),
     ).toBeDefined()
-    expect((deployButton() as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
 
     walletChain = 137
     await chooseChain(user, /polygon/i)
@@ -2520,7 +2782,7 @@ describe('Page', () => {
     // a Deploy button that can actually be pressed.
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
     expect(screen.getByRole('dialog').textContent).toContain('Polygon')
-    expect(screen.queryByText(/Safe deployed at/i)).toBeNull()
+    expect(deployed()).toBeNull()
     expect((deployButton() as HTMLButtonElement).disabled).toBe(false)
     expect(sharedChainId()).toBe(137)
   })

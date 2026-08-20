@@ -53,6 +53,87 @@ describe('ResultsGrid', () => {
     expect(resultCards()).toHaveLength(3)
   })
 
+  // Five to a row is what makes the section read as a wall of blockies rather than a list of
+  // cards, and the steps below it are what keep a tile from shrinking past the picture on a
+  // narrow one. Five lands at `xl`, not `2xl`, because the page container caps at `max-w-6xl`:
+  // the grid stops growing at 1120px, so a 1536 window gives five tiles no more room than a 1280
+  // one does. Asserted on the classes because jsdom has no layout to measure.
+  it('lays out five tiles to a row on a wide desktop and fewer as the viewport narrows', () => {
+    render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120)]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    const grid = screen.getByTestId('results-grid').className
+    expect(grid).toMatch(/grid-cols-2/)
+    expect(grid).toMatch(/sm:grid-cols-3/)
+    expect(grid).toMatch(/lg:grid-cols-4/)
+    expect(grid).toMatch(/xl:grid-cols-5/)
+  })
+
+  // The two-colour mark is on the tile, but whether it says anything is a property of the filters,
+  // which only this component knows: with the filter on, every tile would carry it.
+  it('marks two-colour results only when the filter is not already excluding the rest', () => {
+    const { rerender } = render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
+        droppedCount={0}
+        mining
+        filters={{ twoColor: true, minContrast: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/two colours/i)).toBeNull()
+
+    rerender(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
+        droppedCount={0}
+        mining
+        filters={{ twoColor: false, minContrast: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getAllByText(/two colours/i)).toHaveLength(2)
+  })
+
+  // One tile at most, picked by address rather than by position: the grid re-sorts under the user
+  // while a deploy runs, so an index would follow the wrong picture within a second.
+  it('marks only the tile whose result is being deployed', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        deployingAddress="0xb"
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const spinners = container.querySelectorAll('.animate-spin')
+    expect(spinners).toHaveLength(1)
+    const marked = screen.getByRole('button', { name: /view the deploy in progress for 0xb/i })
+    expect(marked.closest('[data-slot="card"]')?.contains(spinners[0])).toBe(true)
+  })
+
+  it('marks nothing while no deploy is running', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[candidate('0xa', 120)]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('.animate-spin')).toBeNull()
+  })
+
   it('shows skeletons while mining with nothing found yet', () => {
     const { container } = render(
       <ResultsGrid
@@ -64,6 +145,24 @@ describe('ResultsGrid', () => {
       />,
     )
     expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
+  })
+
+  // A placeholder the shape of the old tall card promised something twice the height of what
+  // arrives, so the whole grid jumped the moment the first result landed.
+  it('shapes the placeholders like the tiles that replace them', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    const placeholder = container.querySelector(
+      '[data-testid="result-skeleton"] [data-slot="skeleton"]',
+    )
+    expect(placeholder?.className).toMatch(/aspect-square/)
   })
 
   it('explains an empty grid when mining is not running', () => {

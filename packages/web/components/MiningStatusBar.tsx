@@ -2,21 +2,12 @@
 
 import { formatScore } from '@safe-vanity-blockie/core'
 import { Pause, Play, RotateCcw } from 'lucide-react'
-import { useState } from 'react'
 import type { MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
+import { useStartOverConfirm } from './StartOverDialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog'
 import { HintPopover } from './ui/hint-popover'
 
 /**
@@ -143,7 +134,9 @@ export function MiningStatusBar({
   /** Throws the run away and brings the Configure card back. */
   onStartOver: () => void
 }) {
-  const [confirming, setConfirming] = useState(false)
+  // The question, and the rule about when it is worth asking, are shared with the app title in the
+  // header — the other door onto this same reset. See StartOverDialog.
+  const { request, dialog } = useStartOverConfirm(onStartOver)
   const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
   const started = status.running || status.paused || status.scanned > 0
 
@@ -171,7 +164,14 @@ export function MiningStatusBar({
           <span className="text-muted-foreground">
             {status.scanned.toLocaleString('en-US')} nonces
           </span>
-          <span className="text-muted-foreground">{formatRate(status.rate)}</span>
+          {/* Zero while paused, and not the average of the segment that just ended: nothing is
+              being scanned, so a speed is a claim about work that is not happening — sitting
+              unchanged next to a button offering to resume it. The count and the clock beside it
+              are cumulative facts about the run and stay where they are; this is the one figure on
+              the bar that describes the current moment. */}
+          <span className="text-muted-foreground">
+            {formatRate(status.paused ? 0 : status.rate)}
+          </span>
           <span className="text-muted-foreground">{status.workers} workers</span>
           {/* Gated on `started` — the same condition the controls use — because a clock reading
               "0s elapsed" before anything has been mined claims a run that does not exist. The
@@ -212,12 +212,7 @@ export function MiningStatusBar({
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  // Nothing to lose yet, so nothing to ask about. A confirmation over an empty
-                  // leaderboard is the kind that teaches people to dismiss confirmations.
-                  if (resultCount > 0) setConfirming(true)
-                  else onStartOver()
-                }}
+                onClick={() => request(resultCount)}
               >
                 <RotateCcw className="mr-1 size-3" /> Start over
               </Button>
@@ -226,34 +221,7 @@ export function MiningStatusBar({
         </div>
       </div>
 
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Discard {resultCount.toLocaleString('en-US')} result
-              {resultCount === 1 ? '' : 's'} and start over?
-            </DialogTitle>
-            <DialogDescription>
-              The search stops and every result found so far is thrown away. Your owners, threshold
-              and Safe version come back in the form, so you can change one and start again.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost">Keep mining</Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setConfirming(false)
-                onStartOver()
-              }}
-            >
-              Discard and start over
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {dialog}
     </div>
   )
 }

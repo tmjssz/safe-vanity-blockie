@@ -18,6 +18,35 @@ export function chainById(chainId: number): Chain {
   return chain
 }
 
+export interface ChainExplorer {
+  /** The explorer's own name, so a link can say where it goes: "on Etherscan". */
+  name: string
+  tx: (hash: string) => string
+  address: (address: string) => string
+}
+
+/**
+ * Where to look a transaction or an address up, for the chain a Safe is being deployed on.
+ *
+ * Read off viem's own chain definition rather than from a table here: all seven supported chains
+ * carry one, and a hand-maintained list of explorer hosts is a list that goes stale silently. It is
+ * also why these links go to a block explorer rather than to app.safe.global, which would need a
+ * per-chain short-name prefix (`eth:`, `matic:`, …) that no data this app already has can supply.
+ *
+ * Undefined when a chain has no explorer, so a caller degrades to plain text rather than to a
+ * link that goes nowhere.
+ */
+export function explorerFor(chainId: number): ChainExplorer | undefined {
+  const explorer = chainById(chainId).blockExplorers?.default
+  if (!explorer) return undefined
+  const base = explorer.url.replace(/\/$/, '')
+  return {
+    name: explorer.name,
+    tx: (hash) => `${base}/tx/${hash}`,
+    address: (address) => `${base}/address/${address}`,
+  }
+}
+
 /**
  * Wagmi config for MetaMask only. `target: 'metaMask'` pins the injected connector to that one
  * wallet rather than accepting whatever `window.ethereum` happens to be, and it also turns off

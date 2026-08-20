@@ -5,6 +5,12 @@ import { cn } from '../lib/utils'
 export interface BlockieProps {
   address: string
   size?: number
+  /**
+   * Classes for the wrapper. The identicon carries a viewBox, so a caller that wants it to fill
+   * its column asks for that here (`w-full [&>svg]:size-full`) rather than by guessing a pixel
+   * `size` — which is only the intrinsic width the svg declares, and which CSS then overrides.
+   */
+  className?: string
 }
 
 /**
@@ -44,13 +50,14 @@ export const DecorativeBlockie = memo(function DecorativeBlockie({
   )
 })
 
-export function Blockie({ address, size = 64 }: BlockieProps) {
+export function Blockie({ address, size = 64, className }: BlockieProps) {
   // bloSvg emits a self-contained <svg> built from numeric HSL values and integer coordinates
   // derived from the address; it never echoes the address string into the markup.
   return (
     <span
       aria-label={`Identicon for ${address}`}
       role="img"
+      className={className}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, not user input — see the comment above.
       dangerouslySetInnerHTML={{ __html: bloSvg(address, size) }}
     />

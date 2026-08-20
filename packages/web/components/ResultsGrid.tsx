@@ -26,6 +26,12 @@ export interface ResultsGridProps {
   filters: FaceFilters
   /** Highest contrast among candidates the other filters accept; see MinerState.bestContrast. */
   bestContrast?: number
+  /**
+   * The Safe currently being deployed, if any. An address rather than an index: the leaderboard
+   * re-sorts under the user while a deploy runs, so a position would follow the wrong picture
+   * within a second.
+   */
+  deployingAddress?: string
   onSelect: (candidate: Candidate) => void
 }
 
@@ -51,6 +57,7 @@ export function ResultsGrid({
   mining,
   filters,
   bestContrast,
+  deployingAddress,
   onSelect,
 }: ResultsGridProps) {
   // Three states, and the difference between the first two is the whole point: candidates found
@@ -98,14 +105,39 @@ export function ResultsGrid({
       {!mining && candidates.length === 0 && !excludedEverything && (
         <p className="text-sm text-muted-foreground">No results yet.</p>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {/* Five to a row on a desktop, and a tight gap, so the section reads as a wall of blockies
+          rather than a list of cards — the picture is the only thing being compared here. The
+          steps down are what stop a tile shrinking past its picture on a narrow viewport: two
+          across is the floor, because one across is a list again.
+          Five from `xl` rather than `2xl`: the page container caps at `max-w-6xl`, so the grid
+          stops growing at 1120px however wide the window gets, and five tiles are 214px each
+          there — the same size they would be on a 4K screen. Waiting for 1536 would leave every
+          ordinary laptop on four for no gain in tile size. */}
+      <div
+        data-testid="results-grid"
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      >
         {candidates.map((candidate) => (
-          <ResultCard key={candidate.address} candidate={candidate} onSelect={onSelect} />
+          <ResultCard
+            key={candidate.address}
+            candidate={candidate}
+            // Read here rather than inside the tile: whether "two colours" says anything about a
+            // result is a property of the filters, which the tile has no reason to know about.
+            filterGuaranteesTwoColour={filters.twoColor}
+            // Compared here so each tile gets a boolean: a shared address string would re-render
+            // every memoised tile in the grid whenever the deploy target changed.
+            deploying={candidate.address === deployingAddress}
+            onSelect={onSelect}
+          />
         ))}
         {showSkeletons &&
           SKELETON_KEYS.map((key) => (
-            <div key={key} data-testid="result-skeleton">
-              <Skeleton className="h-72 w-full rounded-xl" />
+            // The shape of a real tile — a square picture and two short lines — so the grid does
+            // not jump the moment the first result lands.
+            <div key={key} data-testid="result-skeleton" className="flex flex-col gap-1.5 p-2.5">
+              <Skeleton className="aspect-square w-full rounded-md" />
+              <Skeleton className="h-2.5 w-2/3 self-center" />
+              <Skeleton className="h-2.5 w-1/2 self-center" />
             </div>
           ))}
       </div>
