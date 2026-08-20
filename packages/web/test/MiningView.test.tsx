@@ -817,7 +817,7 @@ describe('MiningView', () => {
     )
 
     const row = screen.getByRole('heading', { level: 2, name: /^results$/i }).parentElement!
-    const handoff = screen.getByRole('button', { name: /run this search/i })
+    const handoff = screen.getByRole('button', { name: /run on your machine/i })
     expect(row.contains(handoff)).toBe(true)
     // Pushed to the right end of that row, away from the heading and its count.
     expect(handoff.parentElement?.className ?? handoff.className).toMatch(/ml-auto/)
@@ -861,7 +861,7 @@ describe('MiningView', () => {
       />,
     )
 
-    const handoff = screen.getByRole('button', { name: /run this search/i })
+    const handoff = screen.getByRole('button', { name: /run on your machine/i })
     const position = handoff.compareDocumentPosition(resultCards()[0])
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -886,7 +886,7 @@ describe('MiningView', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /run this search/i }))
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const command = screen.getByText(/npx safe-vanity-blockie/)
     expect(command.textContent).toContain('--no-two-color')

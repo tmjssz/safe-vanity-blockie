@@ -108,14 +108,14 @@ export function CliHandoff({
           className="gap-1.5 px-2 text-muted-foreground hover:text-foreground"
         >
           <Terminal aria-hidden="true" />
-          Run this search on your machine
+          Run on your machine
         </Button>
       </DialogTrigger>
       {/* Between the widest dialog and the default: with each argument on its own line the
           command does not need a wide box, but at `lg` the owner list wrapped mid-address. */}
       <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Run this search on your machine</DialogTitle>
+          <DialogTitle>Run on your machine</DialogTitle>
           <DialogDescription>
             A browser tab is throttled when it loses focus, and mobile is roughly ten times slower.
             For a longer search, run the same config natively. It uses every core and can be
