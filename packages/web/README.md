@@ -14,6 +14,18 @@ mining bar pinned directly below it, the security caveat, **Configure**, **Face*
 with a "Run on your machine" disclosure beside the grid's heading that hands you the equivalent
 `npx` command.
 
+The chain is named with its brand mark wherever it appears: in the header selector and its list,
+in the confirmation for a switch that costs results, on the deploy dialog's wrong-chain button and
+in the deploy outcome. Each mark is a brand-coloured disc with the chain's glyph knocked out in
+white — one shape for all seven, which is what makes them a set rather than seven adjacent logos,
+and what lets them keep their contrast on both themes without following `currentColor` the way
+every lucide icon in the app does. They are inline SVG in
+[`components/ChainIcon.tsx`](components/ChainIcon.tsx), so there is no icon dependency and no
+request at runtime, and the glyphs come from [`@web3icons/core`](https://github.com/0xa3k5/web3icons)
+(MIT) rather than being redrawn, so no chain is represented by an approximation of its own logo.
+Sepolia is the exception it has to be: a testnet has no mark, so it takes Ethereum's diamond on an
+amber disc — the one hue no supported chain has claimed.
+
 There is no separate deploy step: **clicking any result card opens its deploy dialog**, carrying
 that candidate's score, a full-size identicon, its address and `saltNonce`, its share link and the
 button that spends the gas. Closing the dialog puts you straight back on a grid that never stopped

@@ -1,7 +1,7 @@
 'use client'
 
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
-import { ArrowLeftRight, Check, CircleAlert, Link2, Loader2, ShieldAlert } from 'lucide-react'
+import { Check, CircleAlert, Link2, Loader2, ShieldAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import { type MineConfig, SUPPORTED_CHAINS } from '../lib/config'
 import { shareConfigPath } from '../lib/deep-link'
 import { useCopy } from '../lib/use-copy'
 import { Blockie } from './Blockie'
+import { ChainIcon } from './ChainIcon'
 import { CopyButton } from './CopyButton'
 import { DeployOutcome } from './DeployOutcome'
 import { type DeployPhase, DeployStatusPill } from './DeployStatusPill'
@@ -644,7 +645,12 @@ export function DeployDialog({
               switching to is the last chance to catch it. */}
                 {wrongChain && !submitted && (
                   <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
-                    <ArrowLeftRight aria-hidden="true" />
+                    {/* The chain's own mark rather than a swap arrow: the button already says
+                  "Switch to", so an arrow only restates the verb, while the mark says which chain
+                  — the part a user may not have noticed changing, on the last screen before gas
+                  is spent. Falls back to no icon at all for an unmarked chain, which is the same
+                  degradation the label beside it makes. */}
+                    <ChainIcon chainId={config.chainId} />
                     Switch to {chainName ?? `chain ${config.chainId}`}
                   </Button>
                 )}

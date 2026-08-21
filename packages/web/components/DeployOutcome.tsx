@@ -5,6 +5,7 @@ import { SUPPORTED_CHAINS } from '../lib/config'
 import { safeWalletUrl } from '../lib/safe-app'
 import { explorerFor } from '../lib/wagmi'
 import { Blockie } from './Blockie'
+import { ChainLabel } from './ChainIcon'
 import { CopyButton } from './CopyButton'
 import { Button } from './ui/button'
 import {
@@ -75,12 +76,24 @@ export function DeployOutcome({
           ? 'Transaction rejected'
           : 'Deployment failed'
 
+  /**
+   * A node rather than a string, so the two variants that name the chain can carry its mark beside
+   * the name. A failure names no chain — its subtitle is the reason the sequence gave, which is
+   * about what went wrong rather than where — so it stays plain text and gets no mark.
+   */
   const subtitle =
-    variant === 'pending'
-      ? `Transaction sent. Waiting for confirmation on ${chainName}.`
-      : variant === 'success'
-        ? `Live on ${chainName} and ready to use.`
-        : (reason ?? 'The deployment stopped.')
+    variant === 'pending' ? (
+      <>
+        Transaction sent. Waiting for confirmation on{' '}
+        <ChainLabel chainId={chainId}>{chainName}</ChainLabel>.
+      </>
+    ) : variant === 'success' ? (
+      <>
+        Live on <ChainLabel chainId={chainId}>{chainName}</ChainLabel> and ready to use.
+      </>
+    ) : (
+      (reason ?? 'The deployment stopped.')
+    )
 
   return (
     <div className="flex flex-col items-center gap-4 text-center">
