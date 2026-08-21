@@ -10,79 +10,99 @@ import { cn } from '../lib/utils'
 export const CHAIN_ICON_ATTR = 'data-chain-icon'
 
 /**
- * Ethereum's official mark, in Ethereum's own palette.
+ * A brand-coloured disc with the chain's glyph knocked out of it in white.
  *
- * The geometry is the canonical diamond: apex at the top, waist at y=12.167, base at the bottom,
- * six faces. The three greys are the brand's — light face #8A92B2, shaded face #62688F, inner
- * right #454A75 — chosen over the pastel recolouring that icon sets often ship, because the
- * violet-grey diamond is what a Safe user has seen on every Ethereum surface there is, and the
- * whole value of a mark here is being recognised without being read.
+ * One shape for all seven, which is what makes them a set rather than seven logos that happen to
+ * be adjacent. Drawn bare, these marks have wildly different geometry — a diamond, an outline, a
+ * pair of letterforms, a solid square — and so wildly different optical weight and contrast: the
+ * square pulled the eye across the whole list, while Gnosis's dark green all but disappeared
+ * against the dark theme. The disc settles both at once. Every mark covers the same area, and
+ * every glyph is white on a colour picked to carry it, so none of them depends on the surface
+ * behind it. That is also why these need no theme handling while every lucide icon in the app
+ * follows `currentColor`: a disc brings its own background.
  *
- * Both tones carry enough weight to sit on this app's light and dark surfaces without a plate
- * behind them, which is why the diamond is drawn bare while the disc-shaped marks below keep the
- * discs their brands give them.
+ * `scale` insets the glyph. It defaults to what suits a glyph drawn to fill its square, which is
+ * what the source artwork is; the marks that are denser or sparser than that say so.
  */
-function ethereumDiamond(light: string, shaded: string, inner: string): ReactNode {
+function disc(fill: string, glyph: ReactNode, scale = 0.78): ReactNode {
   return (
     <>
-      <path fill={light} d="M12 3v6.651l5.625 2.516z" />
-      <path fill={shaded} d="m12 3-5.625 9.166L12 9.653z" />
-      <path fill={light} d="M12 16.478V21l5.625-7.784z" />
-      <path fill={shaded} d="M12 21v-4.522l-5.625-3.262z" />
-      <path fill={inner} d="m12 15.43 5.625-3.263L12 9.652z" />
-      <path fill={shaded} d="M6.375 12.167 12 15.43V9.652z" />
+      <circle cx="12" cy="12" r="12" fill={fill} />
+      {/* No clip. Every glyph here is drawn inside a 4..20 box, whose far corner is 11.3 from the
+          centre and so already inside a disc of radius 12 — the inset below pulls it further in
+          still. A clip was tried and removed: `circle(50%)` is resolved against the clipped
+          element's OWN bounding box, not the disc's, so it turned Base's square into a circle
+          rather than guarding anything. A glyph drawn wider than that box needs its own `scale`,
+          which is what that argument is for. */}
+      <g fill="#fff" transform={`translate(12 12) scale(${scale}) translate(-12 -12)`}>
+        {glyph}
+      </g>
     </>
   )
 }
+
+/**
+ * Ethereum's diamond, white, with its facets carried by opacity rather than by a second colour.
+ *
+ * This is the mark as it is drawn everywhere it sits on a coloured disc: the front faces at full
+ * white, the receding ones at 60%, the inner right at 20%. Shading it this way rather than in
+ * greys is what lets one glyph serve both the mainnet disc and Sepolia's, because it then takes
+ * its colour from whatever it is knocked out of.
+ */
+const ETHEREUM_DIAMOND: ReactNode = (
+  <>
+    <path fillOpacity=".6" d="M12 4v5.912l5 2.237z" />
+    <path d="M12 4 7 12.149l5-2.237z" />
+    <path fillOpacity=".6" d="M12 15.98V20l5-6.92z" />
+    <path d="M12 20v-4.021l-5-2.898z" />
+    <path fillOpacity=".2" d="m12 15.049 5-2.9-5-2.236z" />
+    <path fillOpacity=".6" d="m7 12.149 5 2.9V9.913z" />
+  </>
+)
 
 /**
  * What to draw for each chain, keyed by the same chain IDs as `SUPPORTED_CHAINS` — which is the
  * list test/ChainIcon.test.tsx loops over, so a chain added there without a mark here fails
  * loudly rather than rendering a hole.
  *
- * Every mark is drawn on a 24×24 viewBox and in fixed brand hex, never `currentColor`: telling
- * chains apart at a glance is the entire job, and colour is most of how that happens. That does
- * mean these do not follow the theme the way every lucide icon in the app does — each one is
- * therefore a mark that carries its own contrast, either as a self-contained disc or hexagon, or
- * in tones mid-range enough to hold against both surfaces.
+ * Glyphs are the official marks, taken from @web3icons/core (MIT) rather than redrawn by hand, so
+ * that no chain is represented by an approximation of its logo. Discs are each brand's own colour,
+ * with the exceptions noted below.
  *
- * Paths are the official marks, taken from @web3icons/core (MIT) rather than redrawn by hand, so
- * that no chain is represented by an approximation of its logo. The exceptions are noted below.
- *
- * A function per entry, taking the id to hang a gradient off, because only Polygon needs one and a
+ * A function per entry, taking an id to hang a gradient off, because only Polygon needs one and a
  * `<linearGradient>` is referenced by id — see the `useId` call in the component.
  */
 const CHAIN_MARKS: Record<number, (gradientId: string) => ReactNode> = {
-  // Ethereum
-  1: () => ethereumDiamond('#8A92B2', '#62688F', '#454A75'),
+  // Ethereum, on the periwinkle its badge has always used.
+  1: () => disc('#627EEA', ETHEREUM_DIAMOND),
 
   /**
-   * Sepolia, which has no mark of its own: Ethereum's diamond, in amber.
+   * Sepolia, which has no mark of its own: Ethereum's diamond, on amber.
    *
-   * A testnet is Ethereum, so the shape is right and anything else would be an invention. The
-   * colour is what has to say "not the real one", and it has to say it in the dropdown where the
-   * two sit two rows apart. Amber does: it is the one hue no supported chain has claimed —
-   * Polygon holds purple, Base and Arbitrum blue, Optimism red, Gnosis green — so it cannot be
-   * misread as another chain, and warm-amber already reads as a caution rather than as a brand.
-   * A desaturated grey diamond was the alternative and is the weaker one: at 16px it is a
-   * slightly duller mainnet, which is exactly the confusion this exists to prevent.
+   * A testnet is Ethereum, so the glyph is right and anything else would be an invention. The disc
+   * is what has to say "not the real one", and it has to say it in the dropdown where the two sit
+   * two rows apart. Amber does: it is the one hue no supported chain has claimed — Polygon holds
+   * purple, Base and Arbitrum blue, Optimism red, Gnosis green — so it cannot be misread as
+   * another chain, and warm amber already reads as a caution rather than as a brand. A grey disc
+   * was the alternative and is the weaker one: at 16px it is a slightly duller mainnet, which is
+   * exactly the confusion this exists to prevent.
    */
-  11155111: () => ethereumDiamond('#F2B33D', '#D9922A', '#B0741C'),
+  11155111: () => disc('#D9922A', ETHEREUM_DIAMOND),
 
-  // Polygon
+  // Polygon, on the gradient its own mark is drawn in.
   137: (gradientId) => (
     <>
-      <path
-        fill={`url(#${gradientId})`}
-        d="m16.364 15.217 4.27-2.435a.73.73 0 0 0 .366-.627V7.284a.72.72 0 0 0-.366-.627l-4.27-2.435a.74.74 0 0 0-.732 0l-4.27 2.435a.72.72 0 0 0-.366.627v8.704l-2.994 1.707-2.994-1.707v-3.415l2.994-1.707 1.974 1.127V9.702l-1.608-.918a.75.75 0 0 0-.732 0l-4.27 2.435a.72.72 0 0 0-.366.627v4.87c0 .258.14.498.366.627l4.27 2.436a.75.75 0 0 0 .732 0l4.27-2.436a.72.72 0 0 0 .366-.626V8.012l.053-.03 2.94-1.677 2.994 1.707v3.415l-2.994 1.707-1.972-1.124v2.291l1.606.916a.75.75 0 0 0 .732 0z"
-      />
+      {disc(
+        `url(#${gradientId})`,
+        <path d="m15.88 14.86 3.794-2.165a.64.64 0 0 0 .326-.558v-4.33a.64.64 0 0 0-.326-.556L15.88 5.086a.66.66 0 0 0-.65 0L11.432 7.25a.64.64 0 0 0-.325.557v7.737l-2.662 1.517-2.661-1.517v-3.036l2.661-1.517 1.755 1.001V9.958l-1.43-.816a.66.66 0 0 0-.65 0l-3.796 2.165a.64.64 0 0 0-.325.557v4.33c0 .229.124.442.325.557l3.796 2.165c.2.114.45.114.65 0l3.796-2.165a.64.64 0 0 0 .325-.557V8.455l.048-.026 2.613-1.49 2.661 1.516v3.036l-2.661 1.517-1.753-.999v2.037l1.427.814a.66.66 0 0 0 .651 0z" />,
+      )}
       <defs>
         <linearGradient
           id={gradientId}
-          x1="2.942"
-          x2="20.119"
-          y1="17.194"
-          y2="7.101"
+          x1="3.948"
+          x2="19.217"
+          y1="16.617"
+          y2="7.645"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#A726C1" />
@@ -93,66 +113,50 @@ const CHAIN_MARKS: Record<number, (gradientId: string) => ReactNode> = {
     </>
   ),
 
-  // Arbitrum One
-  42161: () => (
-    <>
-      <path
-        fill="#213147"
-        d="M4.515 8.471v7.056c0 .45.245.867.64 1.092l6.205 3.529a1.3 1.3 0 0 0 1.28 0l6.203-3.53c.396-.224.64-.64.64-1.09V8.47c0-.45-.244-.867-.64-1.091L12.64 3.85a1.3 1.3 0 0 0-1.28 0L5.155 7.38a1.25 1.25 0 0 0-.639 1.091"
-      />
-      <path
-        fill="#12AAFF"
-        d="m13.353 13.368-.885 2.39a.3.3 0 0 0 0 .205l1.523 4.112 1.76-1.001-2.113-5.706a.152.152 0 0 0-.285 0m1.774-4.019a.152.152 0 0 0-.285 0l-.885 2.39a.3.3 0 0 0 0 .205l2.494 6.732 1.761-1.001z"
-      />
-      <path
-        fill="#9DCCED"
-        d="M11.998 4.115a.3.3 0 0 1 .126.033l6.715 3.818a.25.25 0 0 1 .126.214v7.635c0 .089-.048.17-.126.214l-6.715 3.819a.25.25 0 0 1-.126.032.3.3 0 0 1-.125-.032l-6.715-3.815a.25.25 0 0 1-.126-.215V8.182c0-.089.048-.17.126-.215l6.715-3.818a.26.26 0 0 1 .125-.034m0-1.115c-.238 0-.478.06-.692.183L4.593 7A1.36 1.36 0 0 0 3.9 8.182v7.635c0 .487.264.938.693 1.181l6.714 3.819a1.41 1.41 0 0 0 1.386 0l6.714-3.818a1.36 1.36 0 0 0 .693-1.182V8.182A1.36 1.36 0 0 0 19.407 7l-6.716-3.817A1.4 1.4 0 0 0 11.998 3"
-      />
-      <path fill="#213147" d="m7.559 18.685.617-1.666 1.244 1.018-1.163 1.046z" />
-      <path
-        fill="#fff"
-        d="M11.433 7.635H9.731a.3.3 0 0 0-.285.197l-3.649 9.852 1.761 1.001 4.018-10.849a.15.15 0 0 0-.143-.2m2.979-.001h-1.703a.3.3 0 0 0-.284.197l-4.167 11.25 1.761 1 4.535-12.246a.15.15 0 0 0-.142-.2"
-      />
-    </>
-  ),
+  // Arbitrum One, on its navy.
+  42161: () =>
+    disc(
+      '#213147',
+      <>
+        <path d="m13.203 13.216-.787 2.124a.27.27 0 0 0 0 .183l1.354 3.655 1.565-.89-1.879-5.072c-.042-.117-.21-.117-.253 0m1.577-3.573a.135.135 0 0 0-.253 0l-.787 2.124a.27.27 0 0 0 0 .183l2.217 5.985 1.565-.89z" />
+        <path d="M11.999 4.991a.24.24 0 0 1 .111.03l5.969 3.393a.22.22 0 0 1 .112.19v6.787a.22.22 0 0 1-.112.19l-5.969 3.395a.2.2 0 0 1-.111.029.24.24 0 0 1-.113-.03l-5.968-3.39a.22.22 0 0 1-.112-.19v-6.79a.22.22 0 0 1 .112-.19l5.969-3.393a.23.23 0 0 1 .111-.03m0-.991c-.213 0-.426.054-.616.163L5.416 7.556a1.21 1.21 0 0 0-.616 1.05v6.787c0 .433.234.834.616 1.05l5.968 3.394a1.25 1.25 0 0 0 1.232 0l5.968-3.394a1.21 1.21 0 0 0 .616-1.05V8.606a1.21 1.21 0 0 0-.616-1.05l-5.97-3.393A1.24 1.24 0 0 0 11.998 4" />
+        <path d="m8.052 17.943.55-1.482 1.105.905-1.034.93zm3.445-9.823H9.984a.27.27 0 0 0-.254.175l-3.243 8.757 1.565.89L11.623 8.3a.132.132 0 0 0-.127-.179" />
+        <path d="M14.144 8.12h-1.513a.27.27 0 0 0-.253.175l-3.704 10 1.565.89 4.032-10.886a.133.133 0 0 0-.127-.179" />
+      </>,
+    ),
 
-  // OP Mainnet
-  10: () => (
-    <path
-      fill="#FE0420"
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M3.966 15.8q.979.7 2.512.7 1.854 0 2.962-.838 1.108-.85 1.559-2.562.27-1.05.464-2.163.063-.398.064-.663 0-.874-.451-1.499a2.7 2.7 0 0 0-1.237-.95Q9.053 7.5 8.062 7.5q-3.644 0-4.52 3.437a40 40 0 0 0-.477 2.163q-.058.335-.065.674 0 1.314.966 2.026m4.65-2.775c-.247.957-.926 1.58-1.958 1.58-1.02 0-1.368-.69-1.184-1.58a27 27 0 0 1 .464-2.05c.265-1.034.89-1.58 1.956-1.58 1.017 0 1.348.68 1.173 1.58a30 30 0 0 1-.451 2.05m3.902 3.385q.076.09.214.089h1.704a.38.38 0 0 0 .238-.089.36.36 0 0 0 .138-.232l.538-2.52h1.733c1.094 0 1.95-.53 2.576-1.002q.953-.707 1.266-2.186.075-.348.075-.67 0-1.117-.851-1.71-.84-.591-2.23-.591h-3.333a.38.38 0 0 0-.238.09.38.38 0 0 0-.138.232l-1.73 8.356a.3.3 0 0 0 .038.232m6.09-5.966c-.157.689-.757 1.319-1.462 1.319h-1.44l.496-2.369h1.503c.512 0 .94.102.94.665q0 .165-.037.385"
-    />
-  ),
+  // OP Mainnet, on its red.
+  10: () =>
+    disc(
+      '#FE0420',
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M4.859 15.378q.87.622 2.233.622 1.647 0 2.633-.745.984-.754 1.385-2.277.24-.933.413-1.923.056-.353.056-.59 0-.776-.4-1.331a2.4 2.4 0 0 0-1.1-.845Q9.381 7.999 8.5 8q-3.238 0-4.018 3.055a36 36 0 0 0-.423 1.923 4 4 0 0 0-.058.6q0 1.166.859 1.8m4.133-2.467c-.22.851-.824 1.405-1.74 1.405-.907 0-1.216-.613-1.053-1.405q.206-1.078.412-1.822c.236-.919.792-1.405 1.74-1.405.903 0 1.198.605 1.042 1.405a26 26 0 0 1-.401 1.822m3.469 3.01a.24.24 0 0 0 .19.078h1.514a.33.33 0 0 0 .212-.079.33.33 0 0 0 .122-.206l.479-2.24h1.54c.973 0 1.733-.471 2.29-.891q.848-.63 1.125-1.943.068-.309.067-.595 0-.992-.756-1.52Q18.496 8 17.26 8h-2.962a.33.33 0 0 0-.212.08.33.33 0 0 0-.122.206l-1.538 7.428a.28.28 0 0 0 .034.206m5.413-5.304c-.14.612-.673 1.172-1.3 1.172h-1.28l.441-2.105h1.336c.455 0 .835.09.835.59q0 .148-.032.343"
+      />,
+    ),
 
   /**
-   * Base, scaled to 78%.
+   * Base, on its blue, at 60% rather than the usual inset.
    *
-   * Its mark is the only solid one in the set, and drawn at the size the others are it carries far
-   * more optical weight than any of them — in a list of seven rows it is the one the eye goes to
-   * first, for no reason but its geometry. Every other mark is a diamond, an outline or a glyph
-   * and covers roughly a third of its box; a filled square covers all of it. Matching boxes is not
-   * matching weight, and it is weight the eye reads.
-   *
-   * A transform rather than a rewritten path, so the `d` below stays byte-identical to the
-   * official mark and can still be diffed against it.
+   * Its glyph is a filled square — the only solid one in the set — and at the scale that suits the
+   * others it very nearly inscribes the circle, leaving a rim of blue so thin the mark reads as a
+   * white disc with a blue edge. Pulled in, it reads as what it is: Base's square, on Base's blue.
    */
-  8453: () => (
-    <path
-      transform="translate(12 12) scale(.78) translate(-12 -12)"
-      fill="#00F"
-      d="M3 4.706c0-.585 0-.877.11-1.101.106-.215.28-.39.496-.495C3.83 3 4.122 3 4.706 3h14.588c.585 0 .876 0 1.101.11.215.105.389.28.494.495.111.225.111.517.111 1.101v14.588c0 .585 0 .876-.11 1.101-.106.215-.28.389-.495.494-.225.111-.517.111-1.101.111H4.706c-.585 0-.876 0-1.101-.11a1.08 1.08 0 0 1-.494-.495C3 20.17 3 19.878 3 19.294z"
-    />
-  ),
+  8453: () =>
+    disc(
+      '#0000FF',
+      <path d="M4 5.517c0-.52 0-.78.098-.98a.96.96 0 0 1 .44-.44C4.738 4 4.998 4 5.517 4h12.966c.52 0 .78 0 .98.098a.97.97 0 0 1 .439.44c.098.2.098.46.098.979v12.966c0 .52 0 .78-.098.98a.96.96 0 0 1-.44.439c-.2.098-.46.098-.979.098H5.517c-.52 0-.78 0-.98-.098a.96.96 0 0 1-.439-.44C4 19.263 4 19.002 4 18.484z" />,
+      0.6,
+    ),
 
-  // Gnosis
-  100: () => (
-    <path
-      fill="#3E6957"
-      d="m19.526 7.5.171.27A8.55 8.55 0 0 1 21 12.303c.009 2.29-.933 4.492-2.62 6.122C16.695 20.055 14.4 20.98 12 21h-.017c-4.954 0-9-3.927-8.983-8.73 0-1.611.463-3.175 1.32-4.533l.154-.245.823.793a3 3 0 0 0-.386.737 3.2 3.2 0 0 0 .121 2.544 3.45 3.45 0 0 0 1.962 1.727 3.6 3.6 0 0 0 1.59.163 3.55 3.55 0 0 0 1.496-.54L12 14.782l2.194-2.127a3.51 3.51 0 0 0 2.91.336c.48-.158.917-.417 1.277-.759a3.2 3.2 0 0 0 .979-2.683 3.2 3.2 0 0 0-.52-1.394zM6.309 9.259l2.58 2.487a1.77 1.77 0 0 1-1.114.377 1.9 1.9 0 0 1-1.302-.526 1.73 1.73 0 0 1-.533-1.25c0-.409.137-.785.369-1.088m9 2.332 2.553-2.463c.198.287.31.63.31.99 0 .982-.824 1.776-1.835 1.776a1.84 1.84 0 0 1-1.028-.303m-3.275 1.865-7.43-7.224.29-.295a9.5 9.5 0 0 1 3.192-2.173A9.9 9.9 0 0 1 11.923 3h.017c2.717 0 5.331 1.129 7.149 3.085l.283.302zM5.811 6.232l6.223 6.038 6.137-5.915a8.8 8.8 0 0 0-2.843-1.85 9.1 9.1 0 0 0-3.37-.662h-.018c-2.314 0-4.474.842-6.129 2.39"
-    />
-  ),
+  // Gnosis, on its green — the colour that was too dark to draw a mark IN, and is exactly right to
+  // draw one ON.
+  100: () =>
+    disc(
+      '#3E6957',
+      <path d="m18.69 8 .152.24A7.6 7.6 0 0 1 20 12.269c.008 2.037-.83 3.993-2.329 5.442-1.498 1.448-3.537 2.272-5.67 2.289h-.016c-4.404 0-8-3.491-7.985-7.76 0-1.433.412-2.822 1.174-4.029l.137-.219.731.706a2.7 2.7 0 0 0-.343.655 2.85 2.85 0 0 0 .108 2.262c.346.71.973 1.262 1.744 1.534a3.2 3.2 0 0 0 1.413.146 3.15 3.15 0 0 0 1.33-.48L12 14.473l1.95-1.891a3.12 3.12 0 0 0 2.587.298c.426-.14.815-.37 1.135-.673a2.84 2.84 0 0 0 .87-2.386 2.8 2.8 0 0 0-.462-1.239zM6.94 9.563l2.294 2.211c-.283.222-.632.34-.991.336a1.7 1.7 0 0 1-1.156-.469 1.53 1.53 0 0 1-.474-1.11c0-.364.122-.698.327-.968m8 2.074 2.27-2.19c.176.255.275.56.275.88 0 .873-.732 1.578-1.631 1.578-.343 0-.648-.095-.914-.268m-2.91 1.657L5.425 6.873l.259-.262a8.5 8.5 0 0 1 2.837-1.932A8.8 8.8 0 0 1 11.93 4h.016c2.414 0 4.738 1.004 6.354 2.742l.252.269zM6.499 6.873l5.532 5.367 5.454-5.258a7.8 7.8 0 0 0-2.526-1.645 8.1 8.1 0 0 0-2.997-.588h-.015c-2.057 0-3.977.749-5.448 2.124" />,
+    ),
 }
 
 export interface ChainIconProps {
