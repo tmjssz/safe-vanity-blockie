@@ -976,6 +976,11 @@ function HomeContent() {
             <FaceSection
               mouths={mouths}
               filters={filters}
+              // Reaching this render means a config was submitted, so a run exists: the card
+              // starts collapsed, summarising itself in one row rather than putting six hundred
+              // pixels of controls between the user and the results they are waiting for. One
+              // press of its header opens it, and that choice then holds for the session.
+              mining
               onMouthsChange={applyMouths}
               onFiltersChange={setFilters}
             />
