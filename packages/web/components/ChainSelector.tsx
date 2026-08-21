@@ -102,8 +102,15 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
               {/* The mark rides inside the item rather than being added to the trigger separately,
                   because SelectValue renders the selected item's own content — so one place to put
                   it covers both the open list and the closed control, and the two cannot disagree
-                  about what the current chain looks like. */}
-              <ChainIcon chainId={chain.id} />
+                  about what the current chain looks like.
+
+                  18px rather than ChainIcon's default 16: this is the one place the marks are read
+                  against each other rather than one at a time, and at 16 the detail inside the
+                  disc — Polygon's outline, Arbitrum's A, the Gnosis owl — is too fine to tell
+                  apart at a glance, which is the whole job here. 20px was the other candidate and
+                  is too much: it crowds the h-8 trigger and starts to outweigh the name beside
+                  it. */}
+              <ChainIcon className="size-4.5" chainId={chain.id} />
               {chain.name}
             </SelectItem>
           ))}
