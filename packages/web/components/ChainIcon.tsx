@@ -162,7 +162,7 @@ const CHAIN_MARKS: Record<number, (gradientId: string) => ReactNode> = {
 export interface ChainIconProps {
   /** Which chain to draw. Anything without a mark draws nothing. */
   chainId: number
-  /** Overrides the default `size-4`, for the few places that want it at another size. */
+  /** Overrides the default `size-4.5`, for the few places that want it at another size. */
   className?: string
 }
 
@@ -191,7 +191,12 @@ export function ChainIcon({ chainId, className }: ChainIconProps) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className={cn('size-4 shrink-0', className)}
+      // 18px rather than the 16 that every lucide icon in this app uses. Those are line
+      // drawings, and a line drawing reads at 16; these are discs with a glyph inside, and at 16
+      // the glyph — Polygon's outline, Arbitrum's A, the Gnosis owl — is too fine to tell apart at
+      // a glance, which is the only thing a chain mark is for. 20px was the other candidate and
+      // crowds the h-8 header trigger.
+      className={cn('size-4.5 shrink-0', className)}
       aria-hidden="true"
       focusable="false"
       {...{ [CHAIN_ICON_ATTR]: String(chainId) }}
@@ -216,11 +221,12 @@ export interface ChainLabelProps {
  * Where the chain IS the label — a list row, a button — use `ChainIcon` as a direct child instead,
  * which is how every other icon in this app leads its control.
  *
- * Sized in `em` rather than at a fixed 16px, because this one is set in running text and the text
- * is not one size: it is an 18px bold dialog title in one place and a 14px muted subtitle in
- * another, and a mark that stays 16px through both is oversized in the second and lost in the
- * first. `ChainIcon`'s own default stays a fixed `size-4`, which is right for the controls it
- * leads, where it is lining up with other icons rather than with a sentence.
+ * Sized in `em` rather than at a fixed pixel size, because this one is set in running text and the
+ * text is not one size: it is an 18px bold dialog title in one place and a 14px muted subtitle in
+ * another, and one fixed size through both is oversized in the second and lost in the first.
+ * Slightly over 1em so the mark carries at the subtitle's 14px; much over and it outgrows the line
+ * box of the title, which 1.3em does. `ChainIcon`'s own default stays a fixed size, which is right
+ * for the controls it leads, where it lines up with other icons rather than with a sentence.
  *
  * A fragment, deliberately, with no wrapping element: the name stays a direct text child of
  * whatever heading or paragraph is being written, so the sentence is still one run of text to
@@ -235,7 +241,7 @@ export interface ChainLabelProps {
 export function ChainLabel({ chainId, children }: ChainLabelProps) {
   return (
     <>
-      <ChainIcon className="mr-1.5 inline size-[1em] align-[-0.125em]" chainId={chainId} />
+      <ChainIcon className="mr-2 inline size-[1.15em] align-[-0.125em]" chainId={chainId} />
       {children}
     </>
   )
