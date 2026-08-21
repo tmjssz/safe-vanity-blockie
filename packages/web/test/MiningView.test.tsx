@@ -173,12 +173,16 @@ describe('MiningView', () => {
       expect(setSortSpy).toHaveBeenCalledWith('best')
     })
 
-    // "Best match" on its own, beside a heading, reads as a status rather than as a control. The
-    // word is decorative for a screen reader, which gets the same thing from the control's name.
-    it('says out loud that it is a sort', () => {
+    // "Best match" on its own, beside a heading, reads as a status rather than as a control, so a
+    // glyph marks it as an order being chosen. It replaced the words "Sort:" — the only text on a
+    // crowded row that named a control instead of saying something — and it must not inherit the
+    // job of naming it: the accessible name comes from the trigger, and the mark stays decorative.
+    it('marks the sort with an icon and leaves the naming to the trigger', () => {
       renderWithResults()
-      const prefix = screen.getByText('Sort:')
-      expect(prefix.getAttribute('aria-hidden')).toBe('true')
+      const mark = document.querySelector('[data-slot="results-sort-icon"]')
+      expect(mark).not.toBeNull()
+      expect(mark?.getAttribute('aria-hidden')).toBe('true')
+      expect(screen.queryByText('Sort:')).toBeNull()
       expect(sortTrigger().getAttribute('aria-label')).toBe('Sort results')
     })
 

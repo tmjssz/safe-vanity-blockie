@@ -1,6 +1,7 @@
 'use client'
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
+import { ArrowDownUp } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -309,11 +310,21 @@ export function MiningView({
             {state.candidates.length > 0 && (
               <>
                 {/* "Best match" on its own, sitting beside a heading, reads as a status rather
-                    than as something to press. Hidden from assistive tech, which gets the same
-                    word — and a clearer one — from the trigger's own name just below. */}
-                <span aria-hidden="true" className="text-sm text-muted-foreground">
-                  Sort:
-                </span>
+                    than as something to press — so something has to mark it as an order being
+                    chosen. A glyph rather than the word "Sort:" it replaces: this row is a
+                    heading, a count, this control and the CLI handoff on one line, and the label
+                    was the only text on it that named a control instead of saying something. The
+                    two opposing arrows carry the same meaning at a glance and give the row its
+                    width back.
+
+                    Hidden from assistive tech, which gets the word — and a clearer one — from the
+                    trigger's own name just below. An icon that replaces a label must not become
+                    the label: the accessible name was never coming from here. */}
+                <ArrowDownUp
+                  data-slot="results-sort-icon"
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
                 <Select value={sort} onValueChange={(next) => setSortMode(next as ResultSort)}>
                   {/* Named rather than captioned, as the chain picker is: there is no room for a
                       real field label here, and the trigger already shows the order as its
