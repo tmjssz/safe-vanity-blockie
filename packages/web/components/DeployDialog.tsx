@@ -618,8 +618,15 @@ export function DeployDialog({
                     {busy ? 'Close and keep waiting' : submitted ? 'Close' : 'Cancel'}
                   </Button>
                 </DialogClose>
-                {/* One primary action, whatever the state, so there is never a choice to make about
-              which button is the way forward.
+                {/* Exactly one action occupies this slot in any state, so there is never a choice to
+              make about which button is the way forward — but only one of the three is the deploy
+              itself, and only that one is filled.
+
+              Connecting and switching are prerequisites: they set up the wallet so the deploy
+              becomes possible, and pressing either spends nothing. `outline` says so. Reserving
+              the filled treatment for the press that actually spends gas means the card's one
+              high-emphasis control always denotes the same thing, so arriving on the wrong chain
+              cannot present a filled button one press away from a transaction.
 
               Connecting is not in the brief's state machine but is reachable from a share link
               opened in a fresh browser, and it lands where the deploy button will be rather than
@@ -631,6 +638,7 @@ export function DeployDialog({
                 {!isConnected && (
                   <Button
                     type="button"
+                    variant="outline"
                     disabled={isConnecting || connectors.length === 0}
                     onClick={() => {
                       const connector = connectors[0]
@@ -644,7 +652,11 @@ export function DeployDialog({
               the user may not have noticed changing, and a button that says which chain it is
               switching to is the last chance to catch it. */}
                 {wrongChain && !submitted && (
-                  <Button type="button" onClick={() => switchChain({ chainId: config.chainId })}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => switchChain({ chainId: config.chainId })}
+                  >
                     {/* The chain's own mark rather than a swap arrow: the button already says
                   "Switch to", so an arrow only restates the verb, while the mark says which chain
                   — the part a user may not have noticed changing, on the last screen before gas

@@ -262,11 +262,21 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-3">
+        {/* The distance between two owner inputs is the 20px complaint slot each row reserves
+            plus this gap, and the slot is already doing the separating — so the gap only has to
+            mark where one row ends. `gap-2` rather than the `gap-3` this started at: with more
+            than a couple of owners the list was reading as several separate questions instead of
+            one repeated field. (Nothing is conditional on the count; a one-owner form has no
+            gap to spend.)
+
+            The row below sets no gap of its own, so a complaint sits flush under the input it
+            belongs to and 8px clear of the next one. Halving the outer gap without that would
+            have left the red line equidistant between two inputs, belonging to neither. */}
+        <div className="flex flex-col gap-2">
           {owners.map((owner, index) => {
             const complaint = ownerComplaint(owner)
             return (
-              <div key={owner.id} className="flex flex-col gap-1">
+              <div key={owner.id} className="flex flex-col">
                 <div className="flex items-end gap-2">
                   {/* The identicon the address in this row would produce, which is the thing the
                       whole app is about — so the row shows it rather than making the user submit
@@ -351,8 +361,19 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           })}
         </div>
         {/* Both low-emphasis text buttons, on one line, so the only filled control on the card is
-            the one that starts the search. These add to the form; that one acts on it. */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            the one that starts the search. These add to the form; that one acts on it.
+
+            `-mt-3` cancels this column's own gap and then reaches 4px into the last row's
+            always-mounted complaint slot, which reserves 20px below the input whether or not it
+            has anything to say. At the form's plain spacing all of that stacked up and read as a
+            break between the owners list and two unrelated buttons rather than as controls
+            belonging to the list. 4px is as far as it goes: both lines are `text-sm`, so each has
+            only ~3px of leading to give up before a complaint on the last row and the buttons
+            under it start touching.
+
+            `pl-10` is the identicon's 32px plus the row's 8px gap — the exact offset of every
+            owner input above, so the line starts on their left edge instead of the card's. */}
+        <div className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 pl-10">
           <Button
             type="button"
             variant="link"
@@ -382,14 +403,24 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         )}
       </div>
 
+      {/* Whitespace alone was carrying the boundary between the list you build and the two
+          questions that are already answered, and it could not carry it: the owners list grows,
+          so the gap above these two is the one piece of spacing on the card that never looks the
+          same twice. A rule states the split at a fixed weight instead. A bare `<hr>` rather than
+          a styled div: its implicit `separator` role says the same thing to a screen reader that
+          the line says on screen, and there is nothing here to hide from one.
+
+          `my-2` on top of the form's `gap-4` gives the rule 24px of clearance on both sides. A
+          rule needs more room than the gap it replaces: pressed to the form's plain spacing it
+          reads as an underline on the block above it rather than as a divider between two. */}
+      <hr className="my-2 border-t" />
+
       {/* Side by side: two narrow controls that each answer one short question, on a card only
           520px wide. Stacked they read as two more steps than they are.
 
-          `my-2` on top of the form's own `gap-4` sets these two apart from the owners list above
-          and the start control below. They are a different kind of question — one answer each,
-          already filled in, rather than a list you build — and at the form's uniform spacing the
-          whole card read as one undifferentiated run of fields. */}
-      <div className="my-2 grid gap-4 sm:grid-cols-2">
+          `mb-2` keeps these clear of the start control below, matching the 24px the rule above
+          them holds — so the group is bounded by the same distance on both sides. */}
+      <div className="mb-2 grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor={thresholdId}>Threshold</Label>
           <div className="flex items-center gap-2">

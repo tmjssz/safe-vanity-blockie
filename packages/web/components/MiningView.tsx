@@ -1,6 +1,7 @@
 'use client'
 
 import type { Candidate, FaceSpec } from '@safe-vanity-blockie/core'
+import { ArrowDownUp } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -212,6 +213,90 @@ export function MiningView({
     if (state.error) toast.error(state.error)
   }, [state.error])
 
+  // Hoisted so the loading state below can render the same row. The heading is not a report on
+  // the run the way the status bar is — it names the part of the page the results occupy, and
+  // that part is there before the first one arrives. Rendering placeholders under nothing at
+  // all left the tiles floating unlabelled, and then dropped a title in above them the moment
+  // mining started, pushing the whole grid down to make room for it.
+  //
+  // The badge counts the cards below it — what the eye can check — and replaces the muted
+  // "N filtered out" line that used to sit above the grid. This heading is a bare <h2>, not a
+  // CardHeader, so a flex row is the right way to put something beside it; CardAction is for the
+  // grid-based CardHeader.
+  //
+  // The badge is shown only once there is something real to count. While the grid is still looking
+  // it holds four skeleton placeholders, and a badge reading "0" over four visible boxes is the
+  // one state in which its claim to count what is on screen would be false — counting the
+  // placeholders would be worse, since they are not results. `droppedCount` is what distinguishes
+  // "nothing found yet" from "nothing survived the filters": in the second case there are
+  // deliberately no cards, the zero is the point, and it says the same thing as the empty state
+  // directly below it.
+  const resultsHeading = (
+    <div className="flex items-center gap-2">
+      <h2 className="text-lg font-semibold">Results</h2>
+      {(state.candidates.length > 0 || state.droppedCount > 0) && (
+        <Badge variant="secondary" data-testid="results-count">
+          {state.candidates.length.toLocaleString('en-US')}
+          {/* Sighted readers get the number from the heading it sits against. A screen reader
+            meets it as a bare figure, so the unit rides along visually hidden — not as an
+            aria-label, which a <span> in the generic role is not guaranteed to expose. */}
+          <span className="sr-only"> results shown</span>
+        </Badge>
+      )}
+      {/* Both controls in the heading row, on the right. The sort belongs to the grid below it
+        and nothing else, and the handoff has to be reachable without scrolling past two
+        hundred results; a row of their own between the heading and the grid would push the
+        first tiles down the screen to say so.
+
+        Shown only once there is something to order — a control that reorders nothing is
+        furniture to be read past. */}
+      <div className="ml-auto flex items-center gap-2">
+        {state.candidates.length > 0 && (
+          <>
+            {/* "Best match" on its own, sitting beside a heading, reads as a status rather
+              than as something to press — so something has to mark it as an order being
+              chosen. A glyph rather than the word "Sort:" it replaces: this row is a
+              heading, a count, this control and the CLI handoff on one line, and the label
+              was the only text on it that named a control instead of saying something. The
+              two opposing arrows carry the same meaning at a glance and give the row its
+              width back.
+
+              Hidden from assistive tech, which gets the word — and a clearer one — from the
+              trigger's own name just below. An icon that replaces a label must not become
+              the label: the accessible name was never coming from here. */}
+            <ArrowDownUp
+              data-slot="results-sort-icon"
+              aria-hidden="true"
+              className="size-4 shrink-0 text-muted-foreground"
+            />
+            <Select value={sort} onValueChange={(next) => setSortMode(next as ResultSort)}>
+              {/* Named rather than captioned, as the chain picker is: there is no room for a
+                real field label here, and the trigger already shows the order as its
+                value. */}
+              <SelectTrigger id="results-sort" size="sm" aria-label="Sort results">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+        {/* `filters` goes with it so the copied command enforces the same standard as the
+          screen rather than the CLI's own defaults. */}
+        <CliHandoff
+          config={config}
+          rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
+          filters={filters}
+        />
+      </div>
+    </div>
+  )
+
   // Whether this component has a run on screen to protect.
   //
   // Both constants states below used to REPLACE everything this component renders, which is right
@@ -229,8 +314,35 @@ export function MiningView({
   // protect, and the full-screen treatment is still the right one for it.
   const runOnScreen = state.scanned > 0 || state.candidates.length > 0
   if (!runOnScreen) {
+    // The heading and the placeholders, and nothing else. This was a lone line of text reading
+    // "Reading Safe constants…" — the first thing anyone saw on a fresh run — and it named an
+    // internal step (an RPC read of factory and singleton addresses) that means nothing to the
+    // person waiting and that they cannot act on either way. The placeholders say the one thing
+    // worth saying, which is that results are coming and where they will land, and they are the
+    // same ones mining shows once it is under way, so the wait is one continuous state rather
+    // than a sentence that becomes a grid.
+    //
+    // The heading comes with them because it titles the part of the page, not the run: without it
+    // the tiles sat unlabelled and a title then appeared above them the moment mining began,
+    // pushing the grid down. Its badge and sort hide themselves while there is nothing to count or
+    // order, so the row is the same row throughout, gaining pieces rather than being replaced.
+    //
+    // Still no status bar: that one does report the run, and there is no run yet — which is the
+    // whole reason this arm exists.
     if (constants.loading)
-      return <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
+      return (
+        <section className="flex flex-col gap-4">
+          {resultsHeading}
+          <ResultsGrid
+            candidates={[]}
+            droppedCount={0}
+            mining={false}
+            preparing
+            filters={filters}
+            onSelect={onSelect}
+          />
+        </section>
+      )
     if (constants.error)
       return (
         <Alert variant="destructive">
@@ -249,6 +361,7 @@ export function MiningView({
   // contrast floor excluded everything — directly above an empty state explaining that hundreds
   // had been found and excluded — and threw away the only live signal of search quality exactly
   // when the user needs it to decide where to put the slider.
+
   const status: MiningStatus = {
     running: state.running,
     paused,
@@ -275,71 +388,7 @@ export function MiningView({
     <>
       {statusBarSlot ? createPortal(statusBar, statusBarSlot) : statusBar}
       <section className="flex flex-col gap-4">
-        {/* The badge counts the cards below it — what the eye can check — and replaces the muted
-            "N filtered out" line that used to sit above the grid. This heading is a bare <h2>, not
-            a CardHeader, so a flex row is the right way to put something beside it; CardAction is
-            for the grid-based CardHeader.
-
-            Shown only once there is something real to count. While the grid is still looking it
-            holds four skeleton placeholders, and a badge reading "0" over four visible boxes is
-            the one state in which its claim to count what is on screen would be false — counting
-            the placeholders would be worse, since they are not results. `droppedCount` is what
-            distinguishes "nothing found yet" from "nothing survived the filters": in the second
-            case there are deliberately no cards, the zero is the point, and it says the same thing
-            as the empty state directly below it. */}
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Results</h2>
-          {(state.candidates.length > 0 || state.droppedCount > 0) && (
-            <Badge variant="secondary" data-testid="results-count">
-              {state.candidates.length.toLocaleString('en-US')}
-              {/* Sighted readers get the number from the heading it sits against. A screen reader
-                  meets it as a bare figure, so the unit rides along visually hidden — not as an
-                  aria-label, which a <span> in the generic role is not guaranteed to expose. */}
-              <span className="sr-only"> results shown</span>
-            </Badge>
-          )}
-          {/* Both controls in the heading row, on the right. The sort belongs to the grid below it
-              and nothing else, and the handoff has to be reachable without scrolling past two
-              hundred results; a row of their own between the heading and the grid would push the
-              first tiles down the screen to say so.
-
-              Shown only once there is something to order — a control that reorders nothing is
-              furniture to be read past. */}
-          <div className="ml-auto flex items-center gap-2">
-            {state.candidates.length > 0 && (
-              <>
-                {/* "Best match" on its own, sitting beside a heading, reads as a status rather
-                    than as something to press. Hidden from assistive tech, which gets the same
-                    word — and a clearer one — from the trigger's own name just below. */}
-                <span aria-hidden="true" className="text-sm text-muted-foreground">
-                  Sort:
-                </span>
-                <Select value={sort} onValueChange={(next) => setSortMode(next as ResultSort)}>
-                  {/* Named rather than captioned, as the chain picker is: there is no room for a
-                      real field label here, and the trigger already shows the order as its
-                      value. */}
-                  <SelectTrigger id="results-sort" size="sm" aria-label="Sort results">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-            {/* `filters` goes with it so the copied command enforces the same standard as the
-                screen rather than the CLI's own defaults. */}
-            <CliHandoff
-              config={config}
-              rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
-              filters={filters}
-            />
-          </div>
-        </div>
+        {resultsHeading}
         {/* The other side of `runOnScreen` above: with a run to protect, a constants failure is
             reported here, INSIDE the results section, so the bar above and every card below it stay
             exactly where they are. It says what was lost (the read, and mining with it) and what
@@ -358,12 +407,6 @@ export function MiningView({
             </AlertDescription>
           </Alert>
         )}
-        {/* Same window, before it has failed or succeeded: a re-read with no constants left to fall
-            back on (i.e. a retry after a failure — an ordinary switch keeps the previous ones and
-            never lands here). Inline, for the same reason. */}
-        {constants.loading && !constants.data && (
-          <p className="text-sm text-muted-foreground">Reading Safe constants…</p>
-        )}
         {state.error && (
           <Alert variant="destructive">
             <AlertDescription>{state.error}</AlertDescription>
@@ -373,6 +416,12 @@ export function MiningView({
           candidates={state.candidates}
           droppedCount={state.droppedCount}
           mining={state.running}
+          // The re-read window on the retry-after-failure path: a run is on screen, so the early
+          // return above does not apply and this grid is what the user is looking at. There used
+          // to be a "Reading Safe constants…" line here too; the placeholders replace it, and
+          // without them the grid said "No results yet." — a finished search that found nothing,
+          // over a run that was about to resume.
+          preparing={constants.loading && !constants.data}
           filters={filters}
           bestContrast={state.bestContrast}
           deployingAddress={deployingAddress}

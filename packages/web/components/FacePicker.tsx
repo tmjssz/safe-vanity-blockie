@@ -222,9 +222,21 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Colours</h3>
+      {/* No heading of its own. "Colours" was a label over two controls that already say
+          "Two colours only" and "Minimum contrast", and its only other job was to hold this column
+          level with the one beside it.
 
+          `lg:pt-8` does that job directly: 20px for the "Face expressions" label row plus the 12px
+          `gap-3` under it, so "Two colours only" starts level with the top edge of the tiles rather
+          than a row above them. Only at `lg`, because below it the columns stack and the padding
+          would be a gap between two things that are not side by side. It goes out by 4px while a
+          staged change is showing, since the Reset/Apply buttons in that row are 24px rather than
+          the label's 20px; the alternative is a subgrid restructure of a layout that is otherwise
+          right. */}
+      {/* `gap-5` rather than the `gap-3` the expressions column uses, and deliberately not the
+          same: this column holds two unrelated questions where that one holds a heading and the
+          tiles it labels. At 12px the toggle read as part of the contrast control below it. */}
+      <section className="flex flex-col gap-5 lg:pt-8">
         <div className="flex items-center gap-2">
           <Label htmlFor="two-color-only">Two colours only</Label>
           <Explains label="two colours only">

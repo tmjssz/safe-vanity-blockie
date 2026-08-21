@@ -265,6 +265,16 @@ vi.mock('../components/FacePicker', () => ({
   },
 }))
 
+/**
+ * Opens the Filter card, which mounts collapsed once a config is submitted. Radix unmounts a
+ * closed panel, so FacePicker is not rendered and `facePickerPropsRef` holds nothing until this
+ * runs. Every test that reaches for the picker goes through the header first, exactly as a user
+ * does. Named by the card's own <h2>, which is where the trigger gets its accessible name.
+ */
+async function openFilterCard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /^filter$/i }))
+}
+
 // Mirrors the real MiningView's contract: it stays mounted and its result rows stay visible
 // and clickable regardless of `paused` — pausing stops the workers, it does not hide the
 // leaderboard. That is what puts the user straight back on a live grid when the deploy dialog
@@ -340,6 +350,10 @@ beforeEach(() => {
   // pointed the wallet somewhere else — vi.fn(impl).mockReset() puts `impl` back.
   useAccountMock.mockReset()
   searchParamsRef.current = new URLSearchParams()
+  // Cleared between tests, which matters more than it used to: the Filter card mounts collapsed
+  // and Radix unmounts a closed panel, so a test that forgets to open it would otherwise be
+  // handed the PREVIOUS test's picker callbacks and pass against them.
+  facePickerPropsRef.current = undefined
   linkCandidateOverride.current = undefined
   loadSafeConstantsMock.mockReset().mockResolvedValue(SAFE_SETUP)
   buildDeploymentPlanMock.mockReset()
@@ -1802,6 +1816,9 @@ describe('Page', () => {
     // MiningView a new faceSpec, which re-runs the reconstruction effect: its cleanup cancels
     // the attempt in flight, and the `linkCandidateAttempted` ref stops a replacement one from
     // ever being started. Nothing else will ever end the "awaiting" state.
+    // The card mounts collapsed, and the picker with it, so the "still-live FacePicker" this
+    // test is about has to be on screen before it can be touched.
+    await openFilterCard(user)
     act(() => {
       facePickerPropsRef.current?.onChange(ALL_MOUTH_NAMES.slice(0, 1))
     })
@@ -1985,7 +2002,9 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'toggle-mining' }))
     expect(screen.getByText('paused')).toBeDefined()
 
-    // What FacePicker calls once "Restart the search" is confirmed.
+    // What FacePicker calls once "Restart the search" is confirmed. The card has to be open for
+    // the picker to exist at all, which is also true of the user this stands in for.
+    await openFilterCard(user)
     await act(async () => {
       facePickerPropsRef.current?.onChange(ALL_MOUTH_NAMES.slice(0, 2))
     })
@@ -2199,6 +2218,7 @@ describe('Page', () => {
     render(<Page />)
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await openFilterCard(user)
 
     expect(facePickerPropsRef.current?.value).toEqual(ALL_MOUTH_NAMES)
   })
@@ -2215,6 +2235,7 @@ describe('Page', () => {
     render(<Page />)
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
+    await openFilterCard(user)
     const first = miningViewPropsRef.current?.onSelect
     expect(first).toBeTypeOf('function')
 

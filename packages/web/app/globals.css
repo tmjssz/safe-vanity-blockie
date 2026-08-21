@@ -72,6 +72,36 @@
   --radius-lg: var(--radius);
 }
 
+/* The height transition for the Filter card's collapse. Hand-written because this project has no
+   tailwindcss-animate / tw-animate-css dependency, so `animate-in` and friends are not real
+   utilities here (the `animate-in` classes on the dialog are inert for the same reason).
+
+   Radix measures the panel and publishes `--radix-collapsible-content-height` on the content
+   element for exactly this, so the keyframes can animate to a real height instead of the `auto`
+   that CSS cannot interpolate. */
+@theme {
+  --animate-collapsible-down: collapsible-down 200ms ease-out;
+  --animate-collapsible-up: collapsible-up 200ms ease-out;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

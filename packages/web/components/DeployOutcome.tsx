@@ -5,7 +5,6 @@ import { SUPPORTED_CHAINS } from '../lib/config'
 import { safeWalletUrl } from '../lib/safe-app'
 import { explorerFor } from '../lib/wagmi'
 import { Blockie } from './Blockie'
-import { ChainLabel } from './ChainIcon'
 import { CopyButton } from './CopyButton'
 import { Button } from './ui/button'
 import {
@@ -77,23 +76,20 @@ export function DeployOutcome({
           : 'Deployment failed'
 
   /**
-   * A node rather than a string, so the two variants that name the chain can carry its mark beside
-   * the name. A failure names no chain — its subtitle is the reason the sequence gave, which is
-   * about what went wrong rather than where — so it stays plain text and gets no mark.
+   * Plain text in all three variants, chain mark included — the two that name a chain name it in
+   * words and nothing more. These screens already carry one piece of iconography each: the badge
+   * pinned to the identicon, which is what says whether the news is good. A chain mark a line
+   * below it competes for exactly that glance while adding nothing the sentence has not already
+   * said, and on the pending screen it sits beside a spinner too. Where the chain is a CHOICE the
+   * mark still earns its place, which is why the switch-network button and the chain picker keep
+   * theirs — here the chain is settled and merely being reported.
    */
   const subtitle =
-    variant === 'pending' ? (
-      <>
-        Transaction sent. Waiting for confirmation on{' '}
-        <ChainLabel chainId={chainId}>{chainName}</ChainLabel>.
-      </>
-    ) : variant === 'success' ? (
-      <>
-        Live on <ChainLabel chainId={chainId}>{chainName}</ChainLabel> and ready to use.
-      </>
-    ) : (
-      (reason ?? 'The deployment stopped.')
-    )
+    variant === 'pending'
+      ? `Transaction sent. Waiting for confirmation on ${chainName}.`
+      : variant === 'success'
+        ? `Live on ${chainName} and ready to use.`
+        : (reason ?? 'The deployment stopped.')
 
   return (
     <div className="flex flex-col items-center gap-4 text-center">

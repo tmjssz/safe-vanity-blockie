@@ -1,53 +1,202 @@
 'use client'
 
+import { ChevronDown, ListFilter, Smile } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
+import { ALL_MOUTH_NAMES } from '../lib/face-selection'
+import { ContrastSwatch } from './ContrastSwatch'
 import { FacePicker } from './FacePicker'
+import { Badge } from './ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 
 export interface FaceSectionProps {
   mouths: string[]
   filters: FaceFilters
+  /**
+   * Whether a run exists. It decides one thing only: whether the card starts collapsed.
+   *
+   * Not read after the first render unless it changes, and the user's own choice outranks it from
+   * the moment they make one (see `userChose` below). The page passes this as true because it only
+   * renders this card once a config has been submitted; the false case is the idle screen, where
+   * the filter should be open because nobody has seen it yet.
+   */
+  mining?: boolean
   onMouthsChange: (names: string[]) => void
   onFiltersChange: (filters: FaceFilters) => void
 }
 
 /**
+ * At most three chips, and each is present only when its constraint actually constrains something.
+ * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
+ * collapsed card carrying three of those tells the user the filter is doing work it is not.
+ *
+ * Expressions are the exception: they always constrain what the miner credits, so that chip is
+ * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
+ * is not what is being mined, and the collapsed card's job is to say what is.
+ */
+function summarise(mouths: string[], filters: FaceFilters) {
+  const accepted = ALL_MOUTH_NAMES.filter((name) => mouths.includes(name))
+  return {
+    // Names once the list is short enough to be worth more than a count: at three or fewer, "smile,
+    // open" says which, where "2 expressions" only says how many and sends the reader back into the
+    // card to find out. Above three the names are longer than the row has room for, and a count is
+    // the honest summary. All five accepted is the permissive default, so it counts rather than
+    // listing every name the app has.
+    expressions:
+      accepted.length > 0 && accepted.length <= 3 && accepted.length < ALL_MOUTH_NAMES.length
+        ? accepted.join(', ')
+        : `${accepted.length} expressions`,
+    twoColor: filters.twoColor,
+    minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
+  }
+}
+
+/**
  * What a candidate has to look like to be kept: which face shapes count, and which colour pairs.
  *
- * Named for what it does rather than what it draws. "Face" described the expression tiles alone
- * and left the two colour filters looking like strays in a card about something else.
- *
- * Not collapsible, and with no summary chip in the header. The collapse only ever hid something a
- * reader can scroll past for free, and the chip restated, a few pixels above, what the labelled
- * tiles already say.
+ * Collapsible again, and starting collapsed while a run exists. It was not, and the note that
+ * replaced it argued that a collapse "only ever hid something a reader can scroll past for free".
+ * That was true of a collapse with nothing in its header: the closed card said only its own name,
+ * so opening it was the only way to learn anything, and the control was pure cost. The summary
+ * chips are what changes the trade. Closed, the card now answers the question its contents answer
+ * (what is being filtered, and how hard) in one row instead of six hundred pixels, which is worth
+ * more than the scroll it saves.
  */
 export function FaceSection({
   mouths,
   filters,
+  mining = false,
   onMouthsChange,
   onFiltersChange,
 }: FaceSectionProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h2">Pattern filter</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Unlike Configure, this never locks: none of it is an address concern, so all of it
-            stays reachable while mining and the page never unmounts it — do not "fix" this into
-            locking.
+  // Open when there is no run to get on with. A submitted config means the user has already said
+  // what they want and is waiting for results, so the filter steps out of the way; an idle screen
+  // means nobody has seen it yet, so it shows itself.
+  const [open, setOpen] = useState(!mining)
+  // Set by the header, and never by anything else. Once the user has said what they want the card
+  // to be, no rule here may say otherwise for the rest of the session: an auto-collapse that
+  // fights a deliberate expand is a control that does not hold, which is worse than one that does
+  // not exist. A ref rather than state because nothing renders differently for it.
+  const userChose = useRef(false)
 
-            The two halves differ in when they take effect, and that is not the same thing. The
-            colour filters re-filter candidates already mined, so they apply on the spot. The
-            expressions are part of the run's identity, so applying one restarts the search and
-            discards the board: those stage behind an Apply button and a warning. */}
-        <FacePicker
-          value={mouths}
-          onChange={onMouthsChange}
-          filters={filters}
-          onFiltersChange={onFiltersChange}
-        />
-      </CardContent>
+  // Only on the transition into mining, and only while the user has not decided for themselves.
+  // Guarding on the transition rather than on `mining` being true is what keeps this from
+  // re-collapsing on every unrelated re-render of the page.
+  const wasMining = useRef(mining)
+  useEffect(() => {
+    if (mining && !wasMining.current && !userChose.current) setOpen(false)
+    wasMining.current = mining
+  }, [mining])
+
+  const summary = summarise(mouths, filters)
+
+  return (
+    // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
+    // the panel has any height: collapsed, it left 24px of empty card under the header. The panel
+    // carries its own top padding instead, where it is only paid when there is something to pad.
+    <Card className="gap-0">
+      <Collapsible
+        open={open}
+        onOpenChange={(next) => {
+          userChose.current = true
+          setOpen(next)
+        }}
+        className="group/filter"
+      >
+        {/* One row, and the whole row is the control. `relative` for the trigger below, which is
+            stretched across all of it rather than wrapping it: the title is a real <h2> and a
+            heading is not phrasing content, so it cannot live inside a <button>. This is the same
+            shape ResultCard uses for the same reason, and the surfaces line up because the button
+            is `inset-0`.
+
+            `min-h-8` is what stops the title moving when the card is toggled. Without it the row
+            is only as tall as its tallest child, and that child changes with the state: a chip is
+            22px (16px of text-xs, 4px of padding, 2px of border) where the title and the two icons
+            are 16px, so `items-center` re-centred the title 3px lower the moment the chips
+            appeared and back up again when they went. 32px is the same height as a `size="sm"`
+            control elsewhere in the app, and it clears the chips with room to spare, so the row is
+            one height in both states and the title does not move at all.
+
+            `flex-wrap` still applies below that: align-items works per flex line, so chips wrapping
+            to a second line does not drag the title down with them either. */}
+        <CardHeader className="relative flex min-h-8 flex-row flex-wrap items-center gap-x-3 gap-y-2">
+          <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          <CardTitle as="h2" id="filter-card-title">
+            Filter
+          </CardTitle>
+
+          {/* Only while closed. Open, every chip is restating a control the reader can already
+              see, a few pixels below where the chip sits. */}
+          {!open && (
+            <div data-slot="filter-summary" className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
+                <Smile aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                {summary.expressions}
+              </Badge>
+              {summary.twoColor && (
+                <Badge variant="secondary" className="rounded-md font-normal">
+                  two colours
+                </Badge>
+              )}
+              {summary.minContrast !== undefined && (
+                <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
+                  {/* The same swatch the result tiles carry, and the slider above it, so one
+                      number has one picture everywhere it appears. */}
+                  <ContrastSwatch distance={summary.minContrast} className="h-3 w-6" />
+                  <span aria-hidden="true">≥ {summary.minContrast}</span>
+                  {/* "greater than or equal to" is what a screen reader makes of the glyph at
+                      best, and nothing at worst. */}
+                  <span className="sr-only">minimum contrast {summary.minContrast}</span>
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Named by the title rather than by copy of its own: "Filter, button, collapsed" is
+              what a screen reader should say, and a second name here would be a second name for
+              the same thing. Radix puts aria-expanded and data-state on it. */}
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              aria-labelledby="filter-card-title"
+              className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+          </CollapsibleTrigger>
+
+          {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
+              transition is a turn rather than a cut, and it reads off the Root's data-state
+              because the trigger it belongs to is the invisible sheet above. */}
+          <ChevronDown
+            data-slot="filter-chevron"
+            aria-hidden="true"
+            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+          />
+        </CardHeader>
+
+        {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash: the
+            panel keeps its full layout while the box around it grows. The keyframes are in
+            globals.css, animating to Radix's measured `--radix-collapsible-content-height`. */}
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <CardContent className="pt-6">
+            {/* Unlike Configure, this never locks: none of it is an address concern, so all of it
+                stays reachable while mining and the page never unmounts it — do not "fix" this
+                into locking. Collapsing is not locking either: it hides the controls and changes
+                nothing they hold.
+
+                The two halves differ in when they take effect, and that is not the same thing. The
+                colour filters re-filter candidates already mined, so they apply on the spot. The
+                expressions are part of the run's identity, so applying one restarts the search and
+                discards the board: those stage behind an Apply button and a warning. */}
+            <FacePicker
+              value={mouths}
+              onChange={onMouthsChange}
+              filters={filters}
+              onFiltersChange={onFiltersChange}
+            />
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   )
 }
