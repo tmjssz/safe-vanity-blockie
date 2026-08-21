@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { chainSwitchDiscardsResults, SUPPORTED_CHAINS } from '../lib/config'
+import { ChainIcon, ChainLabel } from './ChainIcon'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -98,6 +99,11 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
         <SelectContent>
           {SUPPORTED_CHAINS.map((chain) => (
             <SelectItem key={chain.id} value={String(chain.id)}>
+              {/* The mark rides inside the item rather than being added to the trigger separately,
+                  because SelectValue renders the selected item's own content — so one place to put
+                  it covers both the open list and the closed control, and the two cannot disagree
+                  about what the current chain looks like. */}
+              <ChainIcon chainId={chain.id} />
               {chain.name}
             </SelectItem>
           ))}
@@ -118,7 +124,15 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
       <Dialog open={pending !== undefined} onOpenChange={(open) => !open && setPending(undefined)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Switch to {pending === undefined ? '' : chainName(pending)}?</DialogTitle>
+            <DialogTitle>
+              Switch to{' '}
+              {pending === undefined ? (
+                ''
+              ) : (
+                <ChainLabel chainId={pending}>{chainName(pending)}</ChainLabel>
+              )}
+              ?
+            </DialogTitle>
             <DialogDescription>
               {chainName(leaving)} and {pending === undefined ? '' : chainName(pending)} deploy
               through different Safe singletons, so a Safe with the same owners, threshold and
@@ -129,7 +143,10 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">Stay on {chainName(leaving)}</Button>
+              <Button variant="ghost">
+                <ChainIcon chainId={leaving} />
+                Stay on {chainName(leaving)}
+              </Button>
             </DialogClose>
             <Button
               variant="destructive"

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CHAIN_ICON_ATTR } from '../components/ChainIcon'
 import { DeployOutcome } from '../components/DeployOutcome'
 import { Dialog, DialogContent } from '../components/ui/dialog'
 
@@ -22,6 +23,8 @@ function renderOutcome(overrides: Partial<React.ComponentProps<typeof DeployOutc
     </Dialog>,
   )
 }
+
+const subtitle = () => document.querySelector('[data-slot="dialog-description"]') as HTMLElement
 
 const footer = () => document.querySelector('[data-slot="dialog-footer"]') as HTMLElement
 const badge = () => document.querySelector('[data-slot="outcome-badge"]') as HTMLElement
@@ -189,5 +192,30 @@ describe('DeployOutcome', () => {
     expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
     expect(screen.queryByText(/^owners?$/i)).toBeNull()
     expect(screen.queryByText(/saltnonce/i)).toBeNull()
+  })
+
+  it('marks the chain a deployed Safe is live on', () => {
+    renderOutcome({ variant: 'success' })
+
+    // The subtitle is where the chain is named on the one screen a user is most likely to
+    // screenshot or come back to, and it is a single short line rather than a paragraph — so the
+    // mark sits with the name here, where in the longer explanations elsewhere it would not.
+    expect(subtitle().textContent).toContain('Live on Sepolia')
+    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}="11155111"]`)).not.toBeNull()
+  })
+
+  it('marks the chain a sent transaction is waiting on', () => {
+    renderOutcome({ variant: 'pending' })
+
+    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}="11155111"]`)).not.toBeNull()
+  })
+
+  // A failure's subtitle is the reason the sequence gave, which is about what went wrong rather
+  // than about where — there is no chain named in it to mark, and a mark with nothing to mark is
+  // just a logo on an error message.
+  it('does not mark a failure, whose subtitle names no chain', () => {
+    renderOutcome({ variant: 'failed', reason: 'The wallet rejected the transaction.' })
+
+    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}]`)).toBeNull()
   })
 })

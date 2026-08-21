@@ -1,13 +1,19 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { CHAIN_ICON_ATTR } from '../components/ChainIcon'
 import { ChainSelector } from '../components/ChainSelector'
+import { SUPPORTED_CHAINS } from '../lib/config'
 
 const SEPOLIA = 11155111
 const POLYGON = 137
 const MAINNET = 1
 
 const trigger = () => screen.getByRole('combobox', { name: /^chain$/i })
+
+/** A chain's brand mark inside some part of the UI, or null when it is not drawn there. */
+const iconIn = (scope: HTMLElement, chainId: number) =>
+  scope.querySelector(`svg[${CHAIN_ICON_ATTR}="${chainId}"]`)
 
 async function choose(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
   await user.click(trigger())
@@ -139,5 +145,46 @@ describe('ChainSelector', () => {
     const dialog = await screen.findByRole('dialog')
     expect(dialog.textContent).toContain('Ethereum')
     expect(dialog.textContent).toContain('Sepolia')
+  })
+
+  it('marks the selected chain on the trigger', async () => {
+    render(<ChainSelector chainId={POLYGON} onSelect={vi.fn()} />)
+
+    // The header shows a chain name in a small control among several others. The mark is what
+    // makes which chain you are on answerable at a glance rather than by reading.
+    expect(iconIn(trigger(), POLYGON)).not.toBeNull()
+  })
+
+  it('marks every chain in the list', async () => {
+    const user = userEvent.setup()
+    render(<ChainSelector chainId={MAINNET} onSelect={vi.fn()} />)
+    await user.click(trigger())
+
+    // Every option, not most: a list where some rows have a mark and others do not is harder to
+    // scan than one with no marks at all, because the gap reads as meaning something.
+    for (const chain of SUPPORTED_CHAINS) {
+      const option = await screen.findByRole('option', { name: new RegExp(chain.name, 'i') })
+      expect(iconIn(option, chain.id)).not.toBeNull()
+    }
+  })
+
+  it('marks both chains in the switch confirmation', async () => {
+    const user = userEvent.setup()
+    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={vi.fn()} />)
+
+    await choose(user, /ethereum/i)
+    const dialog = await screen.findByRole('dialog')
+
+    // The chain being taken, beside its name in the title; and the chain being kept, on the button
+    // that keeps it. Not in the explanation between them — marks belong on labels and controls,
+    // and a paragraph with logos dropped into mid-sentence is harder to read, not easier.
+    expect(
+      iconIn(screen.getByRole('heading', { name: /switch to ethereum/i }), MAINNET),
+    ).not.toBeNull()
+    expect(
+      iconIn(screen.getByRole('button', { name: /^stay on sepolia$/i }), SEPOLIA),
+    ).not.toBeNull()
+    const explanation = dialog.querySelector('[data-slot="dialog-description"]') as HTMLElement
+    expect(iconIn(explanation, MAINNET)).toBeNull()
   })
 })

@@ -14,6 +14,15 @@ mining bar pinned directly below it, the security caveat, **Configure**, **Face*
 with a "Run on your machine" disclosure beside the grid's heading that hands you the equivalent
 `npx` command.
 
+The chain is named with its brand mark wherever it appears: in the header selector and its list,
+in the confirmation for a switch that costs results, on the deploy dialog's wrong-chain button and
+in the deploy outcome. The marks are inline SVG in
+[`components/ChainIcon.tsx`](components/ChainIcon.tsx) — no icon dependency and no request at
+runtime — with the path data taken from [`@web3icons/core`](https://github.com/0xa3k5/web3icons)
+(MIT) so that no chain is drawn as an approximation of its own logo. Sepolia is the exception it
+has to be: a testnet has no mark, so it borrows Ethereum's diamond in amber, the one hue no
+supported chain has claimed.
+
 There is no separate deploy step: **clicking any result card opens its deploy dialog**, carrying
 that candidate's score, a full-size identicon, its address and `saltNonce`, its share link and the
 button that spends the gas. Closing the dialog puts you straight back on a grid that never stopped

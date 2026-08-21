@@ -2,6 +2,7 @@ import { loadSafeConstants } from '@safe-vanity-blockie/safe-config'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CHAIN_ICON_ATTR } from '../components/ChainIcon'
 import type { MineConfig } from '../lib/config'
 import { decodeConfigParam } from '../lib/deep-link'
 
@@ -427,6 +428,18 @@ describe('DeployDialog', () => {
     await renderDialog()
     expect(screen.getByRole('button', { name: /^switch to sepolia$/i })).toBeDefined()
     expect(screen.queryByRole('button', { name: /^deploy safe$/i })).toBeNull()
+  })
+
+  it('marks the switch-network gate with the chain it switches to', async () => {
+    state.account = { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 999 }
+    await renderDialog()
+
+    // The chain's own mark, in place of the generic swap arrow this button used to lead with. The
+    // button already says "Switch to", so the arrow was restating the verb; the mark says the one
+    // thing the label cannot say at a glance, which is WHICH chain — and this is the last screen
+    // before money is spent on it.
+    const gate = screen.getByRole('button', { name: /^switch to sepolia$/i })
+    expect(gate.querySelector(`svg[${CHAIN_ICON_ATTR}="11155111"]`)).not.toBeNull()
   })
 
   // The other half of that gate, moved from DeployPanel.test.tsx's "opens the deploy dialog"
