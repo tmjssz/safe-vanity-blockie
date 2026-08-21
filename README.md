@@ -1,5 +1,9 @@
 # safe-vanity-blockie
 
+[![CI](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml/badge.svg)](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml?query=branch%3Amain)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20.19-brightgreen.svg)](package.json)
+
 Brute-force a Safe deployment config (`saltNonce`) so the resulting Safe address renders a chosen
 two-color face when drawn by [`blo`](https://github.com/bpierre/blo), the identicon library used by
 the Safe UI.
@@ -8,15 +12,17 @@ The address is **counterfactual**: mining only finds a config. The address exist
 whether or not the Safe is deployed, and on non-zkSync chains it is identical on every chain that has
 the canonical Safe contracts.
 
-## ⚠️ Security caveat
+## Security caveat
 
-**A matching identicon is cosmetic and must never be trusted as proof of an address.** Blockie
-look-alikes are a known phishing vector: an attacker can mine a different address whose identicon
-looks the same to a human. Always verify the full address, never the picture.
+> [!CAUTION]
+> **A matching identicon is cosmetic and must never be trusted as proof of an address.** Blockie
+> look-alikes are a known phishing vector: an attacker can mine a different address whose identicon
+> looks the same to a human. Always verify the full address, never the picture.
 
-**This is a personal side project, not an official Safe product.** It is not built, reviewed, or
-supported by Safe, and it carries no bug bounty. See [SECURITY.md](SECURITY.md) for what is in scope
-and how to report a problem privately.
+> [!NOTE]
+> **This is a personal side project, not an official Safe product.** It is not built, reviewed, or
+> supported by Safe, and it carries no bug bounty. See [SECURITY.md](SECURITY.md) for what is in
+> scope and how to report a problem privately.
 
 ## Packages
 
