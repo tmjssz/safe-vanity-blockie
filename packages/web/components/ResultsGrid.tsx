@@ -22,6 +22,17 @@ export interface ResultsGridProps {
    */
   droppedCount: number
   mining: boolean
+  /**
+   * The run's prerequisites are still being read — Safe constants, without which mining cannot
+   * start. Separate from `mining` rather than folded into it, because the two are different facts
+   * and one of them is used for more than the placeholders: the excluded-everything copy promises
+   * "Mining continues", which is not true yet while the constants are still being fetched.
+   *
+   * For the grid, though, they are the same state — work is underway and nothing has arrived — so
+   * both raise the placeholders. Without this, the seconds before the first candidate showed "No
+   * results yet." over an empty grid, which reads as a finished search that found nothing.
+   */
+  preparing?: boolean
   /** The filters that produced this view, so the empty state can name what is excluding things. */
   filters: FaceFilters
   /** Highest contrast among candidates the other filters accept; see MinerState.bestContrast. */
@@ -55,6 +66,7 @@ export function ResultsGrid({
   candidates,
   droppedCount,
   mining,
+  preparing = false,
   filters,
   bestContrast,
   deployingAddress,
@@ -64,7 +76,11 @@ export function ResultsGrid({
   // but all excluded is not "still looking". A skeleton row there would promise results that are
   // never coming, which is exactly how the filter came to look broken.
   const excludedEverything = candidates.length === 0 && droppedCount > 0
-  const showSkeletons = mining && candidates.length === 0 && !excludedEverything
+  // `working`, not `mining`: reading the Safe constants is the same thing to someone watching this
+  // grid — the run is under way and the first tile has not landed. It stays out of
+  // `excludedEverything`, which cannot be true before a single candidate has been scored.
+  const working = mining || preparing
+  const showSkeletons = working && candidates.length === 0 && !excludedEverything
 
   return (
     <div>
@@ -102,20 +118,26 @@ export function ResultsGrid({
           </p>
         </div>
       )}
-      {!mining && candidates.length === 0 && !excludedEverything && (
+      {!working && candidates.length === 0 && !excludedEverything && (
         <p className="text-sm text-muted-foreground">No results yet.</p>
       )}
-      {/* Five to a row on a desktop, and a tight gap, so the section reads as a wall of blockies
-          rather than a list of cards — the picture is the only thing being compared here. The
-          steps down are what stop a tile shrinking past its picture on a narrow viewport: two
-          across is the floor, because one across is a list again.
+      {/* Five to a row on a desktop, and a close gap, so the section reads as a wall of blockies
+          rather than a list of cards — the picture is the only thing being compared here. `gap-3`
+          rather than the `gap-2` this started at: at 8px the tiles read as one mass with seams in
+          it, and each card already carries a border, so the gap was doing less separating than the
+          border was. 12px lets each one be a thing without the grid becoming a list. The steps
+          down are what stop a tile shrinking past its picture on a narrow viewport: two across is
+          the floor, because one across is a list again.
           Five from `xl` rather than `2xl`: the page container caps at `max-w-6xl`, so the grid
-          stops growing at 1120px however wide the window gets, and five tiles are 214px each
-          there — the same size they would be on a 4K screen. Waiting for 1536 would leave every
-          ordinary laptop on four for no gain in tile size. */}
+          stops growing at 1120px however wide the window gets, and five tiles are a little over
+          210px each there — the same size they would be on a 4K screen. Waiting for 1536 would
+          leave every ordinary laptop on four for no gain in tile size.
+
+          The placeholders are children of this same grid, so they inherit this gap and cannot
+          drift from it — which is the point: the wait and the results are the same layout. */}
       <div
         data-testid="results-grid"
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
       >
         {candidates.map((candidate) => (
           <ResultCard
@@ -132,13 +154,34 @@ export function ResultsGrid({
         ))}
         {showSkeletons &&
           SKELETON_KEYS.map((key) => (
-            // The shape of a real tile — a square picture and two short lines — so the grid does
-            // not jump the moment the first result lands.
-            <div key={key} data-testid="result-skeleton" className="flex flex-col gap-1.5 p-2.5">
-              <Skeleton className="aspect-square w-full rounded-md" />
-              <Skeleton className="h-2.5 w-2/3 self-center" />
-              <Skeleton className="h-2.5 w-1/2 self-center" />
-            </div>
+            // One plain box per cell, the size of a whole tile. This drew three shapes before — a
+            // square for the picture and two short bars for the lines under it — which is more
+            // detail than a placeholder has any way to be right about, and it read as a wireframe
+            // of a card rather than as a card on its way.
+            //
+            // The size is not a guessed number. The spacers inside are the tile's own parts
+            // wearing the tile's own classes — the square picture, then the two 11px rows — inside
+            // the card's border, padding and gap. None of them paints anything, so what shows is a
+            // single rounded rectangle exactly as tall as the card that replaces it. That is the
+            // property worth keeping: a placeholder shorter or taller than the real thing makes
+            // the whole grid jump the moment the first result lands, which is how the old tall
+            // version came to be replaced.
+            //
+            // `border-transparent` rather than no border, because backgrounds paint under the
+            // border box: it holds the card's 1px on every side without drawing it, so the box is
+            // the card's full footprint and not 2px short of it.
+            <Skeleton
+              key={key}
+              data-testid="result-skeleton"
+              className="flex flex-col gap-1.5 rounded-xl border border-transparent p-2.5"
+            >
+              <span className="aspect-square w-full" />
+              <span className="text-[11px] leading-tight">&nbsp;</span>
+              {/* A <code>, like the address row it stands in for: `text-[11px]` sets the size and
+                  leaves the line height to the cascade, so the row's height depends on the font in
+                  it — and the real row is monospace. A <span> here was a pixel or two short. */}
+              <code className="text-[11px]">&nbsp;</code>
+            </Skeleton>
           ))}
       </div>
     </div>

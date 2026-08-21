@@ -168,9 +168,11 @@ describe('MiningView across a chain switch', () => {
     expect(instances).toHaveLength(1)
     expect(worker.terminated).toBe(false)
     expect(worker.posted.some((request) => request.type === 'stop')).toBe(false)
-    // Not even a flicker back to the "Reading Safe constants…" placeholder, which would unmount
-    // the grid and the status bar for the length of an RPC round trip.
-    expect(screen.queryByText(/reading safe/i)).toBeNull()
+    // Not even a flicker back to the loading screen, which would unmount the grid and the status
+    // bar for the length of an RPC round trip. That screen used to be a line of text reading
+    // "Reading Safe constants…"; it is the result placeholders now, so this asks about those —
+    // the old assertion would pass on any render at all once the prose was removed.
+    expect(document.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
 
     // The board is the same board: same cards, same addresses, nothing re-derived.
     expect(resultCards()).toHaveLength(1)

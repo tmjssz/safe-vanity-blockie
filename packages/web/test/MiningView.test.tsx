@@ -130,8 +130,11 @@ afterEach(() => {
 })
 
 describe('MiningView', () => {
-  it('explains that it is reading Safe constants before it can mine', () => {
-    render(
+  // Placeholders stand in for the whole screen before the constants land, and mining has not been
+  // asked to start: the two facts together are what this state is. There is deliberately no prose
+  // — see the test further down for why the "Reading Safe constants…" line is gone.
+  it('waits for the Safe constants before mining, showing placeholders meanwhile', () => {
+    const { container } = render(
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
@@ -141,7 +144,7 @@ describe('MiningView', () => {
         onSelect={vi.fn()}
       />,
     )
-    expect(screen.getByText(/reading safe/i)).toBeDefined()
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
     expect(startSpy).not.toHaveBeenCalled()
   })
 
@@ -446,6 +449,40 @@ describe('MiningView', () => {
 
     expect(container.querySelectorAll('[data-testid="result-skeleton"]').length).toBeGreaterThan(0)
     expect(screen.queryByTestId('results-count')).toBeNull()
+  })
+
+  // The heading and the placeholders, and the prose that used to be here is gone: "Reading Safe
+  // constants…" named an internal RPC read that means nothing to the person waiting and that they
+  // cannot act on either way. What is left says the only thing worth saying — results are coming,
+  // and here is where they will land. "No results yet." must not appear either; that is a finished
+  // search that found nothing, over a run that has not begun.
+  //
+  // The heading titles the part of the page rather than the run, so it is there from the first
+  // frame: without it the tiles sat unlabelled and the title dropped in above them the moment
+  // mining began, pushing the grid down. Its badge stays away until there is something to count.
+  it('heads the placeholders while the Safe constants are read, with no prose and no badge', () => {
+    constantsState.current = { loading: true }
+    minerState.current = { ...IDLE_STATE, running: false }
+
+    const { container } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
+    expect(screen.queryByText(/reading safe/i)).toBeNull()
+    expect(screen.queryByText(/no results yet/i)).toBeNull()
+    expect(screen.getByRole('heading', { level: 2, name: /^results$/i })).toBeDefined()
+    // The badge would be claiming to count four visible boxes that are not results.
+    expect(screen.queryByTestId('results-count')).toBeNull()
+    // And no sort: a control that reorders nothing is furniture to be read past.
+    expect(screen.queryByRole('combobox', { name: /^sort results$/i })).toBeNull()
   })
 
   // The exception: nothing found *yet* is not the same as nothing surviving the filters. There the

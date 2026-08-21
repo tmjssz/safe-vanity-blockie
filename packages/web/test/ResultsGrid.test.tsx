@@ -75,6 +75,28 @@ describe('ResultsGrid', () => {
     expect(grid).toMatch(/xl:grid-cols-5/)
   })
 
+  // One gap for both, structurally rather than by two matching classes: the placeholders are
+  // children of the results grid itself, so they cannot drift from the gap the tiles use. This
+  // asserts that relationship, which is what makes the wait and the results the same layout — a
+  // placeholder row spaced differently from the tiles it becomes would reflow the page at the
+  // moment of the swap.
+  it('spaces the placeholders on the same grid as the tiles, not a grid of their own', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={0}
+        mining
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    const grid = screen.getByTestId('results-grid')
+    const placeholders = screen.getAllByTestId('result-skeleton')
+    expect(placeholders).toHaveLength(4)
+    for (const placeholder of placeholders) expect(placeholder.parentElement).toBe(grid)
+    expect(grid.className).toMatch(/\bgap-3\b/)
+  })
+
   // The two-colour mark is on the tile, but whether it says anything is a property of the filters,
   // which only this component knows: with the filter on, every tile would carry it.
   it('marks two-colour results only when the filter is not already excluding the rest', () => {
@@ -147,10 +169,50 @@ describe('ResultsGrid', () => {
     expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
   })
 
-  // A placeholder the shape of the old tall card promised something twice the height of what
-  // arrives, so the whole grid jumped the moment the first result landed.
-  it('shapes the placeholders like the tiles that replace them', () => {
+  // The seconds before mining can start are the same state to anyone watching this grid: the run
+  // is under way and the first tile has not landed. They used to read "No results yet." — a
+  // finished search that found nothing, over a run that had not begun.
+  it('shows skeletons while the run is still reading its prerequisites', () => {
     const { container } = render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={0}
+        mining={false}
+        preparing
+        filters={DEFAULT_FACE_FILTERS}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(4)
+    expect(screen.queryByText(/no results yet/i)).toBeNull()
+  })
+
+  // Preparing does not override the distinction the placeholders exist to keep: candidates found
+  // and all excluded is not "still looking", whatever else is loading.
+  it('still explains an all-excluded grid while preparing, rather than showing skeletons', () => {
+    const { container } = render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining={false}
+        preparing
+        filters={{ twoColor: true, minContrast: 300 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(container.querySelectorAll('[data-testid="result-skeleton"]')).toHaveLength(0)
+    expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
+  })
+
+  // A placeholder the shape of the old tall card promised something twice the height of what
+  // arrives, so the whole grid jumped the moment the first result landed. One box now, but it has
+  // to be the same box: the tile's padding, gap and rounding on the outside, and inside it the
+  // tile's own parts as unpainted spacers — a square for the picture and the two 11px rows under
+  // it — so the height is derived from the card's metrics rather than guessed at.
+  //
+  // jsdom does no layout, so this pins the classes the height comes from; it cannot measure it.
+  it('shapes the placeholders like the tiles that replace them', () => {
+    render(
       <ResultsGrid
         candidates={[]}
         droppedCount={0}
@@ -159,10 +221,19 @@ describe('ResultsGrid', () => {
         onSelect={vi.fn()}
       />,
     )
-    const placeholder = container.querySelector(
-      '[data-testid="result-skeleton"] [data-slot="skeleton"]',
-    )
-    expect(placeholder?.className).toMatch(/aspect-square/)
+    const [placeholder] = screen.getAllByTestId('result-skeleton')
+    if (!placeholder) throw new Error('no placeholders rendered')
+    // The box itself is the painted one — no nested boxes to read as a wireframe of a card.
+    expect(placeholder.getAttribute('data-slot')).toBe('skeleton')
+    expect(placeholder.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0)
+    // ...carrying the tile's own outer metrics, border included, since a background paints under
+    // the border box and a missing one would leave the box 2px short of a real card.
+    expect(placeholder.className).toMatch(/\bp-2\.5\b/)
+    expect(placeholder.className).toMatch(/\bgap-1\.5\b/)
+    expect(placeholder.className).toMatch(/\brounded-xl\b/)
+    expect(placeholder.className).toMatch(/\bborder\b/)
+    // ...and the square picture inside it, which is most of a tile's height.
+    expect(placeholder.firstElementChild?.className).toMatch(/aspect-square/)
   })
 
   it('explains an empty grid when mining is not running', () => {
