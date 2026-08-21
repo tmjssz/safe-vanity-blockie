@@ -452,6 +452,35 @@ describe('DeployDialog', () => {
     expect(screen.queryByRole('button', { name: /switch to/i })).toBeNull()
   })
 
+  // The footer's filled button means "this press spends gas", and it means only that. Connecting
+  // and switching occupy the same slot but merely set the wallet up, so they are outlined —
+  // otherwise arriving from a share link on the wrong chain shows a filled button that looks
+  // exactly like the deploy one, and the press that reads as committing is the one that isn't.
+  // Asserted on `bg-primary` because that is what separates the filled variant from `outline`'s
+  // `bg-background`; a variant prop is not observable from here, and the emphasis is the contract.
+  it('fills only the deploy button, and outlines the wallet prerequisites', async () => {
+    state.account = { isConnected: false, address: undefined as never, chainId: 11155111 }
+    await renderDialog()
+    const connect = screen.getByRole('button', { name: /^connect a wallet$/i })
+    expect(connect.className).not.toMatch(/bg-primary/)
+    expect(connect.className).toMatch(/bg-background/)
+  })
+
+  it('outlines the switch-network gate rather than filling it', async () => {
+    state.account = { isConnected: true, address: '0x' + '11'.repeat(20), chainId: 999 }
+    await renderDialog()
+    const gate = screen.getByRole('button', { name: /^switch to sepolia$/i })
+    expect(gate.className).not.toMatch(/bg-primary/)
+    expect(gate.className).toMatch(/bg-background/)
+  })
+
+  // The other side of the rule: dropping the emphasis everywhere would satisfy both assertions
+  // above and leave the dialog with no way forward marked at all.
+  it('keeps the deploy button filled once the wallet is ready on the right chain', async () => {
+    await renderDialog()
+    expect(screen.getByRole('button', { name: /^deploy safe$/i }).className).toMatch(/bg-primary/)
+  })
+
   // The state the removed "Waiting for the wallet client…" line reported. It reads as a disabled
   // button rather than a line of prose because that is what it is: the deploy handler returns
   // immediately without a client, so an enabled button here does nothing at all.
