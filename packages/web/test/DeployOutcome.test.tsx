@@ -194,28 +194,30 @@ describe('DeployOutcome', () => {
     expect(screen.queryByText(/saltnonce/i)).toBeNull()
   })
 
-  it('marks the chain a deployed Safe is live on', () => {
+  // Named, still: removing the mark took the picture, not the fact. This is the screen a user is
+  // most likely to screenshot or come back to, and which chain the Safe is on is the second thing
+  // it has to say after the address.
+  it('names the chain a deployed Safe is live on', () => {
     renderOutcome({ variant: 'success' })
-
-    // The subtitle is where the chain is named on the one screen a user is most likely to
-    // screenshot or come back to, and it is a single short line rather than a paragraph — so the
-    // mark sits with the name here, where in the longer explanations elsewhere it would not.
     expect(subtitle().textContent).toContain('Live on Sepolia')
-    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}="11155111"]`)).not.toBeNull()
   })
 
-  it('marks the chain a sent transaction is waiting on', () => {
+  it('names the chain a sent transaction is waiting on', () => {
     renderOutcome({ variant: 'pending' })
-
-    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}="11155111"]`)).not.toBeNull()
+    expect(subtitle().textContent).toContain('Waiting for confirmation on Sepolia')
   })
 
-  // A failure's subtitle is the reason the sequence gave, which is about what went wrong rather
-  // than about where — there is no chain named in it to mark, and a mark with nothing to mark is
-  // just a logo on an error message.
-  it('does not mark a failure, whose subtitle names no chain', () => {
-    renderOutcome({ variant: 'failed', reason: 'The wallet rejected the transaction.' })
-
-    expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}]`)).toBeNull()
-  })
+  // No chain mark on any of the three, which is the point of writing it per variant rather than
+  // once: each of these screens already carries one piece of iconography — the badge pinned to the
+  // identicon, which is what says whether the news is good — and a chain mark a line below it
+  // competes for that glance while adding nothing the sentence has not already said. The mark
+  // still belongs where the chain is a choice being offered; here it is settled and being
+  // reported.
+  it.each(['pending', 'success', 'failed'] as const)(
+    'leaves the %s subtitle unmarked, as words alone',
+    (variant) => {
+      renderOutcome({ variant, reason: 'The wallet rejected the transaction.' })
+      expect(subtitle().querySelector(`svg[${CHAIN_ICON_ATTR}]`)).toBeNull()
+    },
+  )
 })
