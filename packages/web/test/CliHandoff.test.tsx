@@ -10,6 +10,17 @@ const config = {
   chainId: 1,
 }
 
+/**
+ * The command's own control. Reached by data-slot rather than by role, because the dialog is a
+ * form-free surface where `textbox` would also match anything else that grew one later, and the
+ * point of every assertion below is THIS field.
+ */
+function commandField(): HTMLTextAreaElement {
+  const field = document.querySelector<HTMLTextAreaElement>('[data-slot="input-group-control"]')
+  if (!field) throw new Error('no command field on screen')
+  return field
+}
+
 describe('npxCommandFor', () => {
   it('produces a command that runs the CLI with the same config', () => {
     const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
@@ -143,10 +154,10 @@ describe('CliHandoff', () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     fireEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    // Read off the block rather than via getByText: the command is multi-line now, and the
+    // Read off the control's value rather than via getByText: the command is multi-line, and the
     // default matcher collapses whitespace in the element while comparing against the raw string.
     const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
-    expect(document.querySelector('[data-slot="command-block"] pre')!.textContent).toBe(command)
+    expect(commandField().value).toBe(command)
 
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
     expect(await screen.findByRole('alert')).toBeDefined()
@@ -155,51 +166,98 @@ describe('CliHandoff', () => {
     Object.defineProperty(navigator, 'clipboard', { value: original, configurable: true })
   })
 
-  // One long line in a box that scrolls sideways hides most of what it is about to put on the
-  // clipboard. Wrapped, the whole command is readable at a glance — and it is still a single line
-  // of text, so what gets copied is still pasteable straight into a shell.
-  it('wraps the command instead of scrolling it out of sight', async () => {
+  // A box that scrolls sideways hides most of what it is about to put on the clipboard. A textarea
+  // soft-wraps by definition, so the whole command is readable at a glance without a class saying
+  // so — and the value is the command verbatim, so what gets copied still pastes into a shell.
+  it('holds the whole command in a field that wraps rather than scrolling sideways', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    const block = (await screen.findByRole('dialog')).querySelector('pre')!
-    expect(block.className).toMatch(/whitespace-pre-wrap/)
-    expect(block.textContent).toBe(npxCommandFor(config, { rpcUrl: 'https://rpc.example' }))
+    const field = commandField()
+    expect(field.tagName).toBe('TEXTAREA')
+    expect(field.value).toBe(npxCommandFor(config, { rpcUrl: 'https://rpc.example' }))
   })
 
-  // Inside the block it copies, but on a row of its own beneath the command rather than floating
-  // over it: laid on top, it had to be given a lane the text could not use, which cost the
-  // command a quarter of its width on every line to keep one corner clear.
-  it('puts the copy control on its own row under the command, inside the block', async () => {
+  // The command is derived from the config: there is nothing an edit here could be saved to. But
+  // read-only rather than disabled, because a disabled control cannot be focused and its text
+  // cannot be selected — which would throw away the reason for using a control at all, and with it
+  // the manual fallback the copy-failure alert tells the user to reach for.
+  it('makes the command selectable and focusable but not editable', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    const block = (await screen.findByRole('dialog')).querySelector('[data-slot="command-block"]')!
+    const field = commandField()
+    expect(field.readOnly).toBe(true)
+    expect(field.disabled).toBe(false)
+  })
+
+  // Sized to the command it holds. The base Textarea asks for this with `field-sizing-content`,
+  // which only Chrome implements — on Firefox and Safari that leaves `min-h-16`, a four-line box
+  // around a command of seven, scrolling most of what is about to be copied out of sight. Counting
+  // the lines is exact and works in every browser.
+  it('opens as tall as the command, counting its lines rather than trusting field-sizing', async () => {
+    render(
+      <CliHandoff
+        config={config}
+        rpcUrl="https://rpc.example"
+        filters={{ twoColor: false, minContrast: 300 }}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const lines = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      filters: { twoColor: false, minContrast: 300 },
+    }).split('\n').length
+    expect(lines).toBeGreaterThan(4)
+    expect(commandField().rows).toBe(lines)
+  })
+
+  // One visible name, not two: the header strip says "bash" on screen, and that is the same word
+  // the control is announced by. An aria-label invented here would give it a second name that no
+  // sighted user can see and no voice-control user can say.
+  it('names the command field by the shell shown in its header', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const labelId = commandField().getAttribute('aria-labelledby')
+    expect(labelId).toBeTruthy()
+    expect(document.getElementById(labelId!)?.textContent).toBe('bash')
+    expect(commandField().getAttribute('aria-label')).toBeNull()
+  })
+
+  // Inside the group it copies, in the header strip above the command rather than floating over it:
+  // laid on top it had to be given a lane the text could not use, which cost the command a quarter
+  // of its width on every line to keep one corner clear. The strip costs one row once.
+  it('puts the copy control in the header strip above the command, inside the group', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const group = (await screen.findByRole('dialog')).querySelector('[data-slot="input-group"]')!
     const copy = screen.getByRole('button', { name: /copy/i })
-    const command = block.querySelector('pre')!
 
-    expect(block.contains(copy)).toBe(true)
-    expect(command.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(group.contains(copy)).toBe(true)
+    expect(copy.closest('[data-align="block-start"]')).not.toBeNull()
   })
 
-  // A link rather than a bordered control: it sits inside a code block, where a second box drawn
-  // around it is one frame too many.
-  it('offers the copy control as a link, not a bordered button', async () => {
+  // Unboxed, whichever variant supplies that: the control sits inside the command's own frame,
+  // where a second box drawn around it is one frame too many. `ghost` is the input group's default
+  // and what this relies on — the assertion is that it is not one of the bordered ones.
+  it('draws the copy control without a box of its own', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const copy = screen.getByRole('button', { name: /copy/i })
-    expect(copy.getAttribute('data-variant')).toBe('link')
+    expect(['ghost', 'link']).toContain(copy.getAttribute('data-variant'))
   })
 
-  // With the control on its own row there is nothing to keep clear, so the command gets the whole
-  // width back. This pins the reserve being gone rather than the exact padding that replaced it.
-  it('lets the command use the full width of the block', async () => {
+  // With the control in a strip of its own there is nothing to keep clear, so the command gets the
+  // whole width back. This pins the reserve being gone rather than the exact padding around it.
+  it('lets the command use the full width of the group', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    const command = (await screen.findByRole('dialog')).querySelector('pre')!
-    expect(command.className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
+    expect(commandField().className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
   })
 
   it('copies the command and flips the button label on success', async () => {
