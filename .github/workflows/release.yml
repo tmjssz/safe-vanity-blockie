@@ -63,13 +63,15 @@ jobs:
           pnpm --filter @safe-vanity-blockie/safe-config pack --pack-destination "$out"
           pnpm --filter safe-vanity-blockie              pack --pack-destination "$out"
 
-          args="--provenance --access public"
+          # An array, not a string: an unquoted "$args" would be word-split by the shell, which
+          # works but is exactly what shellcheck flags (SC2086) and breaks on any arg with a space.
+          args=(--provenance --access public)
           if [ "$DRY_RUN" = "true" ]; then
-            args="$args --dry-run"
+            args+=(--dry-run)
             echo "::notice::dry run — nothing will be published"
           fi
 
           # The [0-9] keeps the CLI glob from matching the two scoped tarballs.
-          npm publish "$out"/safe-vanity-blockie-core-*.tgz        $args
-          npm publish "$out"/safe-vanity-blockie-safe-config-*.tgz $args
-          npm publish "$out"/safe-vanity-blockie-[0-9]*.tgz        $args
+          npm publish "$out"/safe-vanity-blockie-core-*.tgz        "${args[@]}"
+          npm publish "$out"/safe-vanity-blockie-safe-config-*.tgz "${args[@]}"
+          npm publish "$out"/safe-vanity-blockie-[0-9]*.tgz        "${args[@]}"
