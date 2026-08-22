@@ -90,7 +90,32 @@ jobs:
             echo "::notice::dry run — nothing will be published"
           fi
 
+          # Dependency order: core, then safe-config, then the CLI that depends on both.
           # The [0-9] keeps the CLI glob from matching the two scoped tarballs.
-          npm publish "$out"/safe-vanity-blockie-core-*.tgz        "${args[@]}"
-          npm publish "$out"/safe-vanity-blockie-safe-config-*.tgz "${args[@]}"
-          npm publish "$out"/safe-vanity-blockie-[0-9]*.tgz        "${args[@]}"
+          for tgz in \
+            "$out"/safe-vanity-blockie-core-*.tgz \
+            "$out"/safe-vanity-blockie-safe-config-*.tgz \
+            "$out"/safe-vanity-blockie-[0-9]*.tgz
+          do
+            meta="$(tar -xzOf "$tgz" package/package.json)"
+            name="$(jq -r .name <<<"$meta")"
+            version="$(jq -r .version <<<"$meta")"
+
+            # Skip what is already on the registry. A partial failure — one package accepted, the
+            # next rejected on credentials — must be recoverable by fixing the cause and re-running,
+            # not by burning a version number across the whole workspace. Re-publishing an existing
+            # version is an EPUBLISHCONFLICT error, which under `bash -e` would abort the step
+            # before reaching the packages that still need publishing.
+            #
+            # `npm view <name>@<version>` exits 0 only when that exact version exists; it exits 1
+            # both for an unknown package and for a known package at an unknown version. A
+            # transient failure therefore reads as "not published", and the publish that follows
+            # fails loudly on conflict rather than silently double-publishing.
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "::notice::$name@$version is already on the registry — skipping"
+              continue
+            fi
+
+            echo "publishing $name@$version"
+            npm publish "$tgz" "${args[@]}"
+          done
