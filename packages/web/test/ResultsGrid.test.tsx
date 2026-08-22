@@ -440,6 +440,34 @@ describe('ResultsGrid', () => {
     expect((container.textContent ?? '').match(/162/g)).toHaveLength(1)
   })
 
+  // The panel is built out of the shadcn Empty primitive rather than hand-rolled paragraphs, which
+  // is what gives every "nothing here" state in the app one shape. Asserted through the slots
+  // because that is all jsdom can see of it: there is no layout to measure, and the classes are the
+  // primitive's own rather than this component's to pin.
+  //
+  // The icon is the part worth naming. It is the Filter card's icon, and it is the panel's only
+  // pointer at the control the copy is talking about — the panel occupies the space a wall of
+  // blockies would, so it has to say what it is by picture as well as by sentence.
+  it('builds the panel from the Empty primitive, under the filter icon', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const panel = noMatches()
+    expect(panel.dataset.slot).toBe('empty')
+    expect(panel.querySelector('[data-slot="empty-icon"] svg')).not.toBeNull()
+    // The headline is the announced node, and the detail is a separate one below it — the split the
+    // live region depends on, now expressed as the primitive's two slots.
+    expect(screen.getByRole('status').dataset.slot).toBe('empty-title')
+    expect(panel.querySelector('[data-slot="empty-description"]')?.textContent).toMatch(/162/)
+  })
+
   // Two hundred cards, each an inline blockie of ~64 <rect>s, re-rendered on every worker progress
   // message: the grid only stays usable because a card whose candidate object has not changed does
   // not redraw. board.entries() returns the stored objects, so identity is what carries that.
