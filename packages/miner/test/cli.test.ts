@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type Candidate, getTemplate, selectReported } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { buildProgressBlock, resolveFaceSpec } from '../src/cli.js'
+import { activeFilterFlags, buildProgressBlock, resolveFaceSpec } from '../src/cli.js'
 import { asciiFor } from '../src/report.js'
 
 function makeCandidate(overrides: Partial<Candidate>): Candidate {
@@ -117,7 +117,7 @@ describe('buildProgressBlock', () => {
     ...overrides,
   })
 
-  const selection = { twoColor: false, minContrast: 0, keep: 5 }
+  const selection = { twoColor: false, minContrast: 0, minMatch: 0, keep: 5 }
 
   it('is a single status line before any candidate exists', () => {
     const block = buildProgressBlock(progress([]), selection, 5)
@@ -168,6 +168,18 @@ describe('buildProgressBlock', () => {
     expect(block[block.length - 1]).toContain('best 90.2%')
   })
 
+  it('applies the match floor live too, so a strict --min-match is not a surprise at the end', () => {
+    const close = candidate({ address: '0x' + 'a'.repeat(40), score: 128 })
+    const distant = candidate({ address: '0x' + 'b'.repeat(40), score: 100 })
+    const block = buildProgressBlock(
+      progress([close, distant]),
+      { twoColor: false, minContrast: 0, minMatch: 90, keep: 5 },
+      5,
+    )
+    expect(block[1]).toContain('#1 96.2%')
+    expect(block[1]).not.toContain('75.2%')
+  })
+
   it('renders the same face the final report prints for that address', () => {
     const address = '0x70e9f0a8cb8f727322574b4c6c0fadd2e804eed5'
     const block = buildProgressBlock(progress([candidate({ address })]), selection, 5)
@@ -181,5 +193,33 @@ describe('buildProgressBlock', () => {
     const status = block[block.length - 1]
     expect(status).toContain('1m 05s')
     expect(status).toContain('1.50M/s')
+  })
+})
+
+// The one list of "which flags are excluding things", so the two messages that name them cannot
+// come to name different sets — and so adding a filter cannot leave one of them silently stale.
+describe('activeFilterFlags', () => {
+  it('names only the flags that are actually constraining something', () => {
+    expect(activeFilterFlags({ twoColor: true, minContrast: 0, minMatch: 0 })).toEqual([
+      '--two-color',
+    ])
+    expect(activeFilterFlags({ twoColor: false, minContrast: 150, minMatch: 0 })).toEqual([
+      '--min-contrast',
+    ])
+    expect(activeFilterFlags({ twoColor: false, minContrast: 0, minMatch: 90 })).toEqual([
+      '--min-match',
+    ])
+  })
+
+  it('names every active flag, in the order the help text lists them', () => {
+    expect(activeFilterFlags({ twoColor: true, minContrast: 150, minMatch: 90 })).toEqual([
+      '--two-color',
+      '--min-contrast',
+      '--min-match',
+    ])
+  })
+
+  it('is empty when nothing is being filtered', () => {
+    expect(activeFilterFlags({ twoColor: false, minContrast: 0, minMatch: 0 })).toEqual([])
   })
 })

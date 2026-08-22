@@ -101,15 +101,26 @@ export interface FaceFilters {
   twoColor: boolean
   /** Minimum RGB distance required between the two blockie colours. 0-442; 442 is black/white. */
   minContrast: number
+  /**
+   * Minimum share of the template's maximum score a candidate must reach, as a percentage. 0-100;
+   * 0 accepts everything. Judged against the percentage the result tile displays (core's
+   * `scorePercent`), so a card reading 90.0% is never excluded by a floor of 90.
+   */
+  minMatch: number
 }
 
 /**
- * 80 rather than 0, on a scale that runs to 442. Zero accepts a pair whose two colours differ by
- * less than the eye reliably separates, so a face drawn in them is not a face anybody was hoping
- * to mine — which made the first run every user sees the least useful one, with the slider left
- * to be discovered before the results got better.
+ * Contrast is 80 rather than 0, on a scale that runs to 442. Zero accepts a pair whose two colours
+ * differ by less than the eye reliably separates, so a face drawn in them is not a face anybody was
+ * hoping to mine — which made the first run every user sees the least useful one, with the slider
+ * left to be discovered before the results got better.
+ *
+ * The match floor is 0, and deliberately not given the same treatment. Contrast is a property of a
+ * candidate alone, so a floor on it is satisfiable from the first second; match quality is a
+ * property of how long the search has run, so any non-zero default would empty the grid for the
+ * opening seconds of every run and present a working search as one finding nothing.
  */
-export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 80 }
+export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 80, minMatch: 0 }
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 

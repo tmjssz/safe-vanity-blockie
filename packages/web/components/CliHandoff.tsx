@@ -23,9 +23,13 @@ import {
 } from './ui/input-group'
 
 /**
- * `--two-color`/`--no-two-color` and `--min-contrast` map 1:1 onto the browser's live filters
- * (packages/miner/src/args.ts) — passed through so the handed-off search enforces the same
- * standard the user was already looking at, instead of silently reverting to the CLI defaults.
+ * `--two-color`/`--no-two-color`, `--min-contrast` and `--min-match` map 1:1 onto the browser's
+ * live filters (packages/miner/src/args.ts) — passed through so the handed-off search enforces the
+ * same standard the user was already looking at, instead of silently reverting to the CLI defaults.
+ *
+ * Every one of them is emitted whenever filters are given, including at a permissive value. The
+ * command is a statement of the standard the screen is holding results to, and a flag that appears
+ * only sometimes leaves the reader working out whether it was left off or left at zero.
  *
  * One argument per line, joined by backslash continuations. This was deliberately a single line
  * before, for one reason: that it pastes into a shell as one command. The continuations are what
@@ -46,6 +50,7 @@ export function npxCommandFor(
   if (options.filters) {
     args.push(options.filters.twoColor ? '--two-color' : '--no-two-color')
     args.push(`--min-contrast ${options.filters.minContrast}`)
+    args.push(`--min-match ${options.filters.minMatch}`)
   }
   // Every line but the last carries the continuation. Putting it on the last one too would leave
   // the shell waiting for an argument that never comes.
@@ -137,8 +142,8 @@ export function CliHandoff({
         <div className="flex min-w-0 flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             The CLI has no builtin <code>--target</code> for a narrowed subset of expressions, so it
-            searches the full set of faces; your two-colour and contrast filters still carry over
-            exactly, via the flags below.
+            searches the full set of faces; your two-colour, contrast and match filters still carry
+            over exactly, via the flags below.
           </p>
           {/* An InputGroup with the command as a read-only textarea, and a header strip above it
               carrying the shell it is written for and the one control that acts on it.

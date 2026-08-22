@@ -12,6 +12,8 @@ export interface MineArgs {
   target: string
   twoColor: boolean
   minContrast: number
+  /** Percentage floor on the match score, 0-100. 0 filters nothing. */
+  minMatch: number
   workers: number
   maxIterations: number
   start: number
@@ -52,6 +54,7 @@ Mine options:
   --two-color            on         only report blockies that use exactly two colours
   --no-two-color                    report three-colour results too
   --min-contrast <n>     0          drop results whose two colours are closer than this (0-442)
+  --min-match <n>        0          drop results matching the face less closely than this (0-100%)
   --workers <n>          cores-1    worker threads
   --max-iterations <n>   unbounded  total nonces to scan; omit to run until Ctrl+C
   --start <n>            0          first saltNonce; use the printed nextStart to resume
@@ -112,6 +115,18 @@ function nonNegativeInteger(raw: string, flag: string): number {
   return value
 }
 
+/**
+ * A percentage, 0-100. Not an integer check: the report prints scores to one decimal, so a floor
+ * of 92.5 is a floor a user can read off a result and type back in.
+ */
+function percentage(raw: string, flag: string): number {
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0 || value > 100) {
+    throw new CliError(`${flag} must be a number between 0 and 100, got "${raw}"`)
+  }
+  return value
+}
+
 const MAX_UINT256 = (1n << 256n) - 1n
 const DECIMAL_PATTERN = /^[0-9]+$/
 
@@ -148,6 +163,7 @@ export function parseArgs(
     '--rpc',
     '--target',
     '--min-contrast',
+    '--min-match',
     '--workers',
     '--max-iterations',
     '--start',
@@ -226,6 +242,7 @@ export function parseArgs(
   const keepRaw = values.get('--keep')
   const workersRaw = values.get('--workers')
   const minContrastRaw = values.get('--min-contrast')
+  const minMatchRaw = values.get('--min-match')
 
   return {
     kind: 'mine',
@@ -238,6 +255,7 @@ export function parseArgs(
       twoColor: !flags.has('--no-two-color'),
       minContrast:
         minContrastRaw === undefined ? 0 : nonNegativeInteger(minContrastRaw, '--min-contrast'),
+      minMatch: minMatchRaw === undefined ? 0 : percentage(minMatchRaw, '--min-match'),
       workers:
         workersRaw === undefined ? defaults.workers : positiveInteger(workersRaw, '--workers'),
       maxIterations:

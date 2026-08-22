@@ -504,7 +504,7 @@ describe('FacePicker', () => {
     const swatches = () => document.querySelectorAll('[data-slot="contrast-swatch"]')
 
     it('shows a pair of swatches beside the value', () => {
-      renderPicker({ filters: { twoColor: true, minContrast: 120 } })
+      renderPicker({ filters: { twoColor: true, minContrast: 120, minMatch: 0 } })
       expect(swatches()).toHaveLength(2)
     })
 
@@ -515,7 +515,7 @@ describe('FacePicker', () => {
         <FacePicker
           value={['smile']}
           onChange={vi.fn()}
-          filters={{ twoColor: true, minContrast: 40 }}
+          filters={{ twoColor: true, minContrast: 40, minMatch: 0 }}
           onFiltersChange={vi.fn()}
         />,
       )
@@ -526,7 +526,7 @@ describe('FacePicker', () => {
         <FacePicker
           value={['smile']}
           onChange={vi.fn()}
-          filters={{ twoColor: true, minContrast: 400 }}
+          filters={{ twoColor: true, minContrast: 400, minMatch: 0 }}
           onFiltersChange={vi.fn()}
         />,
       )
@@ -541,6 +541,87 @@ describe('FacePicker', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(screen.getByText(/0 · any pair/i)).toBeDefined()
       expect(screen.getByText(/442 · black on white/i)).toBeDefined()
+    })
+  })
+
+  describe('the minimum match filter', () => {
+    it('shows the floor it was given, as a percentage', () => {
+      renderPicker({ filters: { twoColor: true, minContrast: 80, minMatch: 90 } })
+      expect(
+        screen.getByRole('slider', { name: /minimum match/i }).getAttribute('aria-valuenow'),
+      ).toBe('90')
+      expect(screen.getByTestId('min-match-value').textContent).toBe('90%')
+    })
+
+    it('is off at zero by default, so a fresh run hides nothing', () => {
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+      expect(
+        screen.getByRole('slider', { name: /minimum match/i }).getAttribute('aria-valuenow'),
+      ).toBe('0')
+      expect(screen.getByTestId('min-match-value').textContent).toBe('0%')
+    })
+
+    it('reports the new floor, and shows it, when the slider is moved', async () => {
+      const onFiltersChange = vi.fn()
+      render(
+        <ControlledPicker
+          initialFilters={{ twoColor: true, minContrast: 80, minMatch: 90 }}
+          onFiltersChange={onFiltersChange}
+        />,
+      )
+      const slider = screen.getByRole('slider', { name: /minimum match/i })
+      slider.focus()
+      await userEvent.keyboard('{ArrowRight}')
+
+      expect(onFiltersChange).toHaveBeenCalledWith({
+        twoColor: true,
+        minContrast: 80,
+        minMatch: 91,
+      })
+      expect(screen.getByTestId('min-match-value').textContent).toBe('91%')
+    })
+
+    it('covers the full 0–100 range, both ends included', async () => {
+      render(
+        <ControlledPicker
+          initialFilters={{ twoColor: true, minContrast: 80, minMatch: 50 }}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      const slider = () => screen.getByRole('slider', { name: /minimum match/i })
+      expect(slider().getAttribute('aria-valuemin')).toBe('0')
+      expect(slider().getAttribute('aria-valuemax')).toBe('100')
+
+      slider().focus()
+      await userEvent.keyboard('{End}')
+      expect(screen.getByTestId('min-match-value').textContent).toBe('100%')
+
+      await userEvent.keyboard('{Home}')
+      expect(screen.getByTestId('min-match-value').textContent).toBe('0%')
+    })
+
+    it('leaves the other filters alone when it changes', async () => {
+      const { onFiltersChange } = renderPicker({
+        filters: { twoColor: false, minContrast: 42, minMatch: 90 },
+      })
+      screen.getByRole('slider', { name: /minimum match/i }).focus()
+      await userEvent.keyboard('{ArrowRight}')
+      expect(onFiltersChange).toHaveBeenCalledWith({
+        twoColor: false,
+        minContrast: 42,
+        minMatch: 91,
+      })
+    })
+
+    it('anchors both ends of the scale', () => {
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+      expect(screen.getByText(/0 · any match/i)).toBeDefined()
+      expect(screen.getByText(/100 · perfect/i)).toBeDefined()
+    })
+
+    it('explains itself behind the hint, as the other filters do', async () => {
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+      expect(screen.getByRole('button', { name: /about minimum match/i })).toBeDefined()
     })
   })
 
@@ -564,6 +645,7 @@ describe('FacePicker', () => {
       expect(onFiltersChange).toHaveBeenCalledWith({
         twoColor: false,
         minContrast: DEFAULT_FACE_FILTERS.minContrast,
+        minMatch: DEFAULT_FACE_FILTERS.minMatch,
       })
     })
 
@@ -573,7 +655,7 @@ describe('FacePicker', () => {
       const onFiltersChange = vi.fn()
       render(
         <ControlledPicker
-          initialFilters={{ twoColor: true, minContrast: 150 }}
+          initialFilters={{ twoColor: true, minContrast: 150, minMatch: 0 }}
           onFiltersChange={onFiltersChange}
         />,
       )
@@ -581,7 +663,11 @@ describe('FacePicker', () => {
       slider.focus()
       await userEvent.keyboard('{ArrowRight}')
 
-      expect(onFiltersChange).toHaveBeenCalledWith({ twoColor: true, minContrast: 151 })
+      expect(onFiltersChange).toHaveBeenCalledWith({
+        twoColor: true,
+        minContrast: 151,
+        minMatch: 0,
+      })
       expect(screen.getByTestId('min-contrast-value').textContent).toBe('151')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
@@ -593,7 +679,7 @@ describe('FacePicker', () => {
     it('covers the full 0–442 range, both ends included', async () => {
       render(
         <ControlledPicker
-          initialFilters={{ twoColor: true, minContrast: 150 }}
+          initialFilters={{ twoColor: true, minContrast: 150, minMatch: 0 }}
           onFiltersChange={vi.fn()}
         />,
       )
@@ -612,7 +698,7 @@ describe('FacePicker', () => {
     })
 
     it('reflects a non-default filters prop', () => {
-      renderPicker({ filters: { twoColor: false, minContrast: 150 } })
+      renderPicker({ filters: { twoColor: false, minContrast: 150, minMatch: 0 } })
       expect(
         screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
       ).toBe('false')
@@ -627,7 +713,7 @@ describe('FacePicker', () => {
         <FacePicker
           value={['smile']}
           onChange={vi.fn()}
-          filters={{ twoColor: true, minContrast: 42 }}
+          filters={{ twoColor: true, minContrast: 42, minMatch: 0 }}
           onFiltersChange={vi.fn()}
         />,
       )
@@ -640,7 +726,7 @@ describe('FacePicker', () => {
         <FacePicker
           value={['smile']}
           onChange={vi.fn()}
-          filters={{ twoColor: true, minContrast: 300 }}
+          filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
           onFiltersChange={vi.fn()}
         />,
       )

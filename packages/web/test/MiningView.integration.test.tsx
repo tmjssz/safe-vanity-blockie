@@ -241,7 +241,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC_A as never}
-        filters={{ twoColor: true, minContrast: 120 }}
+        filters={{ twoColor: true, minContrast: 120, minMatch: 0 }}
         paused
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
@@ -279,7 +279,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC_A as never}
-        filters={{ twoColor: true, minContrast: 442 }}
+        filters={{ twoColor: true, minContrast: 442, minMatch: 0 }}
         paused={false}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}

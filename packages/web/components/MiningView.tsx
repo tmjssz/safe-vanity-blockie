@@ -19,11 +19,11 @@ import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 /**
- * How many candidates the leaderboard keeps. Every one of them that survives the two-colour and
- * contrast filters is shown — the grid scrolls rather than truncating — so this is a retention
- * size only, not a display cap. It has to be far deeper than anyone would scroll because
- * retention is score-ranked and filter-blind: a strict contrast floor needs a deep pool to find
- * anything in at all. 200 is what this screen has effectively retained all along.
+ * How many candidates the leaderboard keeps. Every one of them that survives the two-colour,
+ * contrast and match filters is shown — the grid scrolls rather than truncating — so this is a
+ * retention size only, not a display cap. It has to be far deeper than anyone would scroll because
+ * retention is score-ranked and filter-blind: a strict floor needs a deep pool to find anything in
+ * at all. 200 is what this screen has effectively retained all along.
  */
 const RETAINED_COUNT = 200
 
@@ -102,7 +102,7 @@ export function MiningView({
   // and re-ordering there costs no mining progress.
   const [sort, setSortMode] = useState<ResultSort>('best')
   const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
-  const { twoColor, minContrast } = filters
+  const { twoColor, minContrast, minMatch } = filters
   // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
   // reconstructed) and the user's own stop are combined in the page, which is where the second
   // control for the latter lives. Nothing about pausing is decided here any more.
@@ -155,10 +155,11 @@ export function MiningView({
     workers: number
   } | null>(null)
 
-  // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast are
-  // deliberately excluded: they're a display filter over already-mined candidates, not
-  // something that requires re-mining, and restarting on every keystroke in the contrast field
-  // would discard all progress found so far (see the effect below, which re-filters instead).
+  // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast/minMatch
+  // are deliberately excluded: they're a display filter over already-mined candidates, not
+  // something that requires re-mining, and restarting on every step of the contrast or match
+  // slider would discard all progress found so far (see the effect below, which re-filters
+  // instead).
   //
   // `paused` toggling to true re-runs this effect, whose cleanup (`stop`) fires for the run that
   // was in progress, then the body returns early instead of starting a new one — so pausing
@@ -166,7 +167,7 @@ export function MiningView({
   // same run (continuing from `state.nextStart`, keeping the leaderboard) when nothing else
   // changed, or starts fresh if constants/faceSpec/workers changed while paused.
   //
-  // biome-ignore lint/correctness/useExhaustiveDependencies: twoColor, minContrast, and state.nextStart are deliberately excluded — see the comment above. Adding them restarts the miner and discards progress.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: twoColor, minContrast, minMatch, and state.nextStart are deliberately excluded — see the comment above. Adding them restarts the miner and discards progress.
   useEffect(() => {
     if (!constants.data) return
     if (paused) return
@@ -187,6 +188,7 @@ export function MiningView({
       retain: RETAINED_COUNT,
       twoColor,
       minContrast,
+      minMatch,
       resume: sameRun,
       start: sameRun ? state.nextStart : undefined,
     })
@@ -195,8 +197,8 @@ export function MiningView({
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.
   useEffect(() => {
-    setFilters({ twoColor, minContrast })
-  }, [twoColor, minContrast, setFilters])
+    setFilters({ twoColor, minContrast, minMatch })
+  }, [twoColor, minContrast, minMatch, setFilters])
 
   // Same shape, and pushed on mount as well as on a change: the control and the order the grid is
   // actually in cannot be allowed to disagree, and the hook's own default is not this component's

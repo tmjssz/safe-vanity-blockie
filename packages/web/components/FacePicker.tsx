@@ -33,6 +33,9 @@ export interface FacePickerProps {
 /** The slider's ceiling: `MAX_RGB_DISTANCE` rounded up to a whole number a label can carry. */
 const CONTRAST_MAX = Math.ceil(MAX_RGB_DISTANCE)
 
+/** A perfect match, and the top of the match slider. */
+const MATCH_MAX = 100
+
 /**
  * Whether two selections would mine the same thing. Compared as sets: the face spec is built from
  * which expressions are accepted, not from the order they were clicked in, so a list that differs
@@ -223,20 +226,21 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
       </section>
 
       {/* No heading of its own. "Colours" was a label over two controls that already say
-          "Two colours only" and "Minimum contrast", and its only other job was to hold this column
-          level with the one beside it.
+          "Two colours only" and "Minimum contrast", and there is no one word left that covers all
+          three of them now.
 
-          `lg:pt-8` does that job directly: 20px for the "Face expressions" label row plus the 12px
-          `gap-3` under it, so "Two colours only" starts level with the top edge of the tiles rather
-          than a row above them. Only at `lg`, because below it the columns stack and the padding
-          would be a gap between two things that are not side by side. It goes out by 4px while a
-          staged change is showing, since the Reset/Apply buttons in that row are 24px rather than
-          the label's 20px; the alternative is a subgrid restructure of a layout that is otherwise
-          right. */}
-      {/* `gap-5` rather than the `gap-3` the expressions column uses, and deliberately not the
-          same: this column holds two unrelated questions where that one holds a heading and the
+          Both columns start at the same line. This one used to carry an `lg:pt-8` that dropped it
+          by the height of the "Face expressions" label row, so its first control sat level with
+          the top edge of the tiles instead. That offset only ever held while the two columns were
+          a similar height — with a third filter here the right column is the taller of the two,
+          and pushing the taller one down leaves the card's two halves starting at different lines
+          for no reason the eye can account for. It was also never exact: the row it aligned
+          against grows 4px whenever a staged change puts Reset/Apply in it.
+
+          `gap-5` rather than the `gap-3` the expressions column uses, and deliberately not the
+          same: this column holds three unrelated questions where that one holds a heading and the
           tiles it labels. At 12px the toggle read as part of the contrast control below it. */}
-      <section className="flex flex-col gap-5 lg:pt-8">
+      <section className="flex flex-col gap-5">
         <div className="flex items-center gap-2">
           <Label htmlFor="two-color-only">Two colours only</Label>
           <Explains label="two colours only">
@@ -252,6 +256,56 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
           />
         </div>
 
+        {/* First of the two sliders: how close the face has to be, before how far apart its
+            colours have to be. This is the filter the search is actually for — the miner exists to
+            find the closest face, and contrast only qualifies what it finds — so it is read first
+            rather than last.
+
+            Built like the contrast slider below it, and for the same reason: both are a floor on a
+            number every result carries, and a slider with a readout is what a floor on a number
+            reads as. No swatch — contrast has one because the distance between two colours is not
+            a thing the number itself shows, where a percentage is already the picture. */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
+                rather than a <label for>, which cannot address a thumb. */}
+            <span id="min-match-label" className="text-sm font-medium">
+              Minimum match
+            </span>
+            <Explains label="minimum match">
+              How closely a blockie has to reproduce the face, as a share of a perfect score — the
+              same percentage each result tile shows. Leave it at 0 while a search is young: the
+              best match climbs as the search runs, so a floor set early hides everything until it
+              is reached.
+            </Explains>
+            {/* A slider with no readout is unusable for a value this precise. The unit rides with
+                the number here, unlike the contrast readout, because a bare percentage is a
+                quantity nobody would guess the scale of. */}
+            <span
+              data-testid="min-match-value"
+              className="ml-auto w-12 text-right font-mono text-sm tabular-nums"
+            >
+              {filters.minMatch}%
+            </span>
+          </div>
+          {/* Fully controlled from `filters.minMatch`, exactly as the contrast slider below is: an
+              echo of it here could only ever drift from what the miner filters by. */}
+          <Slider
+            aria-labelledby="min-match-label"
+            min={0}
+            max={MATCH_MAX}
+            step={1}
+            value={[filters.minMatch]}
+            onValueChange={([next]) => onFiltersChange({ ...filters, minMatch: next })}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>0 · any match</span>
+            <span>{MATCH_MAX} · perfect</span>
+          </div>
+        </div>
+
+        {/* Second, because it qualifies the results the match floor above has already narrowed:
+            "of the faces this close, in colours this far apart". */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby

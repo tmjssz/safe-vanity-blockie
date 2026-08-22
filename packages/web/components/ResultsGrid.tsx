@@ -51,15 +51,19 @@ export interface ResultsGridProps {
  *
  * The `'the current filters'` arm is a guard, not a live path: the only caller is the empty
  * state, which cannot be on screen unless a filter excluded something, and the one input that
- * reaches this arm — `twoColor: false, minContrast: 0` — filters nothing, so `droppedCount` is 0
- * and `excludedEverything` is false. It is here so a future caller cannot produce "excluded by .".
+ * reaches this arm — every filter at its permissive value — filters nothing, so `droppedCount` is
+ * 0 and `excludedEverything` is false. It is here so a future caller cannot produce "excluded by .".
  */
 function excludingFilters(filters: FaceFilters): string {
   const criteria = [
     filters.twoColor ? 'two colours only' : undefined,
     filters.minContrast > 0 ? `minimum contrast ${filters.minContrast}` : undefined,
+    filters.minMatch > 0 ? `minimum match ${filters.minMatch}%` : undefined,
   ].filter((criterion): criterion is string => criterion !== undefined)
-  return criteria.length > 0 ? criteria.join(' and ') : 'the current filters'
+  if (criteria.length <= 1) return criteria[0] ?? 'the current filters'
+  // "a and b" for two, "a, b and c" for three: an unpunctuated "a and b and c" reads as a chant
+  // rather than as a list, and this sentence already carries a count and a number in it.
+  return `${criteria.slice(0, -1).join(', ')} and ${criteria[criteria.length - 1]}`
 }
 
 export function ResultsGrid({

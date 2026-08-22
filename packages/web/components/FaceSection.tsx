@@ -27,9 +27,13 @@ export interface FaceSectionProps {
 }
 
 /**
- * At most three chips, and each is present only when its constraint actually constrains something.
+ * At most four chips, and each is present only when its constraint actually constrains something.
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
- * collapsed card carrying three of those tells the user the filter is doing work it is not.
+ * collapsed card carrying four of those tells the user the filter is doing work it is not.
+ *
+ * They are rendered in the order the open card lays the controls out, and must stay that way: the
+ * chips are a reading of those controls, and a summary that lists them in a different order leaves
+ * the reader matching them up by name instead of by position.
  *
  * Expressions are the exception: they always constrain what the miner credits, so that chip is
  * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
@@ -49,6 +53,7 @@ function summarise(mouths: string[], filters: FaceFilters) {
         : `${accepted.length} expressions`,
     twoColor: filters.twoColor,
     minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
+    minMatch: filters.minMatch > 0 ? filters.minMatch : undefined,
   }
 }
 
@@ -137,6 +142,14 @@ export function FaceSection({
               {summary.twoColor && (
                 <Badge variant="secondary" className="rounded-md font-normal">
                   two colours
+                </Badge>
+              )}
+              {summary.minMatch !== undefined && (
+                <Badge variant="secondary" className="rounded-md font-normal">
+                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
+                      it, which is otherwise the same shape of number behind the same glyph. */}
+                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
+                  <span className="sr-only">minimum match {summary.minMatch} percent</span>
                 </Badge>
               )}
               {summary.minContrast !== undefined && (
