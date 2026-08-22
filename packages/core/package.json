@@ -30,6 +30,6 @@
   "devDependencies": {
     "@noble/hashes": "^2.3.0",
     "blo": "2.0.0",
-    "viem": "^2.55.11"
+    "viem": "^2.55.16"
   }
 }
