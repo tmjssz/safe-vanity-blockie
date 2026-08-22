@@ -226,20 +226,21 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
       </section>
 
       {/* No heading of its own. "Colours" was a label over two controls that already say
-          "Two colours only" and "Minimum contrast", and its only other job was to hold this column
-          level with the one beside it.
+          "Two colours only" and "Minimum contrast", and there is no one word left that covers all
+          three of them now.
 
-          `lg:pt-8` does that job directly: 20px for the "Face expressions" label row plus the 12px
-          `gap-3` under it, so "Two colours only" starts level with the top edge of the tiles rather
-          than a row above them. Only at `lg`, because below it the columns stack and the padding
-          would be a gap between two things that are not side by side. It goes out by 4px while a
-          staged change is showing, since the Reset/Apply buttons in that row are 24px rather than
-          the label's 20px; the alternative is a subgrid restructure of a layout that is otherwise
-          right. */}
-      {/* `gap-5` rather than the `gap-3` the expressions column uses, and deliberately not the
+          Both columns start at the same line. This one used to carry an `lg:pt-8` that dropped it
+          by the height of the "Face expressions" label row, so its first control sat level with
+          the top edge of the tiles instead. That offset only ever held while the two columns were
+          a similar height — with a third filter here the right column is the taller of the two,
+          and pushing the taller one down leaves the card's two halves starting at different lines
+          for no reason the eye can account for. It was also never exact: the row it aligned
+          against grows 4px whenever a staged change puts Reset/Apply in it.
+
+          `gap-5` rather than the `gap-3` the expressions column uses, and deliberately not the
           same: this column holds three unrelated questions where that one holds a heading and the
           tiles it labels. At 12px the toggle read as part of the contrast control below it. */}
-      <section className="flex flex-col gap-5 lg:pt-8">
+      <section className="flex flex-col gap-5">
         <div className="flex items-center gap-2">
           <Label htmlFor="two-color-only">Two colours only</Label>
           <Explains label="two colours only">
