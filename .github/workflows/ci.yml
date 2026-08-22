@@ -74,12 +74,52 @@ jobs:
       - name: CLI packaging smoke test
         run: ./scripts/smoke-pack.sh
 
+  lint-workflows:
+    name: lint-workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Both tools are single static binaries, pinned by version and verified by checksum, rather
+      # than two more actions to pin — and notably not the upstream `curl | bash` installer, which
+      # fetches an unpinned script from a moving branch.
+      #
+      # Dependabot cannot bump these; they need a manual version+checksum change. That is a milder
+      # failure mode than a stale action: an out-of-date linter lints slightly less well, it does
+      # not ship anything.
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+
+      # Scans the composite action too, not just .github/workflows — that is where every finding
+      # in this repo has been so far. Suppressions live in .github/zizmor.yml with a stated reason.
+      - name: zizmor
+        env:
+          ZIZMOR_VERSION: 1.29.0
+          ZIZMOR_SHA256: dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839
+        run: |
+          curl -fsSL -o zizmor.tar.gz \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  zizmor.tar.gz" | sha256sum -c -
+          tar -xzf zizmor.tar.gz
+          ./zizmor --no-progress .github/workflows .github/actions
+
   # One stable name for branch protection: a matrix entry added or removed here never requires a
   # branch-protection edit. `if: always()` is what makes a skipped or cancelled job fail the gate
   # instead of silently passing it.
   ci-ok:
     name: ci-ok
-    needs: [lint, build-test]
+    needs: [lint, lint-workflows, build-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
