@@ -59,6 +59,11 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           out="$(mktemp -d)"
+
+          # Every name@version this release is supposed to end with, for the verify step. Written
+          # here rather than hard-coded there, so adding a package cannot leave it unverified.
+          manifest="$RUNNER_TEMP/release-manifest.txt"
+          : > "$manifest"
           pnpm --filter @safe-vanity-blockie/core        pack --pack-destination "$out"
           pnpm --filter @safe-vanity-blockie/safe-config pack --pack-destination "$out"
           pnpm --filter safe-vanity-blockie              pack --pack-destination "$out"
@@ -100,3 +105,43 @@ jobs:
             echo "publishing $name@$version"
             npm publish "$tgz" "${args[@]}"
           done
+
+          # Skipped packages are listed too: "already there" is part of a correct end state.
+          for tgz in "$out"/*.tgz; do
+            tar -xzOf "$tgz" package/package.json | jq -r '"\(.name) \(.version)"' >> "$manifest"
+          done
+          echo "release should contain:"; cat "$manifest"
+
+      # A green publish step only means npm did not error. This asks the registry what is actually
+      # there, so "the workflow passed" means "the release is on npm", not "no command failed".
+      #
+      # Queries the dist-tags endpoint rather than `npm view`: right after a first publish the
+      # packument endpoint that `npm view` uses can serve a cached 404 for several minutes while
+      # dist-tags is already correct. Observed on this repo's own 0.3.0 release. The retry covers
+      # the remaining read-after-write lag.
+      - name: Verify the release is on the registry
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          manifest="$RUNNER_TEMP/release-manifest.txt"
+          test -s "$manifest" || { echo "::error::no release manifest — the publish step did not run"; exit 1; }
+
+          failed=0
+          while read -r name version; do
+            encoded="${name//\//%2f}"
+            found=""
+            for attempt in 1 2 3 4 5 6; do
+              found="$(curl -fsSL "https://registry.npmjs.org/-/package/$encoded/dist-tags" 2>/dev/null | jq -r '.latest // empty')"
+              [ "$found" = "$version" ] && break
+              echo "  $name: registry says '${found:-<absent>}', want $version (attempt $attempt)"
+              sleep 10
+            done
+            if [ "$found" = "$version" ]; then
+              echo "  OK $name@$version"
+            else
+              echo "::error::$name is not at $version on the registry (latest: ${found:-<absent>})"
+              failed=1
+            fi
+          done < "$manifest"
+
+          [ "$failed" -eq 0 ] || exit 1
+          echo "::notice::every package in this release is live on the registry"
