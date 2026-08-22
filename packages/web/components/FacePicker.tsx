@@ -256,6 +256,56 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
           />
         </div>
 
+        {/* First of the two sliders: how close the face has to be, before how far apart its
+            colours have to be. This is the filter the search is actually for — the miner exists to
+            find the closest face, and contrast only qualifies what it finds — so it is read first
+            rather than last.
+
+            Built like the contrast slider below it, and for the same reason: both are a floor on a
+            number every result carries, and a slider with a readout is what a floor on a number
+            reads as. No swatch — contrast has one because the distance between two colours is not
+            a thing the number itself shows, where a percentage is already the picture. */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
+                rather than a <label for>, which cannot address a thumb. */}
+            <span id="min-match-label" className="text-sm font-medium">
+              Minimum match
+            </span>
+            <Explains label="minimum match">
+              How closely a blockie has to reproduce the face, as a share of a perfect score — the
+              same percentage each result tile shows. Leave it at 0 while a search is young: the
+              best match climbs as the search runs, so a floor set early hides everything until it
+              is reached.
+            </Explains>
+            {/* A slider with no readout is unusable for a value this precise. The unit rides with
+                the number here, unlike the contrast readout, because a bare percentage is a
+                quantity nobody would guess the scale of. */}
+            <span
+              data-testid="min-match-value"
+              className="ml-auto w-12 text-right font-mono text-sm tabular-nums"
+            >
+              {filters.minMatch}%
+            </span>
+          </div>
+          {/* Fully controlled from `filters.minMatch`, exactly as the contrast slider below is: an
+              echo of it here could only ever drift from what the miner filters by. */}
+          <Slider
+            aria-labelledby="min-match-label"
+            min={0}
+            max={MATCH_MAX}
+            step={1}
+            value={[filters.minMatch]}
+            onValueChange={([next]) => onFiltersChange({ ...filters, minMatch: next })}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>0 · any match</span>
+            <span>{MATCH_MAX} · perfect</span>
+          </div>
+        </div>
+
+        {/* Second, because it qualifies the results the match floor above has already narrowed:
+            "of the faces this close, in colours this far apart". */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
@@ -296,55 +346,6 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>0 · any pair</span>
             <span>{CONTRAST_MAX} · black on white</span>
-          </div>
-        </div>
-
-        {/* The third of the three display filters, and built like the contrast one above it for
-            the same reason: both are a floor on a number every result carries, and a slider with a
-            readout is what a floor on a number reads as. No swatch — contrast has one because the
-            distance between two colours is not a thing the number itself shows, where a percentage
-            is already the picture.
-
-            Last of the three because it is the one that goes wrong if it is reached for first. A
-            match floor is satisfiable only once the search has run long enough to find something
-            that clears it, so it belongs after the two filters that can be answered from the very
-            first candidate. */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            {/* Radix puts role="slider" on the thumb, so the name comes from aria-labelledby
-                rather than a <label for>, which cannot address a thumb. */}
-            <span id="min-match-label" className="text-sm font-medium">
-              Minimum match
-            </span>
-            <Explains label="minimum match">
-              How closely a blockie has to reproduce the face, as a share of a perfect score — the
-              same percentage each result tile shows. Leave it at 0 while a search is young: the
-              best match climbs as the search runs, so a floor set early hides everything until it
-              is reached.
-            </Explains>
-            {/* A slider with no readout is unusable for a value this precise. The unit rides with
-                the number here, unlike the contrast readout, because a bare percentage is a
-                quantity nobody would guess the scale of. */}
-            <span
-              data-testid="min-match-value"
-              className="ml-auto w-12 text-right font-mono text-sm tabular-nums"
-            >
-              {filters.minMatch}%
-            </span>
-          </div>
-          {/* Fully controlled from `filters.minMatch`, exactly as the contrast slider is: an echo
-              of it here could only ever drift from what the miner filters by. */}
-          <Slider
-            aria-labelledby="min-match-label"
-            min={0}
-            max={MATCH_MAX}
-            step={1}
-            value={[filters.minMatch]}
-            onValueChange={([next]) => onFiltersChange({ ...filters, minMatch: next })}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0 · any match</span>
-            <span>{MATCH_MAX} · perfect</span>
           </div>
         </div>
       </section>

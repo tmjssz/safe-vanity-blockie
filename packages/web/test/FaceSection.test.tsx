@@ -235,6 +235,15 @@ describe('FaceSection', () => {
       expect(summary.textContent).toContain('minimum match 92 percent')
     })
 
+    // The chips are a reading of the controls, so they have to be in the controls' order — a
+    // summary that lists them the other way round makes the reader match them up by name.
+    it('orders the chips the way the open card orders the controls', () => {
+      const summary = collapsed({ filters: { twoColor: true, minContrast: 80, minMatch: 92 } })
+      const text = summary.textContent ?? ''
+      expect(text.indexOf('≥ 92%')).toBeGreaterThan(-1)
+      expect(text.indexOf('≥ 92%')).toBeLessThan(text.indexOf('≥ 80'))
+    })
+
     it('leaves the match chip off at zero, where it constrains nothing', () => {
       const summary = collapsed({ filters: { twoColor: true, minContrast: 80, minMatch: 0 } })
       expect(summary.textContent).not.toMatch(/match/i)

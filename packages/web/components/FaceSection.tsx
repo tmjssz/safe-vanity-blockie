@@ -31,6 +31,10 @@ export interface FaceSectionProps {
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
  * collapsed card carrying four of those tells the user the filter is doing work it is not.
  *
+ * They are rendered in the order the open card lays the controls out, and must stay that way: the
+ * chips are a reading of those controls, and a summary that lists them in a different order leaves
+ * the reader matching them up by name instead of by position.
+ *
  * Expressions are the exception: they always constrain what the miner credits, so that chip is
  * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
  * is not what is being mined, and the collapsed card's job is to say what is.
@@ -140,6 +144,14 @@ export function FaceSection({
                   two colours
                 </Badge>
               )}
+              {summary.minMatch !== undefined && (
+                <Badge variant="secondary" className="rounded-md font-normal">
+                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
+                      it, which is otherwise the same shape of number behind the same glyph. */}
+                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
+                  <span className="sr-only">minimum match {summary.minMatch} percent</span>
+                </Badge>
+              )}
               {summary.minContrast !== undefined && (
                 <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
                   {/* The same swatch the result tiles carry, and the slider above it, so one
@@ -149,14 +161,6 @@ export function FaceSection({
                   {/* "greater than or equal to" is what a screen reader makes of the glyph at
                       best, and nothing at worst. */}
                   <span className="sr-only">minimum contrast {summary.minContrast}</span>
-                </Badge>
-              )}
-              {summary.minMatch !== undefined && (
-                <Badge variant="secondary" className="rounded-md font-normal">
-                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
-                      it, which is otherwise the same shape of number behind the same glyph. */}
-                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
-                  <span className="sr-only">minimum match {summary.minMatch} percent</span>
                 </Badge>
               )}
             </div>
