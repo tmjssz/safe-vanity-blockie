@@ -81,6 +81,52 @@ first reformatted the repo is listed in `.git-blame-ignore-revs`; to skip it in 
 
     git config blame.ignoreRevsFile .git-blame-ignore-revs
 
+### Releases
+
+Versioning is lockstep: the root `package.json` and all four packages always carry the same
+version, and one tag `vX.Y.Z` names the whole repo. Nobody edits a version by hand — release-please
+writes all five from the conventional-commit history.
+
+To release:
+
+1. Merge your work to `main` with conventional-commit subjects (`feat:`, `fix:`, `chore:` …). Only
+   `feat` and `fix` move the version; a run of `chore`/`docs` commits produces no release PR, which
+   is correct rather than broken.
+2. Release-please opens a release PR, titled by its default pattern (like `chore: release 0.3.1`,
+   possibly with a `(main)` scope); find it by the `autorelease: pending` label. It stays up to date
+   as more commits land and shows the pending changelog and the five version bumps. Open one early
+   with `gh workflow run release-please.yml` if you want to see it before pushing more.
+3. **Merging that PR is the release.** It tags `vX.Y.Z`, publishes the GitHub Release from the
+   changelog, and `release.yml` then builds, tests, smoke-packs, checks all five versions against
+   the tag, and publishes the three npm packages with provenance.
+
+Vercel deploys every push to `main` independently of this. The footer's `v0.3.0 (a1b2c3d)` names
+the release the build descends from plus the commit actually deployed, so a deploy ahead of the
+last tag is still identifiable.
+
+A breaking change needs an explicit `feat!:` or a `BREAKING CHANGE:` footer — release-please cannot
+infer one from prose. Pre-1.0 a minor bump for a breaking change is semver-legal anyway.
+
+Check what a release would contain without creating one:
+
+    gh workflow run release.yml -f dry-run=true
+
+Verify versions agree at any time:
+
+    ./scripts/check-versions.sh
+
+The **first** release PR will show a large diff in three of the four packages'
+`package.json` files — roughly 30 changed lines in `packages/core/package.json`, of which one is
+the version. That's release-please's `extra-files` updater re-serialising the whole file (those
+three currently use compact inline JSON), not a change to their contents; it happens once and then
+stays formatted. Nothing breaks — Biome's JSON formatter is disabled — but the diff isn't a useful
+review signal by eye. Check it semantically instead:
+
+    for f in package.json packages/*/package.json; do
+      diff <(git show origin/main:$f | jq -S 'del(.version)') <(jq -S 'del(.version)' $f) \
+        || echo "SEMANTIC CHANGE in $f"
+    done
+
 ## Usage
 
     npx safe-vanity-blockie \

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": false,
+  "bootstrap-sha": "05c355e4ba0821bfce0d2f4005439a0897b8058f",
+  "packages": {
+    ".": {
+      "package-name": "safe-vanity-blockie",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "packages/core/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/safe-config/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/miner/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/web/package.json", "jsonpath": "$.version" }
+      ]
+    }
+  }
+}
