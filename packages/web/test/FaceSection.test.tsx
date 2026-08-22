@@ -203,6 +203,34 @@ describe('FaceSection', () => {
       expect(trigger().getAttribute('aria-expanded')).toBe('false')
     })
 
+    // The empty state that asks for this card offers its button only while the card is collapsed —
+    // a button that reveals something already on screen does nothing, and it sits directly under a
+    // sentence naming filters the user can see. So the page has to know which state the card is
+    // in, and only the card knows: `mining`, the reveal request and the header are three separate
+    // ways it changes.
+    it('reports whether it is open, from the first render onwards', async () => {
+      const onOpenChange = vi.fn()
+      const base = { ...props(), onOpenChange }
+      const { rerender } = render(<FaceSection {...base} revealRequest={0} />)
+      // Collapsed on arrival, because a run exists — said out loud rather than left to the page to
+      // assume, which is what would go stale the moment any of the three ways changed it.
+      expect(onOpenChange).toHaveBeenLastCalledWith(false)
+
+      rerender(<FaceSection {...base} revealRequest={1} />)
+      expect(onOpenChange).toHaveBeenLastCalledWith(true)
+
+      await userEvent.click(trigger())
+      expect(onOpenChange).toHaveBeenLastCalledWith(false)
+    })
+
+    // The other half of the same contract: with no run, the card mounts open, and a page that
+    // assumed "collapsed until told otherwise" would offer a button for a card already showing.
+    it('reports the open card it mounts as when there is no run', () => {
+      const onOpenChange = vi.fn()
+      render(<FaceSection {...props()} mining={false} onOpenChange={onOpenChange} />)
+      expect(onOpenChange).toHaveBeenLastCalledWith(true)
+    })
+
     // Only the request opens it. A re-render for any other reason — a filter changing, the page
     // publishing mining progress — must not reopen a card the user has closed, which is what
     // reading the prop rather than its changes would do.

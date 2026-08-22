@@ -398,6 +398,12 @@ function HomeContent() {
   // time. FaceSection acts on the change and ignores the value (see `revealRequest` there).
   const [filterReveals, setFilterReveals] = useState(0)
   const revealFilters = useCallback(() => setFilterReveals((previous) => previous + 1), [])
+  // Whether that card is currently showing its controls, reported by the card itself — `mining`,
+  // the reveal above and the card's own header all move it, so nothing here could keep an honest
+  // copy on its own. It decides one thing: whether the grid's empty state is offered the handler
+  // at all, and so whether it draws the button. Offering it over an open card would be a button
+  // that reveals what the user is already looking at.
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Both halves of the address bar — opening a result and closing it — are now pushes, and
   // nothing this page does to history is asynchronous. There is no `backInFlight`/`deferredPush`
@@ -992,6 +998,7 @@ function HomeContent() {
               // Which is what makes the results grid's "Adjust filters" worth having: the card it
               // opens is collapsed for the whole run until someone asks for it.
               revealRequest={filterReveals}
+              onOpenChange={setFiltersOpen}
               onMouthsChange={applyMouths}
               onFiltersChange={setFilters}
             />
@@ -1012,7 +1019,11 @@ function HomeContent() {
               // Only while it is actually running: a settled deploy's tile is an ordinary result
               // again, and a spinner over it would say work was still happening.
               deployingAddress={deployRunning ? selection?.candidate.address : undefined}
-              onAdjustFilters={revealFilters}
+              // Withheld while the card is open, which is what takes the button out of the empty
+              // state: there is nothing left for it to reveal, and the grid's rule is that no
+              // handler means no button. Dropping the handler rather than passing a flag keeps the
+              // grid ignorant of a card in a subtree it cannot see.
+              onAdjustFilters={filtersOpen ? undefined : revealFilters}
               onSelect={selectFromGrid}
             />
           </>

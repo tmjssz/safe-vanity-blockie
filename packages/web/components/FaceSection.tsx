@@ -33,6 +33,17 @@ export interface FaceSectionProps {
    * unrelated re-render, of which a mining page has several a second.
    */
   revealRequest?: number
+  /**
+   * Reports whether the card is showing its controls, on the first render and on every change
+   * after it. For the results grid's empty state, which offers to reveal this card and must not
+   * offer it while it is already open — a button that reveals what is on screen does nothing, and
+   * it would sit directly under a sentence naming filters the user can see.
+   *
+   * The card has to be the one saying so: `mining`, `revealRequest` and the header itself are
+   * three separate ways it opens and closes, and a host that tried to keep its own copy would go
+   * stale on whichever one it did not know about.
+   */
+  onOpenChange?: (open: boolean) => void
   onMouthsChange: (names: string[]) => void
   onFiltersChange: (filters: FaceFilters) => void
 }
@@ -84,6 +95,7 @@ export function FaceSection({
   filters,
   mining = false,
   revealRequest = 0,
+  onOpenChange,
   onMouthsChange,
   onFiltersChange,
 }: FaceSectionProps) {
@@ -122,6 +134,14 @@ export function FaceSection({
     setOpen(true)
     cardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
   }, [revealRequest])
+
+  // Every way this card opens and closes goes through `open`, so one effect on it covers all of
+  // them: the `mining` default, an auto-collapse, a reveal request, and the header the user
+  // presses. It fires on the first render too, which is the point — the initial state depends on
+  // `mining`, so a host that assumed either value would be wrong half the time.
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
 
   const summary = summarise(mouths, filters)
 
