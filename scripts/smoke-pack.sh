@@ -2,7 +2,7 @@
 # Packs the three publishable packages and installs the CLI the way a consumer would, then runs
 # it. Requires `pnpm -r build` to have run first: pack copies whatever is in dist/.
 #
-# miner depends on core and safe-config via workspace:*, which pnpm rewrites to 0.1.0 on pack.
+# miner depends on core and safe-config via workspace:*, which pnpm rewrites to the concrete version on pack.
 # Neither is on the registry, so npm `overrides` redirect those specifiers to the sibling tarballs.
 set -euo pipefail
 

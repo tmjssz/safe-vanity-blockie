@@ -1,6 +1,6 @@
 {
   "name": "@safe-vanity-blockie/core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Isomorphic blo identicon, CREATE2 address derivation and mining primitives for Safe vanity blockies",
   "engines": { "node": ">=22" },
   "repository": {
