@@ -92,9 +92,10 @@ To release:
 1. Merge your work to `main` with conventional-commit subjects (`feat:`, `fix:`, `chore:` …). Only
    `feat` and `fix` move the version; a run of `chore`/`docs` commits produces no release PR, which
    is correct rather than broken.
-2. A **"chore: release X.Y.Z"** PR opens by itself and stays up to date as more commits land. It
-   shows the pending changelog and the five version bumps. Open one early with
-   `gh workflow run release-please.yml` if you want to see it before pushing more.
+2. Release-please opens a release PR, titled by its default pattern (like `chore: release 0.3.1`,
+   possibly with a `(main)` scope); find it by the `autorelease: pending` label. It stays up to date
+   as more commits land and shows the pending changelog and the five version bumps. Open one early
+   with `gh workflow run release-please.yml` if you want to see it before pushing more.
 3. **Merging that PR is the release.** It tags `vX.Y.Z`, publishes the GitHub Release from the
    changelog, and `release.yml` then builds, tests, smoke-packs, checks all five versions against
    the tag, and publishes the three npm packages with provenance.
