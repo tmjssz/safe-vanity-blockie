@@ -8,6 +8,13 @@
 # So this runs as a release gate, and is runnable locally for the same reason.
 set -euo pipefail
 
+# Resolved from the script's own path rather than `git rev-parse --show-toplevel`: this must also
+# work when invoked by absolute path from a CWD that isn't inside a git work tree at all, and this
+# script always lives one directory below the repo root, so BASH_SOURCE is enough on its own.
+# Without this, running from anywhere but the repo root (e.g. `cd packages/core && ../../scripts/
+# check-versions.sh`) reports every file below as missing instead of checking it.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 # Empty means "no expectation" — only check that the five agree with each other. release.yml calls
 # it that way on a workflow_dispatch dry run, where there is no tag to compare against.
 expected="${1:-}"
@@ -33,7 +40,7 @@ for f in "${files[@]}"; do
   # -e makes jq exit non-zero when the result is null, so a package.json that has lost its version
   # field fails loudly here instead of comparing an empty string against an empty string later.
   if ! v="$(jq -er '.version' "$f" 2>/dev/null)"; then
-    echo "::error::$f has no .version field"
+    echo "::error::$f: could not read .version (missing key, malformed JSON, or jq unavailable)"
     status=1
     continue
   fi

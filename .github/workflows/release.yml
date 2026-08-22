@@ -29,6 +29,22 @@ jobs:
 
       - uses: ./.github/actions/setup
 
+      # Widened from the CLI alone to all five package.json files. Under lockstep a partial
+      # extra-files write is the failure that matters: it would publish a tarball whose version
+      # disagrees with the tag that produced it, and npm versions are immutable, so it cannot be
+      # fixed afterwards. Runs unconditionally — with no tag (a workflow_dispatch dry run) it still
+      # checks that the five agree with each other. Placed right after setup, before Build and
+      # Test, so a bad release fails in seconds instead of after ~10 minutes of work.
+      - name: Verify every package version agrees, and matches the tag
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          expected=''
+          case "$REF" in
+            refs/tags/v[0-9]*) expected="${REF#refs/tags/v}" ;;
+          esac
+          ./scripts/check-versions.sh "$expected"
+
       - name: Build
         run: pnpm -r build
 
@@ -39,21 +55,6 @@ jobs:
       # first person to npx the CLI.
       - name: CLI packaging smoke test
         run: ./scripts/smoke-pack.sh
-
-      # Widened from the CLI alone to all five package.json files. Under lockstep a partial
-      # extra-files write is the failure that matters: it would publish a tarball whose version
-      # disagrees with the tag that produced it, and npm versions are immutable, so it cannot be
-      # fixed afterwards. Runs unconditionally — with no tag (a workflow_dispatch dry run) it still
-      # checks that the five agree with each other.
-      - name: Verify every package version agrees, and matches the tag
-        env:
-          REF: ${{ github.ref }}
-        run: |
-          expected=''
-          case "$REF" in
-            refs/tags/v*) expected="${REF#refs/tags/v}" ;;
-          esac
-          ./scripts/check-versions.sh "$expected"
 
       # pnpm packs (it rewrites the workspace:* specifiers to concrete versions), npm publishes
       # (it has the OIDC trusted-publishing and --provenance support). Dependency order matters:

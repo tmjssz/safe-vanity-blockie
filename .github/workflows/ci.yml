@@ -49,6 +49,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      # release.yml only gates versions after a tag exists, on push — a partial extra-files
+      # fan-out is caught there after the tag and GitHub Release are already live. The release PR
+      # is where a partial fan-out is still cheap to fix, so check it here too, before the build.
+      - name: Verify every package version agrees
+        run: ./scripts/check-versions.sh
+
       # Turbopack's compilation cache. Restored on a partial key match, so a source change reuses
       # the previous run's work instead of compiling cold.
       #

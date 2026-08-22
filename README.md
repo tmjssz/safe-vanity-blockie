@@ -115,6 +115,18 @@ Verify versions agree at any time:
 
     ./scripts/check-versions.sh
 
+The **first** release PR will show a large diff in three of the four packages'
+`package.json` files — roughly 30 changed lines in `packages/core/package.json`, of which one is
+the version. That's release-please's `extra-files` updater re-serialising the whole file (those
+three currently use compact inline JSON), not a change to their contents; it happens once and then
+stays formatted. Nothing breaks — Biome's JSON formatter is disabled — but the diff isn't a useful
+review signal by eye. Check it semantically instead:
+
+    for f in package.json packages/*/package.json; do
+      diff <(git show origin/main:$f | jq -S 'del(.version)') <(jq -S 'del(.version)' $f) \
+        || echo "SEMANTIC CHANGE in $f"
+    done
+
 ## Usage
 
     npx safe-vanity-blockie \

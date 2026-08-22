@@ -24,6 +24,12 @@ jobs:
     name: release-please
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Inert with the app-token step's permission-* inputs above in place: release-please-action
+    # uses that token explicitly and never falls back to github.token, so this block constrains
+    # only the unused default GITHUB_TOKEN. It is the token step's permission-contents /
+    # permission-pull-requests / permission-issues inputs that actually govern what
+    # release-please's API calls are allowed to do. Left here as defence in depth, not deleted —
+    # but don't expect editing it to change release-please's behaviour.
     permissions:
       # Create the release branch, the tag and the GitHub Release.
       contents: write
@@ -40,6 +46,14 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Without these, the token inherits every permission the App installation holds, not
+          # just what this job uses. Down-scope to the three release-please actually calls:
+          # contents for the release branch/tag/Release, pull-requests for the release PR, and
+          # issues because release-please labels that PR `autorelease: pending` and GitHub's label
+          # endpoints live under the Issues API.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       # No actions/checkout step: release-please operates entirely through the GitHub API, reading
       # commits and writing the release branch remotely. A checkout here would be dead weight.
