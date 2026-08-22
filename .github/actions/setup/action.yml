@@ -1,0 +1,59 @@
+name: Setup
+description: Install the toolchain from .mise.toml, restore the pnpm store, and install dependencies.
+
+inputs:
+  node-version:
+    description: Overrides the node version pinned in .mise.toml. Empty uses the pin.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # Written to GITHUB_ENV rather than set on the mise-action step alone, so it also applies to
+    # the calling job's later steps. mise puts shims on PATH, and a shim re-resolves the version
+    # on every invocation — without this, `pnpm -r build` would silently fall back to the
+    # .mise.toml pin even though setup installed the requested version.
+    - name: Override the pinned node version
+      if: inputs.node-version != ''
+      shell: bash
+      # Through env rather than interpolated into the script: an expression expanded straight into
+      # a run block is a code-injection sink (zizmor template-injection).
+      env:
+        NODE_VERSION: ${{ inputs.node-version }}
+      run: echo "MISE_NODE_VERSION=$NODE_VERSION" >> "$GITHUB_ENV"
+
+    - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+
+    # Fail loudly here rather than three steps later with a confusing type error, and leave the
+    # resolved versions in the log so a matrix run can be checked at a glance.
+    - name: Report the resolved toolchain
+      shell: bash
+      env:
+        NODE_VERSION: ${{ inputs.node-version }}
+      run: |
+        echo "node $(node --version) / pnpm $(pnpm --version)"
+        if [ -n "$NODE_VERSION" ]; then
+          major="$(node -p 'process.versions.node.split(".")[0]')"
+          if [ "$major" != "$NODE_VERSION" ]; then
+            echo "::error::asked for node $NODE_VERSION but got $major"
+            exit 1
+          fi
+        fi
+
+    # A step output rather than GITHUB_ENV: scoped to this action instead of leaking into every
+    # later step of the calling job.
+    - name: Resolve pnpm store path
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        # Scoped by node version: native addons in the store are built per ABI.
+        key: ${{ runner.os }}-node${{ inputs.node-version || 'pinned' }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: ${{ runner.os }}-node${{ inputs.node-version || 'pinned' }}-pnpm-
+
+    - shell: bash
+      run: pnpm install --frozen-lockfile

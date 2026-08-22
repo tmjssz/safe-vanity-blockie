@@ -1,0 +1,14 @@
+# Findings consciously accepted, with the reason. Anything not listed here must be fixed, not
+# added to this file.
+rules:
+  github-env:
+    ignore:
+      # .github/actions/setup writes MISE_NODE_VERSION to GITHUB_ENV so the override survives into
+      # the calling job's later steps — mise puts shims on PATH and a shim re-resolves the version
+      # on every invocation, so a step-scoped variable would let `pnpm -r build` silently run the
+      # .mise.toml pin instead of the requested version. That is the entire point of the input.
+      #
+      # The value is not attacker-controllable: it comes from the action's `node-version` input,
+      # whose only caller passes `matrix.node`, a literal list in ci.yml. zizmor rates this finding
+      # low-confidence for exactly this shape.
+      - action.yml

@@ -1,4 +1,11 @@
 packages:
   - 'packages/*'
-minimumReleaseAgeExclude:
-  - '@noble/hashes@2.3.0'
+
+# A compromised release is usually yanked within days, so refusing anything published in the last
+# week costs little and removes the window in which an automated bump would pull one in. pnpm
+# re-applies this to every lockfile entry on install, so CI fails on a lockfile that bypassed it
+# locally. Must match `cooldown.default-days: 7` in .github/dependabot.yml.
+#
+# Measured 2026-08-22 against the current lockfile: 7 d passes, 14 d fails on 12 entries. Re-run
+# `pnpm install --frozen-lockfile` after raising this.
+minimumReleaseAge: 10080
