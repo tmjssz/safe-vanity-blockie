@@ -29,6 +29,6 @@
     "viem": "^2.55.11"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3"
+    "@types/node": "^26.2.0"
   }
 }
