@@ -22,6 +22,28 @@ export interface FaceSectionProps {
    * the filter should be open because nobody has seen it yet.
    */
   mining?: boolean
+  /**
+   * A request from elsewhere on the page to show these controls — the results grid's empty state,
+   * whose whole advice is "relax a filter" while this card sits collapsed and scrolled off the top
+   * of the screen. Each new value opens the card and scrolls it into view.
+   *
+   * A counter rather than a boolean, and it is the CHANGE that acts, not the value. A boolean
+   * would be stuck true after the first request, so a user who closes the card again could never
+   * ask a second time; reading the value rather than its change would reopen the card on every
+   * unrelated re-render, of which a mining page has several a second.
+   */
+  revealRequest?: number
+  /**
+   * Reports whether the card is showing its controls, on the first render and on every change
+   * after it. For the results grid's empty state, which offers to reveal this card and must not
+   * offer it while it is already open — a button that reveals what is on screen does nothing, and
+   * it would sit directly under a sentence naming filters the user can see.
+   *
+   * The card has to be the one saying so: `mining`, `revealRequest` and the header itself are
+   * three separate ways it opens and closes, and a host that tried to keep its own copy would go
+   * stale on whichever one it did not know about.
+   */
+  onOpenChange?: (open: boolean) => void
   onMouthsChange: (names: string[]) => void
   onFiltersChange: (filters: FaceFilters) => void
 }
@@ -72,6 +94,8 @@ export function FaceSection({
   mouths,
   filters,
   mining = false,
+  revealRequest = 0,
+  onOpenChange,
   onMouthsChange,
   onFiltersChange,
 }: FaceSectionProps) {
@@ -94,13 +118,38 @@ export function FaceSection({
     wasMining.current = mining
   }, [mining])
 
+  // Answers `revealRequest`. It outranks `userChose` deliberately: the request comes from a button
+  // the user has just pressed, so it IS the user choosing — a card they collapsed earlier is not a
+  // standing refusal to ever see the filters again.
+  //
+  // Opening it is only half the job. The request comes from the results grid, which during a run
+  // is what fills the viewport with this card several hundred pixels above it: expanding controls
+  // off the top of the screen looks, from where the user is sitting, like nothing happened. So the
+  // card scrolls itself back in. The guard is for jsdom, which implements no scrolling at all.
+  const cardRef = useRef<HTMLDivElement>(null)
+  const lastRequest = useRef(revealRequest)
+  useEffect(() => {
+    if (revealRequest === lastRequest.current) return
+    lastRequest.current = revealRequest
+    setOpen(true)
+    cardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }, [revealRequest])
+
+  // Every way this card opens and closes goes through `open`, so one effect on it covers all of
+  // them: the `mining` default, an auto-collapse, a reveal request, and the header the user
+  // presses. It fires on the first render too, which is the point — the initial state depends on
+  // `mining`, so a host that assumed either value would be wrong half the time.
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
+
   const summary = summarise(mouths, filters)
 
   return (
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
     // the panel has any height: collapsed, it left 24px of empty card under the header. The panel
     // carries its own top padding instead, where it is only paid when there is something to pad.
-    <Card className="gap-0">
+    <Card ref={cardRef} className="gap-0">
       <Collapsible
         open={open}
         onOpenChange={(next) => {
