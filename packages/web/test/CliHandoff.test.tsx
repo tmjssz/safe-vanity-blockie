@@ -38,7 +38,7 @@ describe('npxCommandFor', () => {
   it('puts each argument on its own line', () => {
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
-      filters: { twoColor: true, minContrast: 80 },
+      filters: { twoColor: true, minContrast: 80, minMatch: 0 },
     }).split('\n')
 
     expect(lines[0]).toBe('npx safe-vanity-blockie \\')
@@ -57,7 +57,7 @@ describe('npxCommandFor', () => {
   it('continues every line but the last, so a paste is still one command', () => {
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
-      filters: { twoColor: false, minContrast: 0 },
+      filters: { twoColor: false, minContrast: 0, minMatch: 0 },
     }).split('\n')
 
     for (const line of lines.slice(0, -1)) expect(line.endsWith(' \\')).toBe(true)
@@ -67,7 +67,7 @@ describe('npxCommandFor', () => {
   it('passes the two-color and min-contrast filters through, so the CLI search enforces the same standard', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
-      filters: { twoColor: true, minContrast: 250 },
+      filters: { twoColor: true, minContrast: 250, minMatch: 0 },
     })
     expect(command).toContain('--two-color')
     expect(command).not.toContain('--no-two-color')
@@ -77,7 +77,7 @@ describe('npxCommandFor', () => {
   it('passes --no-two-color when the two-colour filter is off', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
-      filters: { twoColor: false, minContrast: 0 },
+      filters: { twoColor: false, minContrast: 0, minMatch: 0 },
     })
     expect(command).toContain('--no-two-color')
   })
@@ -134,7 +134,7 @@ describe('CliHandoff', () => {
       <CliHandoff
         config={config}
         rpcUrl="https://rpc.example"
-        filters={{ twoColor: false, minContrast: 300 }}
+        filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
@@ -200,14 +200,14 @@ describe('CliHandoff', () => {
       <CliHandoff
         config={config}
         rpcUrl="https://rpc.example"
-        filters={{ twoColor: false, minContrast: 300 }}
+        filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
-      filters: { twoColor: false, minContrast: 300 },
+      filters: { twoColor: false, minContrast: 300, minMatch: 0 },
     }).split('\n').length
     expect(lines).toBeGreaterThan(4)
     expect(commandField().rows).toBe(lines)

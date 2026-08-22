@@ -27,9 +27,9 @@ export interface FaceSectionProps {
 }
 
 /**
- * At most three chips, and each is present only when its constraint actually constrains something.
+ * At most four chips, and each is present only when its constraint actually constrains something.
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
- * collapsed card carrying three of those tells the user the filter is doing work it is not.
+ * collapsed card carrying four of those tells the user the filter is doing work it is not.
  *
  * Expressions are the exception: they always constrain what the miner credits, so that chip is
  * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
@@ -49,6 +49,7 @@ function summarise(mouths: string[], filters: FaceFilters) {
         : `${accepted.length} expressions`,
     twoColor: filters.twoColor,
     minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
+    minMatch: filters.minMatch > 0 ? filters.minMatch : undefined,
   }
 }
 
@@ -148,6 +149,14 @@ export function FaceSection({
                   {/* "greater than or equal to" is what a screen reader makes of the glyph at
                       best, and nothing at worst. */}
                   <span className="sr-only">minimum contrast {summary.minContrast}</span>
+                </Badge>
+              )}
+              {summary.minMatch !== undefined && (
+                <Badge variant="secondary" className="rounded-md font-normal">
+                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
+                      it, which is otherwise the same shape of number behind the same glyph. */}
+                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
+                  <span className="sr-only">minimum match {summary.minMatch} percent</span>
                 </Badge>
               )}
             </div>

@@ -149,7 +149,7 @@ describe('FaceSection', () => {
   it('does not disturb any filter value on the way closed and open again', async () => {
     const props = {
       mouths: ['smile', 'frown'],
-      filters: { twoColor: true, minContrast: 80 },
+      filters: { twoColor: true, minContrast: 80, minMatch: 0 },
       onMouthsChange: vi.fn(),
       onFiltersChange: vi.fn(),
     }
@@ -207,26 +207,37 @@ describe('FaceSection', () => {
     // The permissive defaults earn no chips. Three chips that all say "everything is allowed" tell
     // the user the filter is doing work it is not.
     it('shows nothing but the expressions when the colour filters are wide open', () => {
-      const summary = collapsed({ filters: { twoColor: false, minContrast: 0 } })
+      const summary = collapsed({ filters: { twoColor: false, minContrast: 0, minMatch: 0 } })
       expect(summary.textContent).toContain('expressions')
       expect(summary.textContent).not.toMatch(/two colours/i)
       expect(summary.textContent).not.toContain('≥')
     })
 
     it('adds a chip for two colours only while that toggle is on', () => {
-      expect(collapsed({ filters: { twoColor: true, minContrast: 0 } }).textContent).toMatch(
-        /two colours/i,
-      )
+      expect(
+        collapsed({ filters: { twoColor: true, minContrast: 0, minMatch: 0 } }).textContent,
+      ).toMatch(/two colours/i)
     })
 
     // The number with the same swatch the result tiles and the slider carry, so one number has one
     // picture everywhere it appears. The glyph is not a screen reader's job to interpret, hence the
     // spelled-out name beside it.
     it('adds a chip for a contrast floor, with its swatch and a spoken name', () => {
-      const summary = collapsed({ filters: { twoColor: false, minContrast: 80 } })
+      const summary = collapsed({ filters: { twoColor: false, minContrast: 80, minMatch: 0 } })
       expect(summary.textContent).toContain('≥ 80')
       expect(summary.textContent).toContain('minimum contrast 80')
       expect(summary.querySelector('svg')).not.toBeNull()
+    })
+
+    it('adds a chip for a match floor, with a spoken name', () => {
+      const summary = collapsed({ filters: { twoColor: false, minContrast: 0, minMatch: 92 } })
+      expect(summary.textContent).toContain('≥ 92%')
+      expect(summary.textContent).toContain('minimum match 92 percent')
+    })
+
+    it('leaves the match chip off at zero, where it constrains nothing', () => {
+      const summary = collapsed({ filters: { twoColor: true, minContrast: 80, minMatch: 0 } })
+      expect(summary.textContent).not.toMatch(/match/i)
     })
 
     // The chips are taller than the title, and they come and go with the state, so without a
@@ -266,7 +277,7 @@ describe('FaceSection', () => {
         <FaceSection
           {...props}
           mouths={['smile']}
-          filters={{ twoColor: false, minContrast: 200 }}
+          filters={{ twoColor: false, minContrast: 200, minMatch: 0 }}
         />,
       )
 
@@ -301,7 +312,7 @@ describe('FaceSection', () => {
   // The contrast control is a slider now: jsdom cannot drag one, but Radix's thumb is keyboard
   // operable, which is the same code path a keyboard user takes.
   it('reports a contrast change', async () => {
-    const props = renderSection({ filters: { twoColor: true, minContrast: 150 } })
+    const props = renderSection({ filters: { twoColor: true, minContrast: 150, minMatch: 0 } })
     const slider = screen.getByRole('slider', { name: /minimum contrast/i })
     slider.focus()
     await userEvent.keyboard('{ArrowRight}')

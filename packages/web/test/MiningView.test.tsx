@@ -345,7 +345,7 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
@@ -381,7 +381,7 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
@@ -501,7 +501,7 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
@@ -595,7 +595,7 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: false, minContrast: 250 }}
+        filters={{ twoColor: false, minContrast: 250, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
@@ -603,7 +603,7 @@ describe('MiningView', () => {
     )
 
     expect(startSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ twoColor: false, minContrast: 250 }),
+      expect.objectContaining({ twoColor: false, minContrast: 250, minMatch: 0 }),
     )
   })
 
@@ -626,14 +626,48 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: false, minContrast: 300 }}
+        filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
       />,
     )
 
-    expect(setFiltersSpy).toHaveBeenCalledWith({ twoColor: false, minContrast: 300 })
+    expect(setFiltersSpy).toHaveBeenCalledWith({ twoColor: false, minContrast: 300, minMatch: 0 })
+    expect(startSpy).toHaveBeenCalledTimes(1)
+  })
+
+  // The match floor is the third of the three display filters, and it must behave like the other
+  // two: a change to it re-reads the board rather than throwing the run away.
+  it('re-filters rather than restarting when only the match floor changes', () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startSpy).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ ...DEFAULT_FACE_FILTERS, minMatch: 92 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(setFiltersSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ minMatch: 92, minContrast: DEFAULT_FACE_FILTERS.minContrast }),
+    )
     expect(startSpy).toHaveBeenCalledTimes(1)
   })
 
@@ -1043,7 +1077,7 @@ describe('MiningView', () => {
       <MiningView
         config={CONFIG as never}
         faceSpec={FACE_SPEC as never}
-        filters={{ twoColor: false, minContrast: 300 }}
+        filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
         onPauseToggle={vi.fn()}
         onStartOver={vi.fn()}
         onSelect={vi.fn()}
