@@ -23,6 +23,7 @@ describe('parseArgs', () => {
     expect(options.target).toBe('faces')
     expect(options.twoColor).toBe(true)
     expect(options.minContrast).toBe(0)
+    expect(options.minMatch).toBe(0)
     expect(options.workers).toBe(7)
     expect(options.maxIterations).toBe(Number.POSITIVE_INFINITY)
     expect(options.start).toBe(0)
@@ -59,6 +60,8 @@ describe('parseArgs', () => {
       '--no-two-color',
       '--min-contrast',
       '150',
+      '--min-match',
+      '92.5',
       '--workers',
       '3',
       '--max-iterations',
@@ -78,6 +81,7 @@ describe('parseArgs', () => {
       target: 'smile',
       twoColor: false,
       minContrast: 150,
+      minMatch: 92.5,
       workers: 3,
       maxIterations: 1_000_000,
       start: 8_400_000_000,
@@ -123,6 +127,15 @@ describe('parseArgs', () => {
     expect(() => mine(['--keep', '0'])).toThrow(/--keep must be a positive integer/)
     expect(() => mine(['--start', '-1'])).toThrow(/--start must be a non-negative integer/)
     expect(() => mine(['--workers', '0'])).toThrow(/--workers must be a positive integer/)
+    expect(() => mine(['--min-match', '-1'])).toThrow(
+      /--min-match must be a number between 0 and 100/,
+    )
+    expect(() => mine(['--min-match', '101'])).toThrow(
+      /--min-match must be a number between 0 and 100/,
+    )
+    expect(() => mine(['--min-match', 'high'])).toThrow(
+      /--min-match must be a number between 0 and 100/,
+    )
     expect(() => mine(['--unknown-flag'])).toThrow(/unknown option "--unknown-flag"/)
     expect(() => mine(['--keep'])).toThrow(/--keep needs a value/)
   })
