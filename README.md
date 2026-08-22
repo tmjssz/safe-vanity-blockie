@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml/badge.svg)](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml?query=branch%3Amain)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20.19-brightgreen.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 
 Brute-force a Safe deployment config (`saltNonce`) so the resulting Safe address renders a chosen
 two-color face when drawn by [`blo`](https://github.com/bpierre/blo), the identicon library used by

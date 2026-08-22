@@ -1,6 +1,7 @@
 {
   "name": "@safe-vanity-blockie/core",
   "version": "0.1.0",
+  "engines": { "node": ">=22" },
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
