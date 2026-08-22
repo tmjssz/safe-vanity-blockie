@@ -290,6 +290,7 @@ const miningViewPropsRef = {
         paused?: boolean
         onPauseToggle?: () => void
         onStartOver?: () => void
+        onAdjustFilters?: () => void
         onSelect: (candidate: unknown) => void
       }
     | undefined,
@@ -300,6 +301,7 @@ vi.mock('../components/MiningView', () => ({
     paused?: boolean
     onPauseToggle?: () => void
     onStartOver?: () => void
+    onAdjustFilters?: () => void
     onSelect: (candidate: unknown) => void
   }) => {
     miningViewPropsRef.current = props
@@ -313,6 +315,11 @@ vi.mock('../components/MiningView', () => ({
         </button>
         <button type="button" onClick={() => props.onStartOver?.()}>
           start-over
+        </button>
+        {/* Stands in for the results grid's "Adjust filters", which the real MiningView renders
+            inside its empty state. What it asks for belongs to the page: the Filter card. */}
+        <button type="button" onClick={() => props.onAdjustFilters?.()}>
+          adjust-filters
         </button>
         <button type="button" onClick={() => props.onSelect(CANDIDATE_A)}>
           select-a
@@ -2246,6 +2253,29 @@ describe('Page', () => {
     })
 
     expect(miningViewPropsRef.current?.onSelect).toBe(first)
+  })
+
+  // The results grid's empty state says to relax a filter; during a run the card holding those
+  // filters is collapsed above it. The two live in different subtrees — the page owns the card,
+  // MiningView owns the grid — so the request has to travel through the page, and this is the only
+  // level at which the whole trip is observable.
+  it('opens the collapsed Filter card when the results grid asks for it', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'submit-config' }))
+
+    const card = () => screen.getByRole('button', { name: /^filter$/i })
+    expect(card().getAttribute('aria-expanded')).toBe('false')
+
+    await user.click(screen.getByRole('button', { name: 'adjust-filters' }))
+    expect(card().getAttribute('aria-expanded')).toBe('true')
+
+    // And again, after the user closes it: the second press of the same button has to work, which
+    // a boolean "please open" prop would fail.
+    await user.click(card())
+    expect(card().getAttribute('aria-expanded')).toBe('false')
+    await user.click(screen.getByRole('button', { name: 'adjust-filters' }))
+    expect(card().getAttribute('aria-expanded')).toBe('true')
   })
 
   // The decoded config a `?config=` link renders, so a test can say what chain the dialog is

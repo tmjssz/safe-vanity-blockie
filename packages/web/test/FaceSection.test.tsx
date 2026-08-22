@@ -166,6 +166,86 @@ describe('FaceSection', () => {
     expect(screen.getByTestId('min-contrast-value').textContent).toBe('80')
   })
 
+  // The results grid's empty state tells the user to relax a filter, and during a run this card is
+  // collapsed above it — so it asks to be opened. A counter rather than a boolean: after the user
+  // closes the card again, a second press of the same button has to work, and a prop already true
+  // would report nothing changed.
+  describe('a request to reveal the filters', () => {
+    const props = () => ({
+      mouths: ['smile'],
+      filters: DEFAULT_FACE_FILTERS,
+      mining: true,
+      onMouthsChange: vi.fn(),
+      onFiltersChange: vi.fn(),
+    })
+
+    it('opens a collapsed card, and opens it again after the user closes it', async () => {
+      const base = props()
+      const { rerender } = render(<FaceSection {...base} revealRequest={0} />)
+      expect(trigger().getAttribute('aria-expanded')).toBe('false')
+
+      rerender(<FaceSection {...base} revealRequest={1} />)
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+
+      await userEvent.click(trigger())
+      expect(trigger().getAttribute('aria-expanded')).toBe('false')
+
+      rerender(<FaceSection {...base} revealRequest={2} />)
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+    })
+
+    // A mount is not a request, whatever number it arrives holding. The page's counter does not
+    // reset when this card remounts — a chain switch remounts the section under a run that has
+    // already asked once — and a card that opened itself on arrival would override `mining`, which
+    // is the whole reason it starts collapsed.
+    it('does not treat the count it mounts with as a request', () => {
+      render(<FaceSection {...props()} revealRequest={7} />)
+      expect(trigger().getAttribute('aria-expanded')).toBe('false')
+    })
+
+    // Only the request opens it. A re-render for any other reason — a filter changing, the page
+    // publishing mining progress — must not reopen a card the user has closed, which is what
+    // reading the prop rather than its changes would do.
+    it('leaves the card alone on a re-render that is not a request', async () => {
+      const base = props()
+      const { rerender } = render(<FaceSection {...base} revealRequest={0} />)
+      rerender(<FaceSection {...base} revealRequest={1} />)
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+
+      // Closed by hand, then a re-render carrying the same request number. A filter change is the
+      // one a user provokes most often, and the page re-renders several times a second besides.
+      await userEvent.click(trigger())
+      rerender(
+        <FaceSection
+          {...base}
+          filters={{ twoColor: false, minContrast: 0, minMatch: 0 }}
+          revealRequest={1}
+        />,
+      )
+      expect(trigger().getAttribute('aria-expanded')).toBe('false')
+    })
+
+    // Opening a card several hundred pixels above the grid the user is looking at moves it no
+    // closer to them: the browser stays where it was, and the controls expand off-screen. jsdom
+    // implements no scrolling, so this pins the call rather than a position.
+    it('brings the card into view, not merely open', () => {
+      const scrollIntoView = vi.fn()
+      // jsdom leaves this undefined on the prototype, so an unguarded call would throw in tests
+      // and the assertion needs something to observe either way.
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        writable: true,
+        value: scrollIntoView,
+      })
+      const base = props()
+      const { rerender } = render(<FaceSection {...base} revealRequest={0} />)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+
+      rerender(<FaceSection {...base} revealRequest={1} />)
+      expect(scrollIntoView).toHaveBeenCalled()
+    })
+  })
+
   describe('the collapsed summary', () => {
     const collapsed = (overrides: { mouths?: string[]; filters?: FaceFilters } = {}) => {
       render(

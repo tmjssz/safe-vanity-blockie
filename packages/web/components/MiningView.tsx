@@ -81,6 +81,13 @@ export interface MiningViewProps {
    * where the deploy dialog and its state live.
    */
   deployingAddress?: string
+  /**
+   * Asks the page to show the filter controls, for the grid's empty state to offer when the
+   * filters have excluded everything. Owned by the page for the same reason `onPauseToggle` is:
+   * the Filter card lives in a sibling subtree this component cannot reach. Optional, so a bare
+   * `<MiningView />` renders a panel that explains itself and offers no button it cannot honour.
+   */
+  onAdjustFilters?: () => void
   /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
 }
@@ -93,6 +100,7 @@ export function MiningView({
   onPauseToggle,
   onStartOver,
   deployingAddress,
+  onAdjustFilters,
   onSelect,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
@@ -427,6 +435,9 @@ export function MiningView({
           filters={filters}
           bestContrast={state.bestContrast}
           deployingAddress={deployingAddress}
+          // Only this grid gets it. The `preparing` grid above hardcodes `droppedCount={0}`, so it
+          // cannot reach the empty state the button belongs to — nothing has been scored yet there.
+          onAdjustFilters={onAdjustFilters}
           onSelect={onSelect}
         />
       </section>

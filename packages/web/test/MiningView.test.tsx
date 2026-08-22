@@ -361,6 +361,41 @@ describe('MiningView', () => {
     expect(message).toMatch(/143/)
   })
 
+  // The other half of that wiring: the panel's action belongs to the page, which owns the filter
+  // card it reveals. This component only carries the handler down, and the button must not appear
+  // at all when there is nothing to carry.
+  it('passes the empty state\u2019s action through to the host, and omits it without one', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, candidates: [], droppedCount: 162 }
+    const onAdjustFilters = vi.fn()
+
+    const { rerender } = render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onAdjustFilters={onAdjustFilters}
+        onSelect={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /adjust filters/i }))
+    expect(onAdjustFilters).toHaveBeenCalledOnce()
+
+    rerender(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /adjust filters/i })).toBeNull()
+  })
+
   // The bar used to read the head of the *displayed* list. Once the filters can empty that list
   // (they no longer fall back to showing everything), the bar answered a filter change with "No
   // candidates yet" two rows above an empty state explaining that 162 candidates had been found —

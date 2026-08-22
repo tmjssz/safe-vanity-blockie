@@ -391,6 +391,14 @@ function HomeContent() {
     setPausedByUser((previous) => (pausedByHost ? false : !previous))
   }, [pausedByHost])
 
+  // The results grid's empty state can only tell the user to relax a filter; the card those
+  // filters live in is this page's, in a sibling subtree of the grid, so the request travels
+  // through here. A counter rather than a boolean because it is an event, not a state: the user
+  // may close the card and ask again, and "please open" left true would say nothing the second
+  // time. FaceSection acts on the change and ignores the value (see `revealRequest` there).
+  const [filterReveals, setFilterReveals] = useState(0)
+  const revealFilters = useCallback(() => setFilterReveals((previous) => previous + 1), [])
+
   // Both halves of the address bar — opening a result and closing it — are now pushes, and
   // nothing this page does to history is asynchronous. There is no `backInFlight`/`deferredPush`
   // bookkeeping any more, and no `pushedEntry` either: see `closeSelection` below.
@@ -981,6 +989,9 @@ function HomeContent() {
               // pixels of controls between the user and the results they are waiting for. One
               // press of its header opens it, and that choice then holds for the session.
               mining
+              // Which is what makes the results grid's "Adjust filters" worth having: the card it
+              // opens is collapsed for the whole run until someone asks for it.
+              revealRequest={filterReveals}
               onMouthsChange={applyMouths}
               onFiltersChange={setFilters}
             />
@@ -1001,6 +1012,7 @@ function HomeContent() {
               // Only while it is actually running: a settled deploy's tile is an ordinary result
               // again, and a spinner over it would say work was still happening.
               deployingAddress={deployRunning ? selection?.candidate.address : undefined}
+              onAdjustFilters={revealFilters}
               onSelect={selectFromGrid}
             />
           </>
