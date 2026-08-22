@@ -53,11 +53,30 @@ jobs:
       # pnpm packs (it rewrites the workspace:* specifiers to concrete versions), npm publishes
       # (it has the OIDC trusted-publishing and --provenance support). Dependency order matters:
       # core, then safe-config, then the CLI that depends on both.
+      # ---------------------------------------------------------------------------------------
+      # TEMPORARY — remove once all three packages exist on the registry.
+      #
+      # npm's trusted publishing (OIDC) attaches to a package that already exists, and none of
+      # these have ever been published. The first publish therefore needs a granular access token
+      # in the NPM_TOKEN secret. After it succeeds: configure a trusted publisher for each of the
+      # three packages on npmjs.com, revert this step to the version without NODE_AUTH_TOKEN and
+      # the .npmrc line, and `gh secret delete NPM_TOKEN`.
+      #
+      # Provenance still works on this path — it needs `id-token: write`, which the job already
+      # has, not OIDC-based auth.
+      # ---------------------------------------------------------------------------------------
       - name: Publish
         env:
           # Empty on a tag push, which is the real-publish path. Only workflow_dispatch sets it.
           DRY_RUN: ${{ inputs.dry-run }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # Single quotes on purpose: this writes the literal string ${NODE_AUTH_TOKEN} into the
+          # file and lets npm expand it at read time, so the token itself never touches the disk.
+          # Double quotes here would be the actual bug, so the SC2016 warning is inverted.
+          # shellcheck disable=SC2016
+          printf '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n' > ~/.npmrc
+
           out="$(mktemp -d)"
           pnpm --filter @safe-vanity-blockie/core        pack --pack-destination "$out"
           pnpm --filter @safe-vanity-blockie/safe-config pack --pack-destination "$out"

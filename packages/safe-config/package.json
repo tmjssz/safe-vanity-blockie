@@ -1,6 +1,7 @@
 {
   "name": "@safe-vanity-blockie/safe-config",
   "version": "0.1.0",
+  "description": "Resolve canonical Safe contract addresses and build the setup inputs for counterfactual address derivation",
   "engines": { "node": ">=22" },
   "repository": {
     "type": "git",
@@ -9,10 +10,11 @@
   },
   "type": "module",
   "license": "MIT",
+  "keywords": ["safe", "safe-global", "create2", "counterfactual", "protocol-kit", "ethereum", "zksync"],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
-  "files": ["dist", "LICENSE"],
+  "files": ["dist", "src", "LICENSE"],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
