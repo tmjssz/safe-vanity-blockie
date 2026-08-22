@@ -4,6 +4,7 @@ import {
   type Candidate,
   type FaceSpec,
   Leaderboard,
+  scorePercent,
   selectReported,
 } from '@safe-vanity-blockie/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -22,14 +23,15 @@ export interface StartMiningInput {
   /**
    * How many candidates the leaderboard keeps, and the only size this hook has: everything
    * retained that survives the filters is reported, so there is no display cap riding on this
-   * number. Retention is score-ranked and blind to the two-colour and contrast filters, which are
-   * applied afterwards, so it has to be far deeper than a user would ever look at — otherwise a
+   * number. Retention is score-ranked and blind to the two-colour, contrast and match filters,
+   * which are applied afterwards, so it has to be far deeper than a user would ever look at — a
    * strict filter has nothing left to choose from. It is also what `keep` means to a worker (see
    * the start request below): the worker's own retention, never a display count.
    */
   retain: number
   twoColor: boolean
   minContrast: number
+  minMatch: number
   start?: number
   /**
    * Continues the existing run instead of starting a fresh one: keeps the current leaderboard
@@ -95,6 +97,8 @@ function activeUntil(startedAt: number, stoppedAt: number): number {
 export interface LiveFilters {
   twoColor: boolean
   minContrast: number
+  /** Percentage floor on the match score, 0-100. 0 filters nothing. */
+  minMatch: number
 }
 
 /**
@@ -130,13 +134,15 @@ function orderForDisplay(
 /**
  * How close the retained pool came to clearing the contrast floor. Measured over the candidates
  * the *other* filters accept — a three-colour result with enormous contrast would otherwise
- * advertise a floor that still matches nothing once two-colour is on. Undefined when no candidate
- * survives those other filters at all, because then contrast is not what is excluding things.
+ * advertise a floor that still matches nothing once two-colour is on, and so would one the match
+ * floor is rejecting anyway. Undefined when no candidate survives those other filters at all,
+ * because then contrast is not what is excluding things.
  */
 function bestContrastOf(candidates: Candidate[], filters: LiveFilters): number | undefined {
   let best: number | undefined
   for (const candidate of candidates) {
     if (filters.twoColor && !candidate.twoColor) continue
+    if (scorePercent(candidate.score, candidate.maxScore) < filters.minMatch) continue
     if (best === undefined || candidate.contrast > best) best = candidate.contrast
   }
   return best
@@ -171,7 +177,7 @@ export function useMiner(): {
   // discard mining progress. `publish` (defined fresh inside every start()) reads this ref
   // rather than a value captured by the start() closure, so `setFilters` below can change what
   // gets shown without restarting anything.
-  const filtersRef = useRef<LiveFilters>({ twoColor: true, minContrast: 0 })
+  const filtersRef = useRef<LiveFilters>({ twoColor: true, minContrast: 0, minMatch: 0 })
   // Read by `publish` for the same reason the filters are: a re-order must not restart anything.
   const sortRef = useRef<ResultSort>('best')
   // Which batch of arrivals each retained address came in on, which is the only thing that can
@@ -250,7 +256,11 @@ export function useMiner(): {
       // The stamp belonged to the segment just folded in; the new segment is running.
       stoppedAtRef.current = 0
       liveRef.current = input.workers
-      filtersRef.current = { twoColor: input.twoColor, minContrast: input.minContrast }
+      filtersRef.current = {
+        twoColor: input.twoColor,
+        minContrast: input.minContrast,
+        minMatch: input.minMatch,
+      }
       setState((previous) =>
         resuming ? { ...previous, running: true, error: undefined } : { ...IDLE, running: true },
       )
@@ -285,6 +295,7 @@ export function useMiner(): {
         const { reported, droppedCount } = selectReported(entries, {
           twoColor: filtersRef.current.twoColor,
           minContrast: filtersRef.current.minContrast,
+          minMatch: filtersRef.current.minMatch,
           // The board holds at most `retain`, so this cap never binds: everything kept that
           // survives the filters is shown, and the grid scrolls.
           keep: retain,

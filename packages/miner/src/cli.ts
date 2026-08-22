@@ -61,6 +61,27 @@ function progressLineText(progress: PoolProgress, best: Candidate | undefined): 
   )
 }
 
+/**
+ * Which mine filters are actually excluding something, named as the flags that set them.
+ *
+ * One list, read by both messages that report exclusions, so they cannot come to name different
+ * sets of filters — and so a filter added to `selectReported` cannot leave either message quietly
+ * describing the search by the wrong criteria. A flag at its permissive value is left out: naming
+ * a filter that excluded nothing sends the reader to relax a control that is not the one holding
+ * results back.
+ */
+export function activeFilterFlags(options: {
+  twoColor: boolean
+  minContrast: number
+  minMatch: number
+}): string[] {
+  return [
+    options.twoColor ? '--two-color' : undefined,
+    options.minContrast > 0 ? '--min-contrast' : undefined,
+    options.minMatch > 0 ? '--min-match' : undefined,
+  ].filter((flag): flag is string => flag !== undefined)
+}
+
 /** ANSI: move the cursor up `lines` rows and clear everything from there down. */
 function cursorUpAndClear(lines: number): string {
   return lines > 0 ? `\u001b[${lines}A\u001b[0J` : ''
@@ -72,7 +93,7 @@ function cursorUpAndClear(lines: number): string {
  */
 export function buildProgressBlock(
   progress: PoolProgress,
-  selection: { twoColor: boolean; minContrast: number; keep: number },
+  selection: { twoColor: boolean; minContrast: number; minMatch: number; keep: number },
   columnsPerRow: number,
 ): string[] {
   // Filter live exactly as the final report does, so the faces you watch converge are the
@@ -147,6 +168,7 @@ export async function runMine(options: MineArgs): Promise<number> {
   const liveSelection = {
     twoColor: options.twoColor,
     minContrast: options.minContrast,
+    minMatch: options.minMatch,
     keep: RESULT_COLUMNS,
   }
   let loggedBestScore = -1
@@ -249,20 +271,18 @@ export async function runMine(options: MineArgs): Promise<number> {
   const { reported, droppedCount, usedFallback } = selectReported(result.candidates, {
     twoColor: options.twoColor,
     minContrast: options.minContrast,
+    minMatch: options.minMatch,
     keep: options.keep,
   })
 
+  const activeFlags = activeFilterFlags(options)
   if (usedFallback) {
     process.stderr.write(
-      'No result passed the --two-color / --min-contrast filters; showing unfiltered results.\n',
+      `No result passed the ${activeFlags.join(' / ')} filter${activeFlags.length === 1 ? '' : 's'}; showing unfiltered results.\n`,
     )
   } else if (droppedCount > 0) {
-    const criteria = [
-      options.twoColor ? '--two-color' : undefined,
-      options.minContrast > 0 ? '--min-contrast' : undefined,
-    ].filter((criterion): criterion is string => criterion !== undefined)
     process.stderr.write(
-      `Dropped ${droppedCount.toLocaleString('en-US')} candidate${droppedCount === 1 ? '' : 's'} that failed ${criteria.join(' / ')}.\n`,
+      `Dropped ${droppedCount.toLocaleString('en-US')} candidate${droppedCount === 1 ? '' : 's'} that failed ${activeFlags.join(' / ')}.\n`,
     )
   }
 

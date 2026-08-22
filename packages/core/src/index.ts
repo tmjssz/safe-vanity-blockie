@@ -32,6 +32,7 @@ export {
   filterCandidates,
   formatScore,
   type SelectReportedResult,
+  scorePercent,
   selectReported,
 } from './select.js'
 export {

@@ -181,6 +181,6 @@ describe('DEFAULT_FACE_FILTERS', () => {
   // Non-zero, on a scale running to 442: zero accepts a pair whose colours differ by less than
   // the eye reliably separates, which made the first run every user sees the least useful one.
   it('defaults to two colours only and a usable minimum contrast', () => {
-    expect(DEFAULT_FACE_FILTERS).toEqual({ twoColor: true, minContrast: 80 })
+    expect(DEFAULT_FACE_FILTERS).toEqual({ twoColor: true, minContrast: 80, minMatch: 0 })
   })
 })

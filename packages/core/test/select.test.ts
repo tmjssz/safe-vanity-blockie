@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Candidate } from '../src/miner.js'
-import { filterCandidates, formatScore, selectReported } from '../src/select.js'
+import { filterCandidates, formatScore, scorePercent, selectReported } from '../src/select.js'
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
   return {
@@ -28,6 +28,36 @@ describe('filterCandidates', () => {
       candidate({ address: '0xb', contrast: 50 }),
     ]
     expect(filterCandidates(entries, { twoColor: false, minContrast: 150 })).toHaveLength(1)
+  })
+
+  it('drops results below the match floor', () => {
+    const entries = [
+      candidate({ address: '0xa', score: 128, maxScore: 133 }),
+      candidate({ address: '0xb', score: 100, maxScore: 133 }),
+    ]
+    const kept = filterCandidates(entries, { twoColor: false, minContrast: 0, minMatch: 90 })
+    expect(kept.map((entry) => entry.address)).toEqual(['0xa'])
+  })
+
+  // The tile shows one decimal (see formatScore), and the colour of its badge is decided off
+  // that rendered string precisely so the digits and the emphasis cannot disagree. The floor has
+  // to read the same number: 89.96% renders as "90.0%", and dropping it from a 90% floor would
+  // hide a result whose own label says it qualifies.
+  it('judges the floor by the percentage the result displays', () => {
+    // 89.96% of 10000 -- renders as 90.0%.
+    const entry = candidate({ address: '0xa', score: 8996, maxScore: 10000 })
+    expect(formatScore(entry.score, entry.maxScore)).toBe('90.0%')
+    expect(filterCandidates([entry], { twoColor: false, minContrast: 0, minMatch: 90 })).toEqual([
+      entry,
+    ])
+  })
+
+  it('filters nothing when no match floor is given', () => {
+    const entries = [candidate({ address: '0xa', score: 1, maxScore: 133 })]
+    expect(filterCandidates(entries, { twoColor: false, minContrast: 0 })).toEqual(entries)
+    expect(filterCandidates(entries, { twoColor: false, minContrast: 0, minMatch: 0 })).toEqual(
+      entries,
+    )
   })
 })
 
@@ -69,12 +99,34 @@ describe('selectReported', () => {
     expect(result.droppedCount).toBe(2)
   })
 
+  it('applies the match floor alongside the other filters', () => {
+    const entries = [
+      candidate({ address: '0xa', score: 128, maxScore: 133 }),
+      candidate({ address: '0xb', score: 100, maxScore: 133 }),
+    ]
+    const result = selectReported(entries, { ...options, minMatch: 90, fallbackWhenEmpty: false })
+    expect(result.reported.map((entry) => entry.address)).toEqual(['0xa'])
+    expect(result.droppedCount).toBe(1)
+  })
+
   it('is empty for an empty input', () => {
     expect(selectReported([], options)).toEqual({
       reported: [],
       droppedCount: 0,
       usedFallback: false,
     })
+  })
+})
+
+describe('scorePercent', () => {
+  it('is the number formatScore renders', () => {
+    expect(scorePercent(133, 133)).toBe(100)
+    expect(scorePercent(120, 133)).toBe(90.2)
+    expect(scorePercent(8996, 10000)).toBe(90)
+  })
+
+  it('does not divide by zero', () => {
+    expect(scorePercent(0, 0)).toBe(0)
   })
 })
 

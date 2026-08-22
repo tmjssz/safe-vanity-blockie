@@ -58,6 +58,7 @@ const startInput = {
   retain: 40,
   twoColor: true,
   minContrast: 0,
+  minMatch: 0,
 } as unknown as Parameters<ReturnType<typeof useMiner>['start']>[0]
 
 beforeEach(() => {
@@ -150,9 +151,32 @@ describe('useMiner', () => {
         candidates: [candidate('0xa', 125, true, 150), candidate('0xb', 120, true, 140)],
       }),
     )
-    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300, minMatch: 0 }))
 
     expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestOverall?.address).toBe('0xa')
+  })
+
+  // The match floor is a display filter in exactly the same sense the other two are: it re-reads
+  // the leaderboard the run has already built rather than asking the workers for anything.
+  it('re-filters the retained board against a match floor without touching the workers', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+    const posted = instances[0].posted.length
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [candidate('0xa', 128), candidate('0xb', 100)],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 0, minMatch: 90 }))
+
+    expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xa'])
+    expect(result.current.state.droppedCount).toBe(1)
+    // Still the same run: nothing was re-posted, and nothing was scanned again.
+    expect(instances[0].posted.length).toBe(posted)
     expect(result.current.state.bestOverall?.address).toBe('0xa')
   })
 
@@ -193,7 +217,31 @@ describe('useMiner', () => {
         ],
       }),
     )
-    act(() => result.current.setFilters({ twoColor: true, minContrast: 300 }))
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300, minMatch: 0 }))
+
+    expect(result.current.state.candidates).toEqual([])
+    expect(result.current.state.bestContrast).toBe(143)
+  })
+
+  // Same rule, one filter further along: the hint says which contrast the floor has to come down
+  // to, and a candidate that the match floor is rejecting anyway cannot supply it. Measured over
+  // it, the hint would name a contrast that still matches nothing.
+  it('measures the best contrast over candidates the match floor accepts too', async () => {
+    const { result } = renderHook(() => useMiner())
+    act(() => result.current.start(startInput))
+
+    act(() =>
+      instances[0].emit({
+        type: 'progress',
+        scanned: 10,
+        candidates: [
+          // Enormous contrast, but only a 75.2% match — excluded by the floor below.
+          candidate('0xa', 100, true, 400),
+          candidate('0xb', 128, true, 143),
+        ],
+      }),
+    )
+    act(() => result.current.setFilters({ twoColor: true, minContrast: 300, minMatch: 90 }))
 
     expect(result.current.state.candidates).toEqual([])
     expect(result.current.state.bestContrast).toBe(143)
@@ -308,7 +356,7 @@ describe('useMiner', () => {
       expect(result.current.state.candidates.map((entry) => entry.address)).toEqual(['0xb'])
     })
 
-    act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+    act(() => result.current.setFilters({ twoColor: false, minContrast: 0, minMatch: 0 }))
 
     expect(result.current.state.candidates.map((entry) => entry.address).sort()).toEqual([
       '0xa',
@@ -468,7 +516,7 @@ describe('useMiner', () => {
 
         // The user reads the error, thinks for five minutes, then nudges the contrast filter.
         act(() => vi.advanceTimersByTime(300_000))
-        act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+        act(() => result.current.setFilters({ twoColor: false, minContrast: 0, minMatch: 0 }))
 
         expect(result.current.state.elapsedMs).toBe(12_000)
         expect(result.current.state.rate).toBeCloseTo(1_000 / 12, 5)
@@ -484,7 +532,7 @@ describe('useMiner', () => {
       expect(result.current.state.running).toBe(false)
 
       act(() => vi.advanceTimersByTime(300_000))
-      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0, minMatch: 0 }))
 
       expect(result.current.state.elapsedMs).toBe(12_000)
     })
@@ -498,7 +546,7 @@ describe('useMiner', () => {
       act(() => instances[0].emitError('worker chunk failed to load'))
       act(() => vi.advanceTimersByTime(300_000))
       act(() => result.current.stop())
-      act(() => result.current.setFilters({ twoColor: false, minContrast: 0 }))
+      act(() => result.current.setFilters({ twoColor: false, minContrast: 0, minMatch: 0 }))
 
       expect(result.current.state.elapsedMs).toBe(12_000)
     })

@@ -105,7 +105,7 @@ describe('ResultsGrid', () => {
         candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
         droppedCount={0}
         mining
-        filters={{ twoColor: true, minContrast: 0 }}
+        filters={{ twoColor: true, minContrast: 0, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -116,7 +116,7 @@ describe('ResultsGrid', () => {
         candidates={[candidate('0xa', 120), candidate('0xb', 119)]}
         droppedCount={0}
         mining
-        filters={{ twoColor: false, minContrast: 0 }}
+        filters={{ twoColor: false, minContrast: 0, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -196,7 +196,7 @@ describe('ResultsGrid', () => {
         droppedCount={162}
         mining={false}
         preparing
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -275,7 +275,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -296,7 +296,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={200}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -309,7 +309,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={1}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -326,7 +326,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         bestContrast={143}
         onSelect={vi.fn()}
       />,
@@ -343,7 +343,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={187}
         mining
-        filters={{ twoColor: true, minContrast: 442 }}
+        filters={{ twoColor: true, minContrast: 442, minMatch: 0 }}
         bestContrast={151}
         onSelect={vi.fn()}
       />,
@@ -359,7 +359,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -373,7 +373,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: false, minContrast: 300 }}
+        filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
@@ -382,13 +382,41 @@ describe('ResultsGrid', () => {
     expect(contrastOnly).not.toMatch(/two colour/i)
   })
 
+  it('names the match floor among the filters doing the excluding', () => {
+    const { rerender } = render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: false, minContrast: 0, minMatch: 92 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    const matchOnly = noMatches().textContent ?? ''
+    expect(matchOnly).toMatch(/match/i)
+    expect(matchOnly).toMatch(/92/)
+    expect(matchOnly).not.toMatch(/two colour/i)
+
+    // At 0 it constrains nothing, so naming it would send the user to the wrong control.
+    rerender(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 0, minMatch: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(noMatches().textContent ?? '').not.toMatch(/minimum match/i)
+  })
+
   it('reports the best contrast reached, which is the number the floor has to come down to', () => {
     render(
       <ResultsGrid
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         bestContrast={143}
         onSelect={vi.fn()}
       />,
@@ -405,7 +433,7 @@ describe('ResultsGrid', () => {
         candidates={[]}
         droppedCount={162}
         mining
-        filters={{ twoColor: true, minContrast: 300 }}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
         onSelect={vi.fn()}
       />,
     )
