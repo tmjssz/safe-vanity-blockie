@@ -1,5 +1,6 @@
 import type { Candidate } from '@safe-vanity-blockie/core'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultsGrid } from '../components/ResultsGrid'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
@@ -438,6 +439,136 @@ describe('ResultsGrid', () => {
       />,
     )
     expect((container.textContent ?? '').match(/162/g)).toHaveLength(1)
+  })
+
+  // The panel is built out of the shadcn Empty primitive rather than hand-rolled paragraphs, which
+  // is what gives every "nothing here" state in the app one shape. Asserted through the slots
+  // because that is all jsdom can see of it: there is no layout to measure, and the classes are the
+  // primitive's own rather than this component's to pin.
+  //
+  // The icon is the part worth naming. It is the Filter card's icon, and it is the panel's only
+  // pointer at the control the copy is talking about — the panel occupies the space a wall of
+  // blockies would, so it has to say what it is by picture as well as by sentence.
+  it('builds the panel from the Empty primitive, under the filter icon', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const panel = noMatches()
+    expect(panel.dataset.slot).toBe('empty')
+    expect(panel.querySelector('[data-slot="empty-icon"] svg')).not.toBeNull()
+    // The headline is the announced node, and the detail is a separate one below it — the split the
+    // live region depends on, now expressed as the primitive's two slots.
+    expect(screen.getByRole('status').dataset.slot).toBe('empty-title')
+    expect(panel.querySelector('[data-slot="empty-description"]')?.textContent).toMatch(/162/)
+  })
+
+  // The panel's advice is "relax a filter", and during a run the card holding those filters is
+  // collapsed a few hundred pixels above — so the advice named a control the user could not see.
+  // The action is that control: one press opens the filter card and puts it in front of them.
+  it('offers a way into the filters it is telling the user to relax', async () => {
+    const onAdjustFilters = vi.fn()
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onAdjustFilters={onAdjustFilters}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /adjust filters/i }))
+    expect(onAdjustFilters).toHaveBeenCalledOnce()
+  })
+
+  // A button is a promise that something happens. Without a host to handle it there is nothing to
+  // open, and the sentence naming the filters still says everything the panel can honestly say.
+  it('leaves the action out when the host has no filter card to reveal', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /adjust filters/i })).toBeNull()
+  })
+
+  // The action sits outside the live region for the same reason every number does: the button's
+  // label never changes, but a node added inside `role="status"` is another announcement of the
+  // whole message. The headline is still the only thing in there.
+  it('keeps the action out of the announced headline', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onAdjustFilters={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    const announced = screen.getByRole('status')
+    expect(announced.textContent).toBe('No result matches these filters')
+    expect(announced.querySelector('button')).toBeNull()
+  })
+
+  // Two copies of the same instruction, one of them pressable, is one copy too many: with the
+  // button on screen the prose stops at what only prose can say — that the search is still
+  // running. Without it, the words are the only advice there is, so they carry it.
+  it('leaves the advice to the button when there is one, and says it in prose when there is not', () => {
+    const { rerender } = render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onAdjustFilters={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    const withButton = noMatches().textContent ?? ''
+    expect(withButton).toMatch(/mining continues/i)
+    expect(withButton).not.toMatch(/relax a filter/i)
+
+    rerender(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onSelect={vi.fn()}
+      />,
+    )
+    const withoutButton = noMatches().textContent ?? ''
+    expect(withoutButton).toMatch(/mining continues/i)
+    expect(withoutButton).toMatch(/relax a filter/i)
+  })
+
+  // A stopped search must not claim to be continuing. With the button offering the way out, that
+  // leaves nothing to add after the sentence naming the filters — and no dangling promise either.
+  it('does not say mining continues once it has stopped', () => {
+    render(
+      <ResultsGrid
+        candidates={[]}
+        droppedCount={162}
+        mining={false}
+        filters={{ twoColor: true, minContrast: 300, minMatch: 0 }}
+        onAdjustFilters={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(noMatches().textContent ?? '').not.toMatch(/mining continues/i)
   })
 
   // Two hundred cards, each an inline blockie of ~64 <rect>s, re-rendered on every worker progress

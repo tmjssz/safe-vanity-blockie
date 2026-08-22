@@ -1,6 +1,16 @@
 import type { Candidate } from '@safe-vanity-blockie/core'
+import { ListFilter } from 'lucide-react'
 import type { FaceFilters } from '../lib/config'
 import { ResultCard } from './ResultCard'
+import { Button } from './ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from './ui/empty'
 import { Skeleton } from './ui/skeleton'
 
 /**
@@ -43,6 +53,13 @@ export interface ResultsGridProps {
    * within a second.
    */
   deployingAddress?: string
+  /**
+   * Reveals the filter controls this panel is telling the user to relax — the host's Filter card,
+   * which sits collapsed a few hundred pixels above the grid during a run. Optional because it is
+   * the host's to offer: a grid rendered without one has nothing to open, and the panel then says
+   * what it can say and offers no button rather than a button that does nothing.
+   */
+  onAdjustFilters?: () => void
   onSelect: (candidate: Candidate) => void
 }
 
@@ -74,6 +91,7 @@ export function ResultsGrid({
   filters,
   bestContrast,
   deployingAddress,
+  onAdjustFilters,
   onSelect,
 }: ResultsGridProps) {
   // Three states, and the difference between the first two is the whole point: candidates found
@@ -92,35 +110,80 @@ export function ResultsGrid({
           Results heading badges what is *shown*, which is the number the eye can check against
           the cards. The excluded count survives only here, where there are no cards to count. */}
       {excludedEverything && (
-        <div data-testid="no-matches" className="rounded-xl border border-dashed p-6 text-sm">
-          {/* The live region is the headline and nothing else. The grid emptying is exactly what
-              one is for — a sighted user watches it happen — but every number below changes on
-              every publish and every step of the contrast slider, and each patch inside
-              aria-live queues a fresh announcement of the whole message: dozens in one drag from
-              300 to 442, and up to two hundred in the first seconds of a run with a strict
-              filter. The headline does not change while the condition holds, so it is announced
-              once, and the detail is read by navigating to it like any other text. */}
-          <p role="status" className="font-medium">
-            No result matches these filters.
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            {/* Not "N candidates have been found so far": N is the retained pool, which pins at
-                the retention cap once the board fills, so that phrasing sits at a suspiciously
-                round 200 for the rest of the run however many millions get scored — and reads as
-                a stalled search. Naming which 200 they are says the same fact without implying a
-                total. */}
-            {droppedCount === 1
-              ? 'The only candidate found so far was excluded by '
-              : `The ${droppedCount.toLocaleString('en-US')} best candidates found so far were all excluded by `}
-            {excludingFilters(filters)}.
-            {bestContrast !== undefined && filters.minContrast > 0 && (
-              <> The best contrast found so far is {bestContrast}.</>
-            )}{' '}
-            {mining
-              ? 'Mining continues; relax a filter to see what has been found.'
-              : 'Relax a filter to see what has been found.'}
-          </p>
-        </div>
+        /* The shadcn Empty primitive, which is what every "there is nothing here" panel in the app
+           should look like. `md:p-12` is left to it: the panel stands where a wall of tiles would
+           be, so the room is earned.
+
+           No border, dashed or otherwise. The primitive ships `border-dashed` with no width, so
+           nothing paints unless a width is added, and none is: this state is the absence of
+           content, and a box drawn round an absence is a second object on the page to read. The
+           icon, the centring and the space are what mark it out.
+
+           The centred column is the change here. The panel used to be two left-aligned paragraphs
+           filling the grid's full width, which read as a notice bolted above the results; centred
+           under an icon it reads as the state of the space it occupies. */
+        <Empty data-testid="no-matches">
+          <EmptyHeader>
+            {/* The Filter card's own icon. The panel's whole job is to send the user to that card,
+                and the same glyph in both places is what makes "the filters" a thing they can
+                find rather than a word. */}
+            <EmptyMedia variant="icon">
+              <ListFilter />
+            </EmptyMedia>
+            {/* The live region is the headline and nothing else. The grid emptying is exactly what
+                one is for — a sighted user watches it happen — but every number below changes on
+                every publish and every step of the contrast slider, and each patch inside
+                aria-live queues a fresh announcement of the whole message: dozens in one drag from
+                300 to 442, and up to two hundred in the first seconds of a run with a strict
+                filter. The headline does not change while the condition holds, so it is announced
+                once, and the detail is read by navigating to it like any other text.
+
+                Which is also why the action below sits outside this node rather than in it: the
+                button's label never changes, but adding a node inside `role="status"` is another
+                announcement of the whole message. */}
+            <EmptyTitle role="status">No result matches these filters</EmptyTitle>
+            <EmptyDescription>
+              {/* Not "N candidates have been found so far": N is the retained pool, which pins at
+                  the retention cap once the board fills, so that phrasing sits at a suspiciously
+                  round 200 for the rest of the run however many millions get scored — and reads as
+                  a stalled search. Naming which 200 they are says the same fact without implying a
+                  total. */}
+              {droppedCount === 1
+                ? 'The only candidate found so far was excluded by '
+                : `The ${droppedCount.toLocaleString('en-US')} best candidates found so far were all excluded by `}
+              {excludingFilters(filters)}.
+              {bestContrast !== undefined && filters.minContrast > 0 && (
+                <> The best contrast found so far is {bestContrast}.</>
+              )}{' '}
+              {/* "Relax a filter to see what has been found" is the button's job wherever there is
+                  a button: printed directly above a control that does exactly that, it is the same
+                  sentence twice, and the printed copy is the one that cannot be pressed. Without a
+                  handler there is no control, so the words have to carry it — which is also the
+                  bare `<ResultsGrid />` case, where they are all the user gets.
+
+                  "Mining continues" is not advice and stays either way: it is the answer to the
+                  question an empty grid raises on its own, which is whether the search stopped. */}
+              {[
+                mining ? 'Mining continues.' : undefined,
+                onAdjustFilters ? undefined : 'Relax a filter to see what has been found.',
+              ]
+                .filter((sentence) => sentence !== undefined)
+                .join(' ')}
+            </EmptyDescription>
+          </EmptyHeader>
+          {/* "Relax a filter" named a control the user could not see: during a run the Filter card
+              is collapsed, and the grid they are watching has scrolled it off the top. This is
+              that control — one press opens the card and brings it back into view. */}
+          {onAdjustFilters && (
+            <EmptyContent>
+              {/* No icon on the button: the same glyph is already 24px above it, and repeating it
+                  labels the action with the thing it is standing under. */}
+              <Button type="button" variant="outline" size="sm" onClick={onAdjustFilters}>
+                Adjust filters
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
       )}
       {!working && candidates.length === 0 && !excludedEverything && (
         <p className="text-sm text-muted-foreground">No results yet.</p>
