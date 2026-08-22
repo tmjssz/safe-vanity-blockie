@@ -9,10 +9,11 @@
   },
   "type": "module",
   "license": "MIT",
+  "keywords": ["safe", "safe-global", "blockie", "blo", "identicon", "vanity-address", "create2", "ethereum", "cli"],
   "description": "Brute-force a Safe saltNonce so the Safe address renders a two-color face as a blo identicon",
   "bin": { "safe-vanity-blockie": "./dist/cli.js" },
   "main": "./dist/cli.js",
-  "files": ["dist", "LICENSE"],
+  "files": ["dist", "src", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "pnpm build",
