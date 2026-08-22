@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Pack and validate without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Required for npm provenance: npm exchanges this for a Sigstore certificate.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
+
+      # The same consumer-install check CI runs. A broken tarball must be caught here, not by the
+      # first person to npx the CLI.
+      - name: CLI packaging smoke test
+        run: ./scripts/smoke-pack.sh
+
+      - name: Verify the tag matches the CLI version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="$(node -p "require('./packages/miner/package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match packages/miner version $pkg"
+            exit 1
+          fi
+
+      # pnpm packs (it rewrites the workspace:* specifiers to concrete versions), npm publishes
+      # (it has the OIDC trusted-publishing and --provenance support). Dependency order matters:
+      # core, then safe-config, then the CLI that depends on both.
+      - name: Publish
+        env:
+          # Empty on a tag push, which is the real-publish path. Only workflow_dispatch sets it.
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          out="$(mktemp -d)"
+          pnpm --filter @safe-vanity-blockie/core        pack --pack-destination "$out"
+          pnpm --filter @safe-vanity-blockie/safe-config pack --pack-destination "$out"
+          pnpm --filter safe-vanity-blockie              pack --pack-destination "$out"
+
+          args="--provenance --access public"
+          if [ "$DRY_RUN" = "true" ]; then
+            args="$args --dry-run"
+            echo "::notice::dry run — nothing will be published"
+          fi
+
+          # The [0-9] keeps the CLI glob from matching the two scoped tarballs.
+          npm publish "$out"/safe-vanity-blockie-core-*.tgz        $args
+          npm publish "$out"/safe-vanity-blockie-safe-config-*.tgz $args
+          npm publish "$out"/safe-vanity-blockie-[0-9]*.tgz        $args

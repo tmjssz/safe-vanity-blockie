@@ -2,6 +2,11 @@
   "name": "safe-vanity-blockie",
   "version": "0.1.0",
   "engines": { "node": ">=22" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmjssz/safe-vanity-blockie.git",
+    "directory": "packages/miner"
+  },
   "type": "module",
   "license": "MIT",
   "description": "Brute-force a Safe saltNonce so the Safe address renders a two-color face as a blo identicon",
