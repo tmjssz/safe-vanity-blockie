@@ -49,6 +49,7 @@ describe('npxCommandFor', () => {
       '--rpc https://rpc.example',
       '--two-color',
       '--min-contrast 80',
+      '--min-match 0',
     ])
   })
 
@@ -74,6 +75,17 @@ describe('npxCommandFor', () => {
     expect(command).toContain('--min-contrast 250')
   })
 
+  // Emitted at its permissive value too, exactly as --min-contrast is: the copied command is a
+  // statement of the standard the screen is holding results to, and a flag that appears only
+  // sometimes makes the reader work out whether it was left off or left at zero.
+  it('passes the match floor through, so the CLI search enforces the same standard', () => {
+    const command = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      filters: { twoColor: true, minContrast: 250, minMatch: 92.5 },
+    })
+    expect(command).toContain('--min-match 92.5')
+  })
+
   it('passes --no-two-color when the two-colour filter is off', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
@@ -87,6 +99,7 @@ describe('npxCommandFor', () => {
     expect(command).not.toContain('--two-color')
     expect(command).not.toContain('--no-two-color')
     expect(command).not.toContain('--min-contrast')
+    expect(command).not.toContain('--min-match')
   })
 })
 
