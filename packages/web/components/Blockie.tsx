@@ -50,7 +50,16 @@ export const DecorativeBlockie = memo(function DecorativeBlockie({
   )
 })
 
-export function Blockie({ address, size = 64, className }: BlockieProps) {
+/**
+ * Memoised for the same load-bearing reason `DecorativeBlockie` is: `bloSvg` builds ~64 <rect>s and
+ * runs on every render, so anything that re-renders a caller without changing the address redraws a
+ * picture that cannot have changed. In the result grid that is two hundred of them, and the tile's
+ * own memo was the only thing standing between this and a redraw per publish — a guard that any
+ * state added inside a tile, for any reason, would quietly defeat.
+ *
+ * All three props are primitives, so the default shallow compare is exact.
+ */
+export const Blockie = memo(function Blockie({ address, size = 64, className }: BlockieProps) {
   // bloSvg emits a self-contained <svg> built from numeric HSL values and integer coordinates
   // derived from the address; it never echoes the address string into the markup.
   return (
@@ -62,4 +71,4 @@ export function Blockie({ address, size = 64, className }: BlockieProps) {
       dangerouslySetInnerHTML={{ __html: bloSvg(address, size) }}
     />
   )
-}
+})
