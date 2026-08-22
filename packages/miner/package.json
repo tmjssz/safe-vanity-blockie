@@ -22,11 +22,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@safe-global/protocol-kit": "^8.0.5",
+    "@safe-global/protocol-kit": "^8.0.6",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
-    "viem": "^2.55.11"
+    "viem": "^2.55.16"
   },
   "devDependencies": {
     "@types/node": "^26.2.0"

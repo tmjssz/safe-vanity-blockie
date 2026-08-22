@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@safe-global/protocol-kit": "^8.0.5",
+    "@safe-global/protocol-kit": "^8.0.6",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
@@ -21,7 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.31.0",
-    "next": "^16.3.0",
+    "next": "^16.3.1",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
@@ -29,7 +29,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
-    "viem": "^2.55.11",
+    "viem": "^2.55.16",
     "wagmi": "^3.7.6"
   },
   "devDependencies": {
