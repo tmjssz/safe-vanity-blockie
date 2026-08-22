@@ -16,3 +16,25 @@ updates:
       actions:
         patterns: ['*']
     open-pull-requests-limit: 5
+
+  # pnpm workspaces are discovered from the root, so one entry covers all four packages.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    # Must equal `minimumReleaseAge` in pnpm-workspace.yaml (10080 minutes). pnpm re-applies that
+    # policy to every lockfile entry on install, so a PR proposing a fresher release fails CI until
+    # it ages out — this keeps Dependabot from opening one in the first place.
+    cooldown:
+      default-days: 7
+    # viem and the two @safe-global packages are each depended on by three of the four workspace
+    # packages. Ungrouped, one upstream release becomes three PRs and a window of version skew.
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+    open-pull-requests-limit: 5
