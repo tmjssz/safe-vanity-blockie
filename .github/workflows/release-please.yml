@@ -1,0 +1,68 @@
+name: Release Please
+
+on:
+  # Tim asked for a manual trigger, and this is it. But manual-only is not sufficient: the action
+  # does two different jobs depending on state — open/refresh the release PR when there are
+  # unreleased commits, or convert an already-merged release PR into a tag and a Release. With only
+  # workflow_dispatch, every release needs two clicks. The push trigger below covers the second
+  # job. Merging the release PR remains the manual act that decides when to release.
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never cancel in progress: a half-run that has created a tag but not the Release leaves the
+  # repo in a state the next run has to reconcile. Serialise instead.
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Create the release branch, the tag and the GitHub Release.
+      contents: write
+      # Open, update and label the release PR.
+      pull-requests: write
+    steps:
+      # Not secrets.GITHUB_TOKEN: events created with it do not start new workflow runs, so its tag
+      # would never fire release.yml and its release PR would get no CI run — leaving the ci-ok
+      # required check unreported and the PR unmergeable. An App installation token is scoped to
+      # this repo and expires in an hour, unlike a PAT.
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      # No actions/checkout step: release-please operates entirely through the GitHub API, reading
+      # commits and writing the release branch remotely. A checkout here would be dead weight.
+      - name: Release please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Publishing is release.yml's job, triggered by the tag this created. This step only makes the
+      # handoff visible in the run log, so a release that stalls can be diagnosed from one place.
+      - name: Report the outcome
+        env:
+          RELEASES_CREATED: ${{ steps.release.outputs.releases_created }}
+          PRS_CREATED: ${{ steps.release.outputs.prs_created }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          if [ "$RELEASES_CREATED" = "true" ]; then
+            echo "::notice::released $TAG_NAME — release.yml now publishes it"
+          elif [ "$PRS_CREATED" = "true" ]; then
+            echo "::notice::release PR opened or refreshed; merge it to release"
+          else
+            echo "::notice::nothing to release (no feat/fix commits since the last release)"
+          fi
