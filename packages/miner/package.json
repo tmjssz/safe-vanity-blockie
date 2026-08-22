@@ -1,7 +1,9 @@
 {
   "name": "safe-vanity-blockie",
-  "version": "0.3.0",
-  "engines": { "node": ">=22" },
+  "version": "0.4.0",
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tmjssz/safe-vanity-blockie.git",
@@ -9,11 +11,27 @@
   },
   "type": "module",
   "license": "MIT",
-  "keywords": ["safe", "safe-global", "blockie", "blo", "identicon", "vanity-address", "create2", "ethereum", "cli"],
+  "keywords": [
+    "safe",
+    "safe-global",
+    "blockie",
+    "blo",
+    "identicon",
+    "vanity-address",
+    "create2",
+    "ethereum",
+    "cli"
+  ],
   "description": "Brute-force a Safe saltNonce so the Safe address renders a two-color face as a blo identicon",
-  "bin": { "safe-vanity-blockie": "./dist/cli.js" },
+  "bin": {
+    "safe-vanity-blockie": "./dist/cli.js"
+  },
   "main": "./dist/cli.js",
-  "files": ["dist", "src", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "pnpm build",

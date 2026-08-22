@@ -1,8 +1,10 @@
 {
   "name": "@safe-vanity-blockie/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Isomorphic blo identicon, CREATE2 address derivation and mining primitives for Safe vanity blockies",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tmjssz/safe-vanity-blockie.git",
@@ -10,13 +12,29 @@
   },
   "type": "module",
   "license": "MIT",
-  "keywords": ["safe", "safe-global", "blockie", "blo", "identicon", "vanity-address", "create2", "ethereum"],
+  "keywords": [
+    "safe",
+    "safe-global",
+    "blockie",
+    "blo",
+    "identicon",
+    "vanity-address",
+    "create2",
+    "ethereum"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
-  "files": ["dist", "src", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
