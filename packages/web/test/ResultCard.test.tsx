@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ResultCard } from '../components/ResultCard'
@@ -108,16 +108,104 @@ describe('ResultCard', () => {
     expect(screen.getByTitle('Colour contrast: 157')).toBeDefined()
   })
 
-  it('truncates the address down the middle so it fits a compact tile', () => {
-    renderCard()
-    expect(screen.getByText('0x70e9…eed5')).toBeDefined()
+  // The row used to hold a 6-and-4 abbreviation, computed in JS: `0x70e9…eed5`, the same eleven
+  // characters however wide the tile was. It holds as much of the address as the tile can fit now,
+  // shortened down the middle with the SAME number of characters on each side of the ellipsis.
+  //
+  // Which takes a measurement, and jsdom has no layout: `contentRect` is whatever a stubbed
+  // observer reports and `measureText` is whatever a stubbed canvas returns. So the two are stubbed
+  // with round numbers here and the arithmetic is checked against them, while the shape of the
+  // result — equal halves, in order, inside the budget — is pinned by lib/fit-address's own suite
+  // at every width there is.
+  describe('the address row', () => {
+    const row = (): HTMLElement => {
+      const code = screen.getByTestId('result-address')
+      if (code.tagName !== 'CODE')
+        throw new Error(`address is in a <${code.tagName}>, not a <code>`)
+      return code
+    }
+
+    /**
+     * Renders a tile whose address row is `width` pixels wide, in a font whose characters are ten
+     * pixels each — so the character budget is `width / 10` and the expected string can be worked
+     * out by hand.
+     *
+     * The global ResizeObserver stub in vitest.setup.ts never calls anyone back, which is what
+     * every other test in this file relies on to see the unmeasured state. This one replaces it
+     * with a stub that reports a size the way the real one does: once, on observe.
+     */
+    function renderMeasured(width: number) {
+      const realObserver = globalThis.ResizeObserver
+      const realGetContext = HTMLCanvasElement.prototype.getContext
+      globalThis.ResizeObserver = class {
+        constructor(private readonly callback: ResizeObserverCallback) {}
+        observe(target: Element) {
+          this.callback(
+            [{ target, contentRect: { width } } as unknown as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          )
+        }
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver
+      HTMLCanvasElement.prototype.getContext = (() => ({
+        font: '',
+        measureText: (text: string) => ({ width: text.length * 10 }),
+      })) as unknown as typeof realGetContext
+
+      try {
+        renderCard()
+      } finally {
+        globalThis.ResizeObserver = realObserver
+        HTMLCanvasElement.prototype.getContext = realGetContext
+      }
+    }
+
+    it('shortens the address down the middle, evenly, to what the tile can hold', () => {
+      // 210px at ten pixels a character is 21 characters: ten from each end, and the ellipsis.
+      renderMeasured(210)
+      expect(row().textContent).toBe('0x70e9f0a8…d2e804eed5')
+    })
+
+    // The property, rather than one width's arithmetic: whatever the tile is worth, the prefix and
+    // the suffix are the same length, and both are the address's own characters in its own order.
+    it('shows the same number of characters on each side, at any width', () => {
+      for (const width of [80, 130, 210, 280, 350]) {
+        renderMeasured(width)
+        const [head, tail] = (row().textContent ?? '').split('…')
+        expect(tail, `width ${width}`).toBeDefined()
+        expect(head.length, `width ${width}`).toBe(tail.length)
+        expect(head).toBe(candidate.address.slice(0, head.length))
+        expect(tail).toBe(candidate.address.slice(-tail.length))
+        cleanup()
+      }
+    })
+
+    // A tile wide enough for all 42 characters hides nothing at all — the point of measuring rather
+    // than picking a split: the row spends whatever it is given.
+    it('leaves the whole address alone when it fits', () => {
+      renderMeasured(candidate.address.length * 10)
+      expect(row().textContent).toBe(candidate.address)
+    })
+
+    // The state before any measurement, and the state in an environment with no ResizeObserver at
+    // all. The whole address is the honest thing to render, and `truncate` is what keeps it from
+    // pushing the tile out of the grid — a shortened address on a width nobody has measured would
+    // be a guess presented as a fact.
+    it('renders the whole address, clipped, until something has measured the row', () => {
+      renderCard()
+      expect(row().textContent).toBe(candidate.address)
+      expect(row().className).toMatch(/\btruncate\b/)
+    })
+
+    it('no longer renders the fixed six-and-four abbreviation', () => {
+      renderMeasured(210)
+      expect(screen.queryByText('0x70e9…eed5')).toBeNull()
+    })
   })
 
-  // Both moved to the detail view, which is where an address is checked character by character.
-  // A 42-character string wrapped over three lines was most of the old tile's height.
-  it('leaves the full address and the saltNonce to the detail view', () => {
+  it('leaves the saltNonce to the detail view', () => {
     renderCard()
-    expect(screen.queryByText(candidate.address)).toBeNull()
     expect(screen.queryByText(/1885506/)).toBeNull()
   })
 

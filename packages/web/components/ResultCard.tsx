@@ -1,5 +1,6 @@
 import { type Candidate, formatScore } from '@safe-vanity-blockie/core'
 import { memo } from 'react'
+import { useFittedAddress } from '../lib/use-fitted-address'
 import { Blockie } from './Blockie'
 import { ContrastSwatch } from './ContrastSwatch'
 import { CopyButton } from './CopyButton'
@@ -13,16 +14,6 @@ import { Card } from './ui/card'
  * being approximate: below it at least one region has lost a whole feature.
  */
 const QUALITY_THRESHOLD = 90
-
-/**
- * Enough of the address to recognise a result by, in the width a compact tile has. The same
- * 6-and-4 split the mining status bar and the wallet chip use, so an address looks the same
- * wherever it is abbreviated. The full string is in the tile's accessible name and, in full and
- * checkable, in the detail view.
- */
-function truncate(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`
-}
 
 export interface ResultCardProps {
   candidate: Candidate
@@ -56,6 +47,9 @@ export const ResultCard = memo(function ResultCard({
   deploying = false,
   onSelect,
 }: ResultCardProps) {
+  // The address row's text, shortened to the tile's real width by the hook that measures it — see
+  // lib/use-fitted-address and lib/fit-address for what "shortened" means exactly.
+  const address = useFittedAddress(candidate.address)
   const expression = Object.values(candidate.regions).join('/') || '—'
   const percent = formatScore(candidate.score, candidate.maxScore)
   // The badge shows the number without its unit: twenty-five "%" signs to a screen are noise, and
@@ -170,8 +164,29 @@ export const ResultCard = memo(function ResultCard({
           {candidate.contrast}
         </span>
       </span>
-      <code className="truncate text-center text-[11px] text-muted-foreground">
-        {truncate(candidate.address)}
+      {/* The whole address where the tile is wide enough for it, and otherwise the same number of
+          characters from each end with an ellipsis between them: `0x70e9f0a8cb…dd2e804eed5`, never
+          `0x70e9f0a8cb8f…eed5`. Equal halves are the property being defended — a wall of tiles is
+          compared by the shape of the strings under the pictures, and halves that differ read as a
+          damaged address rather than a shortened one.
+
+          Which takes measuring, and this is the one place in the app that earns it. Two flex boxes
+          and `text-overflow` can shorten a line down the middle with no JS at all, but only by
+          giving the leftover space to one side: the prefix ends up several characters longer than
+          the suffix, and no amount of CSS moves an ellipsis into the middle of a single text node.
+          So the row's width is measured, divided by the width of one character in the font the
+          reader actually has, and spent evenly. See lib/use-fitted-address for what that costs —
+          one observer per tile, no layout reads, and a re-render only when a whole character's
+          worth of width appears or disappears.
+
+          `truncate` stays as the net beneath all of it: if a measurement is ever wrong, or has not
+          happened yet, the row clips at its end instead of pushing the tile out of the grid. */}
+      <code
+        ref={address.ref}
+        data-testid="result-address"
+        className="truncate text-center text-[11px] text-muted-foreground"
+      >
+        {address.text}
       </code>
       {/* Last, and stretched over the whole tile: the control the user actually clicks and focuses.
           Below the overlay (z-20) so the copy button above it stays clickable on hover. */}
@@ -179,7 +194,9 @@ export const ResultCard = memo(function ResultCard({
         type="button"
         // Up to two hundred tiles on screen at once, so "which result is this?" has to be in the
         // name itself: the score identifies it at a glance and the address identifies it exactly.
-        // The address is truncated on the tile, so the name is the only place it is complete.
+        // The row below holds as much of the address as the tile can fit, which at every width the
+        // grid actually renders is not all of it, so this is still the only place it is announced
+        // whole — and the one that does not depend on how wide the viewport happens to be.
         aria-label={
           deploying
             ? `View the deploy in progress for ${candidate.address}`
