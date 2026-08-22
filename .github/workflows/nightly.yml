@@ -8,11 +8,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Never cancel: a half-finished network run tells you nothing. Queue instead.
+  group: nightly-network-tests
+  cancel-in-progress: false
+
 jobs:
   network-tests:
     name: network-tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # For the failure report below. Scoped to this job, not the workflow.
+      issues: write
     env:
       # The tests fall back to a public RPC with `?? 'https://…'`, which only catches
       # undefined — an unset repository variable would otherwise pass an empty string
@@ -25,7 +34,45 @@ jobs:
           # Nothing after checkout needs the token; don't leave it in .git/config.
           persist-credentials: false
       - uses: ./.github/actions/setup
+
       - name: Build
-        run: pnpm -r build
+        # Only these two define test:network. `...` pulls in their dependencies, which is how core
+        # gets built; packages/web and its next build are correctly excluded.
+        #
+        # The CLI's package name is `safe-vanity-blockie`, NOT `@safe-vanity-blockie/miner` — the
+        # directory name and the package name differ. A filter that matches nothing only prints
+        # "No projects matched the filters" and exits 0, hence --fail-if-no-match.
+        run: |
+          pnpm --fail-if-no-match \
+            --filter "safe-vanity-blockie..." \
+            --filter "@safe-vanity-blockie/safe-config..." \
+            build
+
       - name: Network tests
         run: pnpm -r test:network
+
+      # A scheduled run that goes red notifies nobody: GitHub mails only the last person to touch
+      # the workflow file, and it disables schedules entirely after 60 days of repo inactivity —
+      # a switched-off job looks exactly like a passing one. This makes failure visible.
+      - name: Report failure as an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title='Nightly network tests are failing'
+          body="$(printf 'The nightly network suite failed on `%s`.\n\n%s/%s/actions/runs/%s\n' \
+            "${GITHUB_SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+
+          # Reuse the open issue if there is one: a suite broken for a week should be one issue
+          # with seven comments, not seven issues.
+          existing="$(gh issue list --state open --search "$title in:title" \
+            --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            # Fall back to an unlabelled issue if the label was never created — reporting the
+            # failure matters more than tagging it.
+            gh issue create --title "$title" --body "$body" --label nightly-failure \
+              || gh issue create --title "$title" --body "$body"
+          fi
