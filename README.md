@@ -1,8 +1,11 @@
 # safe-vanity-blockie
 
 [![CI](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml/badge.svg)](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/ci.yml?query=branch%3Amain)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
+[![Nightly](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/nightly.yml/badge.svg)](https://github.com/tmjssz/safe-vanity-blockie/actions/workflows/nightly.yml)
+[![npm](https://img.shields.io/npm/v/safe-vanity-blockie.svg)](https://www.npmjs.com/package/safe-vanity-blockie)
+[![Live app](https://img.shields.io/badge/live-app-000?logo=vercel)](https://safe-vanity-blockie-web.vercel.app/)
+[![License: MIT](https://img.shields.io/npm/l/safe-vanity-blockie.svg)](LICENSE)
+[![Node](https://img.shields.io/node/v/safe-vanity-blockie.svg)](package.json)
 
 Brute-force a Safe deployment config (`saltNonce`) so the resulting Safe address renders a chosen
 two-color face when drawn by [`blo`](https://github.com/bpierre/blo), the identicon library used by
@@ -45,7 +48,8 @@ your reason combined with those, not a single switch.
     mise exec -- pnpm -r build
     mise exec -- pnpm --filter @safe-vanity-blockie/web dev
 
-It is hosted on Vercel: `main` is production, and every pull request gets its own preview URL. See
+It is hosted on Vercel at <https://safe-vanity-blockie-web.vercel.app/>: `main` is production, and
+every pull request gets its own preview URL. See
 [Hosting](packages/web/README.md#hosting) for the project settings and why the build command is not
 plain `next build`.
 
