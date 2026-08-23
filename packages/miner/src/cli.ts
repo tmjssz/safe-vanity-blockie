@@ -6,11 +6,10 @@ import {
   type Candidate,
   compileFace,
   type FaceSpec,
+  faceSpecForTarget,
   formatScore,
-  getTemplate,
   parseFaceSpec,
   selectReported,
-  TEMPLATES,
 } from '@safe-vanity-blockie/core'
 import { loadSafeConstants, verifyWithProtocolKit } from '@safe-vanity-blockie/safe-config'
 import { CliError, HELP_TEXT, type MineArgs, parseArgs } from './args.js'
@@ -25,10 +24,14 @@ import {
   resultColumnsForWidth,
 } from './report.js'
 
-/** A builtin template name, or a path to a FaceSpec JSON file. */
+/**
+ * A builtin template name, a comma-separated list of expressions, or a path to a FaceSpec JSON file.
+ * The first two are core's to resolve (see `faceSpecForTarget`); only the file case is the CLI's.
+ */
 export function resolveFaceSpec(target: string): FaceSpec {
-  if (Object.hasOwn(TEMPLATES, target)) return getTemplate(target)
-  if (!target.includes('/') && !target.endsWith('.json')) return getTemplate(target) // throws with the list
+  // Anything that is not shaped like a path is a name, and named targets throw with the list of
+  // what would have been accepted — so a typo is never read as a missing file, and vice versa.
+  if (!target.includes('/') && !target.endsWith('.json')) return faceSpecForTarget(target)
 
   let text: string
   try {
