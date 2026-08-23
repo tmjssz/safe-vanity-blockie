@@ -23,12 +23,25 @@ function commandField(): HTMLTextAreaElement {
 
 describe('npxCommandFor', () => {
   it('produces a command that runs the CLI with the same config', () => {
-    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
+    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'faces' })
     expect(command).toContain('npx safe-vanity-blockie')
     expect(command).toContain(`--owners ${config.owners.join(',')}`)
     expect(command).toContain('--threshold 2')
     expect(command).toContain('--safe-version 1.4.1')
     expect(command).toContain('--rpc https://rpc.example')
+    expect(command).toContain('--target faces')
+  })
+
+  // The whole point of the handoff is that the native run searches what the screen searched. The
+  // accepted expressions are part of that standard exactly as the colour and match filters are,
+  // and a command without them silently widened the search back to all five faces.
+  it('names the selected expressions with --target', () => {
+    expect(
+      npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'smile,open' }),
+    ).toContain('--target smile,open')
+    expect(npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'smile' })).toContain(
+      '--target smile',
+    )
   })
 
   // One argument per line, so the command can be read rather than scanned. It used to be a
@@ -38,6 +51,7 @@ describe('npxCommandFor', () => {
   it('puts each argument on its own line', () => {
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: true, minContrast: 80, minMatch: 0 },
     }).split('\n')
 
@@ -47,6 +61,7 @@ describe('npxCommandFor', () => {
       `--threshold ${config.threshold}`,
       `--safe-version ${config.safeVersion}`,
       '--rpc https://rpc.example',
+      '--target faces',
       '--two-color',
       '--min-contrast 80',
       '--min-match 0',
@@ -58,6 +73,7 @@ describe('npxCommandFor', () => {
   it('continues every line but the last, so a paste is still one command', () => {
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: false, minContrast: 0, minMatch: 0 },
     }).split('\n')
 
@@ -68,6 +84,7 @@ describe('npxCommandFor', () => {
   it('passes the two-color and min-contrast filters through, so the CLI search enforces the same standard', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: true, minContrast: 250, minMatch: 0 },
     })
     expect(command).toContain('--two-color')
@@ -81,6 +98,7 @@ describe('npxCommandFor', () => {
   it('passes the match floor through, so the CLI search enforces the same standard', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: true, minContrast: 250, minMatch: 92.5 },
     })
     expect(command).toContain('--min-match 92.5')
@@ -89,13 +107,14 @@ describe('npxCommandFor', () => {
   it('passes --no-two-color when the two-colour filter is off', () => {
     const command = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: false, minContrast: 0, minMatch: 0 },
     })
     expect(command).toContain('--no-two-color')
   })
 
   it('omits filter flags entirely when no filters are given', () => {
-    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
+    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'faces' })
     expect(command).not.toContain('--two-color')
     expect(command).not.toContain('--no-two-color')
     expect(command).not.toContain('--min-contrast')
@@ -110,17 +129,17 @@ describe('npxCommandFor', () => {
 
 describe('CliHandoff', () => {
   it('shows nothing but its trigger until asked', () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     expect(screen.getByRole('button', { name: /run on your machine/i })).toBeDefined()
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(screen.queryByText(/full set of faces/i)).toBeNull()
+    expect(screen.queryByText(/carries over/i)).toBeNull()
   })
 
   // A dialog rather than an expander: it is a page of prose and a command to copy, and expanding
   // it pushed the entire leaderboard down the screen to read something most users read once.
   it('opens as a dialog, titled and dismissable', async () => {
     const user = userEvent.setup()
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
 
     await user.click(screen.getByRole('button', { name: /run on your machine/i }))
     const dialog = await screen.findByRole('dialog')
@@ -131,15 +150,23 @@ describe('CliHandoff', () => {
   })
 
   it('explains why a user would want the CLI', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     expect(screen.getByText(/longer/i)).toBeDefined()
   })
 
-  it('warns that a narrowed subset of expressions has no builtin CLI target', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+  it('says the whole standard on screen carries over, expressions included', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
-    expect(screen.getByText(/full set of faces/i)).toBeDefined()
+    expect(screen.getByText(/carries over/i)).toBeDefined()
+  })
+
+  // The bug this dialog had: a narrowed selection was on screen and absent from the command, so
+  // the native run searched all five expressions instead of the two asked for.
+  it('names the selected expressions in the handed-off command', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="smile,open" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+    expect(commandField().value).toContain('--target smile,open')
   })
 
   it('includes the live filters in the handed-off command', async () => {
@@ -147,6 +174,7 @@ describe('CliHandoff', () => {
       <CliHandoff
         config={config}
         rpcUrl="https://rpc.example"
+        target="faces"
         filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
       />,
     )
@@ -164,12 +192,12 @@ describe('CliHandoff', () => {
     const original = navigator.clipboard
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
 
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     fireEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     // Read off the control's value rather than via getByText: the command is multi-line, and the
     // default matcher collapses whitespace in the element while comparing against the raw string.
-    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example' })
+    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'faces' })
     expect(commandField().value).toBe(command)
 
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
@@ -183,12 +211,14 @@ describe('CliHandoff', () => {
   // soft-wraps by definition, so the whole command is readable at a glance without a class saying
   // so — and the value is the command verbatim, so what gets copied still pastes into a shell.
   it('holds the whole command in a field that wraps rather than scrolling sideways', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const field = commandField()
     expect(field.tagName).toBe('TEXTAREA')
-    expect(field.value).toBe(npxCommandFor(config, { rpcUrl: 'https://rpc.example' }))
+    expect(field.value).toBe(
+      npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'faces' }),
+    )
   })
 
   // The command is derived from the config: there is nothing an edit here could be saved to. But
@@ -196,7 +226,7 @@ describe('CliHandoff', () => {
   // cannot be selected — which would throw away the reason for using a control at all, and with it
   // the manual fallback the copy-failure alert tells the user to reach for.
   it('makes the command selectable and focusable but not editable', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const field = commandField()
@@ -213,6 +243,7 @@ describe('CliHandoff', () => {
       <CliHandoff
         config={config}
         rpcUrl="https://rpc.example"
+        target="faces"
         filters={{ twoColor: false, minContrast: 300, minMatch: 0 }}
       />,
     )
@@ -220,56 +251,87 @@ describe('CliHandoff', () => {
 
     const lines = npxCommandFor(config, {
       rpcUrl: 'https://rpc.example',
+      target: 'faces',
       filters: { twoColor: false, minContrast: 300, minMatch: 0 },
     }).split('\n').length
     expect(lines).toBeGreaterThan(4)
     expect(commandField().rows).toBe(lines)
   })
 
-  // One visible name, not two: the header strip says "bash" on screen, and that is the same word
-  // the control is announced by. An aria-label invented here would give it a second name that no
-  // sighted user can see and no voice-control user can say.
-  it('names the command field by the shell shown in its header', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+  // The header strip that used to carry a `bash` label is gone, and with it the only thing on
+  // screen that named this field — so the name is given here. A field a screen reader announces
+  // as "blank" is the one that is holding what the user came to take away.
+  it('names the command field, now that no visible label does', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    const labelId = commandField().getAttribute('aria-labelledby')
-    expect(labelId).toBeTruthy()
-    expect(document.getElementById(labelId!)?.textContent).toBe('bash')
-    expect(commandField().getAttribute('aria-label')).toBeNull()
+    expect(commandField().getAttribute('aria-label')).toBe('Command')
+    // A pointer left behind by the removed label would name it after nothing at all, which reads
+    // as unnamed to some screen readers and as the whole dialog to others.
+    expect(commandField().getAttribute('aria-labelledby')).toBeNull()
   })
 
-  // Inside the group it copies, in the header strip above the command rather than floating over it:
-  // laid on top it had to be given a lane the text could not use, which cost the command a quarter
-  // of its width on every line to keep one corner clear. The strip costs one row once.
-  it('puts the copy control in the header strip above the command, inside the group', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+  // Over the command's own top-right corner, inside the group it copies — not in furniture of its
+  // own, which is the row this dialog just got back.
+  it('lays the copy control over the top-right corner of the command, inside the group', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const group = (await screen.findByRole('dialog')).querySelector('[data-slot="input-group"]')!
     const copy = screen.getByRole('button', { name: /copy/i })
 
     expect(group.contains(copy)).toBe(true)
-    expect(copy.closest('[data-align="block-start"]')).not.toBeNull()
+    expect(copy.closest('[data-slot="input-group-addon"]')).toBeNull()
+    expect(copy.className).toMatch(/\babsolute\b/)
+    expect(copy.className).toMatch(/\btop-1\.5\b/)
+    expect(copy.className).toMatch(/\bright-1\.5\b/)
+  })
+
+  // Smaller than the 24px it was given in the strip, but not a smaller thing to hit: the padded
+  // pseudo-element keeps the target at the WCAG 2.2 minimum while the box itself reads as 20px.
+  it('draws the copy control at 20px without shrinking what a pointer has to hit', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const copy = screen.getByRole('button', { name: /copy/i })
+    expect(copy.className).toMatch(/\bsize-5\b/)
+    expect(copy.className).toMatch(/before:-inset-0\.5/)
+    // On the glyph itself, because Button's own `[&_svg:not([class*='size-'])]:size-4` outranks
+    // any `[&>svg]` rule set here and would leave a 16px icon in a 20px box.
+    expect(copy.querySelector('svg')?.getAttribute('class')).toMatch(/\bsize-3\b/)
+  })
+
+  // Nothing left of the strip. It said "bash" — one word, one row of furniture — and the command
+  // it labelled is plainly a shell command without it.
+  it('shows no header strip above the command', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(screen.queryByText('bash')).toBeNull()
+    expect(dialog.querySelector('[data-slot="input-group-addon"]')).toBeNull()
   })
 
   // Unboxed, whichever variant supplies that: the control sits inside the command's own frame,
   // where a second box drawn around it is one frame too many. `ghost` is the input group's default
   // and what this relies on — the assertion is that it is not one of the bordered ones.
   it('draws the copy control without a box of its own', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
     const copy = screen.getByRole('button', { name: /copy/i })
     expect(['ghost', 'link']).toContain(copy.getAttribute('data-variant'))
   })
 
-  // With the control in a strip of its own there is nothing to keep clear, so the command gets the
-  // whole width back. This pins the reserve being gone rather than the exact padding around it.
-  it('lets the command use the full width of the group', async () => {
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+  // The corner control has to be cleared, but only by its own width: the version of this that
+  // floated a full-size button reserved a lane the text could not use, a quarter of every line
+  // given up to keep one corner readable. `pr-8` clears a 20px control and nothing more, which is
+  // what this pins — a wide reserve is the regression, not a narrow one.
+  it('reserves no more width than the corner control needs', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
+    expect(commandField().className).toMatch(/\bpr-8\b/)
     expect(commandField().className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
   })
 
@@ -277,7 +339,7 @@ describe('CliHandoff', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 
-    render(<CliHandoff config={config} rpcUrl="https://rpc.example" />)
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     fireEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }))
 

@@ -3,11 +3,13 @@ import { compileFace } from '../src/scoring.js'
 import {
   BASE_TARGET,
   BASE_WEIGHTS,
+  faceSpecForTarget,
   faceWithMouths,
   getTemplate,
   MOUTHS,
   parseFaceSpec,
   TEMPLATES,
+  targetNameForMouths,
 } from '../src/templates.js'
 
 describe('templates', () => {
@@ -50,6 +52,73 @@ describe('templates', () => {
 
   it('faceWithMouths rejects unknown expression names', () => {
     expect(() => faceWithMouths('custom', ['grin'])).toThrow(/unknown mouth "grin"/)
+  })
+
+  it('faceSpecForTarget resolves a builtin template name', () => {
+    expect(faceSpecForTarget('faces')).toBe(getTemplate('faces'))
+    expect(faceSpecForTarget('smile')).toBe(getTemplate('smile'))
+  })
+
+  // The reason the list form exists: the builtins cover only the two ends of the range — one
+  // expression, or all five — while a narrowed selection is exactly what the browser app hands
+  // over. Without this, such a selection had no way to be named on a command line.
+  it('faceSpecForTarget accepts a list of expressions the builtins cannot name', () => {
+    const spec = faceSpecForTarget('smile,frown')
+    expect(spec.name).toBe('smile,frown')
+    expect(spec.regions[0].alternatives.map((alternative) => alternative.name)).toEqual([
+      'smile',
+      'frown',
+    ])
+    // Same ceiling as any other target, so a score copied off the screen means the same thing.
+    expect(compileFace(spec).maxScore).toBe(133)
+  })
+
+  // A quoted "smile, frown" is what a list typed for readability looks like by the time the shell
+  // is done with it.
+  it('faceSpecForTarget ignores spaces around the separator', () => {
+    expect(faceSpecForTarget('smile, frown').regions[0].alternatives).toHaveLength(2)
+  })
+
+  it('faceSpecForTarget names a repeated expression once', () => {
+    const spec = faceSpecForTarget('smile,smile')
+    expect(spec.name).toBe('smile')
+    expect(spec.regions[0].alternatives).toHaveLength(1)
+  })
+
+  it('faceSpecForTarget rejects a list naming something that is not an expression', () => {
+    expect(() => faceSpecForTarget('smile,grin')).toThrow(/unknown target "smile,grin"/)
+    // The error has to name both alphabets: a template is a legal target, an expression is a
+    // legal list entry, and "faces,smile" is a plausible way to get either one wrong.
+    expect(() => faceSpecForTarget('faces,smile')).toThrow(/faces.*smile, frown/s)
+    expect(() => faceSpecForTarget(',')).toThrow(/unknown target/)
+    expect(() => faceSpecForTarget('__proto__,smile')).toThrow(/unknown target/)
+  })
+
+  // Commas, as --owners does it, and only commas: a second list convention in the same CLI is
+  // one more thing to get wrong at the prompt, so the separator --owners does not accept is not
+  // quietly accepted here either.
+  it('faceSpecForTarget takes commas alone as the separator', () => {
+    expect(() => faceSpecForTarget('smile+frown')).toThrow(
+      /unknown target "smile\+frown".*comma-separated/s,
+    )
+  })
+
+  it('targetNameForMouths names the full set by its builtin, and any subset as a list', () => {
+    expect(targetNameForMouths(MOUTHS.map((mouth) => mouth.name))).toBe('faces')
+    expect(targetNameForMouths(['smile'])).toBe('smile')
+    expect(targetNameForMouths(['smile', 'open'])).toBe('smile,open')
+  })
+
+  // The invariant the CLI handoff rests on: whatever the app names a selection, the CLI resolves
+  // that same string back to a target with the same accepted expressions.
+  it('every name targetNameForMouths produces resolves back through faceSpecForTarget', () => {
+    const names = MOUTHS.map((mouth) => mouth.name)
+    for (const selection of [names, ['frown'], ['smile', 'open'], ['neutral', 'small', 'open']]) {
+      const resolved = faceSpecForTarget(targetNameForMouths(selection))
+      expect(
+        resolved.regions[0].alternatives.map((alternative) => alternative.name).sort(),
+      ).toEqual([...selection].sort())
+    }
   })
 
   it('parseFaceSpec round-trips a serialised template', () => {

@@ -1,4 +1,4 @@
-import { compileFace } from '@safe-vanity-blockie/core'
+import { compileFace, faceSpecForTarget } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection, targetGridFor } from '../lib/face-selection'
 
@@ -28,6 +28,22 @@ describe('faceSpecFromSelection', () => {
 
   it('rejects an unknown expression name', () => {
     expect(() => faceSpecFromSelection(['grin'])).toThrow(/unknown mouth "grin"/)
+  })
+
+  // The spec's name is what the CLI handoff passes to `--target`, so it has to be a name the CLI
+  // resolves back to this same set of expressions — see core's faceSpecForTarget.
+  it('names the spec with a target the CLI can resolve', () => {
+    expect(faceSpecFromSelection(ALL_MOUTH_NAMES).name).toBe('faces')
+    expect(faceSpecFromSelection(['smile']).name).toBe('smile')
+    expect(faceSpecFromSelection(['open', 'small']).name).toBe('open,small')
+
+    for (const selection of [ALL_MOUTH_NAMES, ['smile'], ['open', 'small'], ['frown', 'neutral']]) {
+      const spec = faceSpecFromSelection(selection)
+      const resolved = faceSpecForTarget(spec.name)
+      expect(
+        resolved.regions[0].alternatives.map((alternative) => alternative.name).sort(),
+      ).toEqual([...selection].sort())
+    }
   })
 })
 
