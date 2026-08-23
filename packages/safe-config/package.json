@@ -1,6 +1,6 @@
 {
   "name": "@safe-vanity-blockie/safe-config",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Resolve canonical Safe contract addresses and build the setup inputs for counterfactual address derivation",
   "engines": {
     "node": ">=22"
