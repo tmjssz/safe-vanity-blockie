@@ -112,7 +112,7 @@ id and no secrets.
 
 Hosted on Vercel, wired to this GitHub repo:
 
-- **Production** — every push to `main`.
+- **Production** — every push to `main`, at <https://safe-vanity-blockie-web.vercel.app/>.
 - **Preview** — every push to any other branch. Vercel comments the URL on the PR.
 
 Settings in the Vercel dashboard, set once when the project is created:

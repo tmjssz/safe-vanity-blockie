@@ -8,15 +8,21 @@ name: PR title
 #
 # The cost is a second required status check: `pr-title` has to be added to branch protection on
 # main alongside `ci-ok`, or this runs without being able to block a merge.
+#
+# `synchronize` is in the type list because branch protection evaluates a required check against
+# the PR's current head SHA: without a run on every push, the newest head would sit with the check
+# missing and the PR would never become mergeable, however long ago the title itself passed.
 on:
   pull_request:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: read
 
 concurrency:
-  # Editing a title several times in a row only makes the last version worth checking.
+  # Editing a title several times in a row, or pushing several times, only makes the last version
+  # worth checking. Cancelling is safe here: whatever supersedes a run carries an equal-or-newer
+  # head SHA, so the current head always ends up with a result.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -28,6 +34,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The base, not the merge commit. This job is a gate, and a gate must not be validated by
+          # the copy of itself that the pull request is proposing — a PR editing check-pr-title.sh
+          # would otherwise green-light its own unparseable title against its own edited script.
+          # It also sidesteps `refs/pull/N/merge` being stale or absent (conflicted PRs), which
+          # would fail the checkout and turn a required check red for nothing to do with the title.
+          ref: ${{ github.event.pull_request.base.sha }}
           # Nothing here needs the token; don't leave it in .git/config.
           persist-credentials: false
 
