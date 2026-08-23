@@ -258,23 +258,22 @@ describe('CliHandoff', () => {
     expect(commandField().rows).toBe(lines)
   })
 
-  // One visible name, not two: the header strip says "bash" on screen, and that is the same word
-  // the control is announced by. An aria-label invented here would give it a second name that no
-  // sighted user can see and no voice-control user can say.
-  it('names the command field by the shell shown in its header', async () => {
+  // The header strip that used to carry a `bash` label is gone, and with it the only thing on
+  // screen that named this field — so the name is given here. A field a screen reader announces
+  // as "blank" is the one that is holding what the user came to take away.
+  it('names the command field, now that no visible label does', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
-    const labelId = commandField().getAttribute('aria-labelledby')
-    expect(labelId).toBeTruthy()
-    expect(document.getElementById(labelId!)?.textContent).toBe('bash')
-    expect(commandField().getAttribute('aria-label')).toBeNull()
+    expect(commandField().getAttribute('aria-label')).toBe('Command')
+    // A pointer left behind by the removed label would name it after nothing at all, which reads
+    // as unnamed to some screen readers and as the whole dialog to others.
+    expect(commandField().getAttribute('aria-labelledby')).toBeNull()
   })
 
-  // Inside the group it copies, in the header strip above the command rather than floating over it:
-  // laid on top it had to be given a lane the text could not use, which cost the command a quarter
-  // of its width on every line to keep one corner clear. The strip costs one row once.
-  it('puts the copy control in the header strip above the command, inside the group', async () => {
+  // Over the command's own top-right corner, inside the group it copies — not in furniture of its
+  // own, which is the row this dialog just got back.
+  it('lays the copy control over the top-right corner of the command, inside the group', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
@@ -282,7 +281,35 @@ describe('CliHandoff', () => {
     const copy = screen.getByRole('button', { name: /copy/i })
 
     expect(group.contains(copy)).toBe(true)
-    expect(copy.closest('[data-align="block-start"]')).not.toBeNull()
+    expect(copy.closest('[data-slot="input-group-addon"]')).toBeNull()
+    expect(copy.className).toMatch(/\babsolute\b/)
+    expect(copy.className).toMatch(/\btop-1\.5\b/)
+    expect(copy.className).toMatch(/\bright-1\.5\b/)
+  })
+
+  // Smaller than the 24px it was given in the strip, but not a smaller thing to hit: the padded
+  // pseudo-element keeps the target at the WCAG 2.2 minimum while the box itself reads as 20px.
+  it('draws the copy control at 20px without shrinking what a pointer has to hit', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const copy = screen.getByRole('button', { name: /copy/i })
+    expect(copy.className).toMatch(/\bsize-5\b/)
+    expect(copy.className).toMatch(/before:-inset-0\.5/)
+    // On the glyph itself, because Button's own `[&_svg:not([class*='size-'])]:size-4` outranks
+    // any `[&>svg]` rule set here and would leave a 16px icon in a 20px box.
+    expect(copy.querySelector('svg')?.getAttribute('class')).toMatch(/\bsize-3\b/)
+  })
+
+  // Nothing left of the strip. It said "bash" — one word, one row of furniture — and the command
+  // it labelled is plainly a shell command without it.
+  it('shows no header strip above the command', async () => {
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(screen.queryByText('bash')).toBeNull()
+    expect(dialog.querySelector('[data-slot="input-group-addon"]')).toBeNull()
   })
 
   // Unboxed, whichever variant supplies that: the control sits inside the command's own frame,
@@ -296,12 +323,15 @@ describe('CliHandoff', () => {
     expect(['ghost', 'link']).toContain(copy.getAttribute('data-variant'))
   })
 
-  // With the control in a strip of its own there is nothing to keep clear, so the command gets the
-  // whole width back. This pins the reserve being gone rather than the exact padding around it.
-  it('lets the command use the full width of the group', async () => {
+  // The corner control has to be cleared, but only by its own width: the version of this that
+  // floated a full-size button reserved a lane the text could not use, a quarter of every line
+  // given up to keep one corner readable. `pr-8` clears a 20px control and nothing more, which is
+  // what this pins — a wide reserve is the regression, not a narrow one.
+  it('reserves no more width than the corner control needs', async () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
 
+    expect(commandField().className).toMatch(/\bpr-8\b/)
     expect(commandField().className).not.toMatch(/\bpr-(1[0-9]|[2-9][0-9])\b/)
   })
 

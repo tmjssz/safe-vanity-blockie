@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, Copy, Terminal } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { Alert, AlertDescription } from './ui/alert'
@@ -14,13 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from './ui/dialog'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupText,
-  InputGroupTextarea,
-} from './ui/input-group'
+import { InputGroup, InputGroupButton, InputGroupTextarea } from './ui/input-group'
 
 /**
  * `--target` names the accepted expressions, and `--two-color`/`--no-two-color`, `--min-contrast`
@@ -87,7 +81,6 @@ export function CliHandoff({
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | undefined>()
   const command = npxCommandFor(config, { rpcUrl, target, filters })
-  const shellLabelId = useId()
 
   const copy = () => {
     setCopyError(undefined)
@@ -162,8 +155,8 @@ export function CliHandoff({
             Every part of the search on screen carries over exactly, via the flags below: the
             accepted expressions, and your two-colour, contrast and match filters.
           </p>
-          {/* An InputGroup with the command as a read-only textarea, and a header strip above it
-              carrying the shell it is written for and the one control that acts on it.
+          {/* An InputGroup with the command as a read-only textarea and one control laid over its
+              top-right corner.
 
               A textarea rather than the <pre> this was: the command exists to be taken away, and a
               form control is what browsers already make takeable — click puts a caret in it,
@@ -187,41 +180,55 @@ export function CliHandoff({
               `max-h-48` still caps it, for an owner list long enough to need one. What is copied is
               the `command` string in either case, never what happens to be in view.
 
-              The header is `block-start` rather than a row beneath, which is what the addon is
-              for: it puts the label and the control on furniture of their own, so the command gets
-              the full width of every line back without a lane reserved for a floating button.
-              `border-b` draws the strip as a header — the addon's own variants pick that class up
-              and pad against it. */}
+              No header strip: it held a `bash` label and this one control, and a full row of
+              furniture is a lot to spend on a word most readers do not need — the command is
+              plainly a shell command, and the `\` continuations are explained where it matters, in
+              npxCommandFor. The control comes back to the corner it used to float in, at 20px
+              rather than the 24 it had in the strip.
+
+              `pr-8` is the whole cost of that: enough to clear the corner, not the lane a bigger
+              floating button needed. It matters while the field is scrolled, where a line that
+              would otherwise pass under the button is the one thing that can make what is about to
+              be copied unreadable. */}
           <InputGroup className="min-w-0">
             <InputGroupTextarea
               readOnly
               value={command}
               rows={command.split('\n').length}
-              // Named by the header's own label rather than an invented one: "bash" is already on
-              // screen saying what this is, and a second name for a screen reader that does not
-              // match the visible one is how a control comes to be referred to by two names.
-              aria-labelledby={shellLabelId}
-              className="max-h-48 font-mono text-sm"
+              // With the `bash` label gone there is nothing on screen left to name this, so the
+              // name is given here rather than pointed at. It matches the word the copy control
+              // beside it already uses, so the two are not two names for the same thing.
+              aria-label="Command"
+              className="max-h-48 pr-8 font-mono text-sm"
             />
-            <InputGroupAddon align="block-start" className="border-b">
-              <Terminal aria-hidden="true" className="text-muted-foreground" />
-              {/* The shell, not a filename: the command is joined with `\` continuations, which is
-                  a POSIX-shell convention (see npxCommandFor). Someone pasting this into cmd or
-                  PowerShell has to rejoin the lines, and this is the only thing on screen that
-                  says which shell it was written for. */}
-              <InputGroupText id={shellLabelId} className="font-mono">
-                bash
-              </InputGroupText>
-              <InputGroupButton size="icon-xs" className="ml-auto" onClick={copy}>
-                {/* The icon changes with the name because they are one control reporting one
-                    state: a clipboard glyph named "Copied" would be describing the action that is
-                    no longer on offer. Icon-only, so the name is the sr-only text — the whole
-                    control is 24px in a header strip, and a label beside it would be wider than
-                    the strip has room for. */}
-                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                <span className="sr-only">{copied ? 'Copied' : 'Copy command'}</span>
-              </InputGroupButton>
-            </InputGroupAddon>
+            {/* Positioned against the group, which is `relative` (see ui/input-group), rather than
+                wrapped in an addon: every addon alignment is furniture with a row or a lane of its
+                own, and this is meant to sit over the command's own corner.
+
+                `size-5` for the box, with a 24px target restored by the padded pseudo-element —
+                below that a pointer user is aiming at something smaller than the WCAG 2.2 minimum,
+                and this is the one control in the dialog that does the thing the dialog is for. */}
+            <InputGroupButton
+              size="icon-xs"
+              className="absolute top-1.5 right-1.5 size-5 before:absolute before:-inset-0.5 before:content-['']"
+              onClick={copy}
+            >
+              {/* The icon changes with the name because they are one control reporting one
+                  state: a clipboard glyph named "Copied" would be describing the action that is
+                  no longer on offer. Icon-only, so the name is the sr-only text — the whole
+                  control is 20px over the corner of the command, and a label beside it would
+                  cover the command itself. */}
+              {/* Sized on the glyph itself, not with a `[&>svg]` rule on the button: Button's own
+                  `[&_svg:not([class*='size-'])]:size-4` carries a `:not()` and therefore more
+                  specificity than any child rule added here, so it would quietly win and leave a
+                  16px icon in a 20px box. A class on the element takes it out of that `:not()`. */}
+              {copied ? (
+                <Check aria-hidden="true" className="size-3" />
+              ) : (
+                <Copy aria-hidden="true" className="size-3" />
+              )}
+              <span className="sr-only">{copied ? 'Copied' : 'Copy command'}</span>
+            </InputGroupButton>
           </InputGroup>
           {/* Same rule as ShareConfig: the toast fades, this Alert does not — it stays until the
               next successful copy so the fallback (select the field above and copy manually) is never
