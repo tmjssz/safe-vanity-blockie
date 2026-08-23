@@ -1,0 +1,39 @@
+name: PR title
+
+# Its own workflow rather than a job in ci.yml, for two reasons. ci.yml's `pull_request` trigger
+# uses the default event types, which exclude `edited` — adding it there would re-run the whole
+# Node 22/24 matrix every time someone tweaks a title or a description. And ci.yml also runs on
+# `push: main` and `workflow_dispatch`, where there is no PR title at all; a conditional job would
+# report as skipped, which the `ci-ok` gate treats as a failure.
+#
+# The cost is a second required status check: `pr-title` has to be added to branch protection on
+# main alongside `ci-ok`, or this runs without being able to block a merge.
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Editing a title several times in a row only makes the last version worth checking.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here needs the token; don't leave it in .git/config.
+          persist-credentials: false
+
+      # The title reaches the script through the environment rather than being interpolated into
+      # the shell text — the same pattern ci-ok uses, and the one that stops template injection.
+      - name: Check the pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: ./scripts/check-pr-title.sh "$PR_TITLE"
