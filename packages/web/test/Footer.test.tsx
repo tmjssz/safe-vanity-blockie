@@ -7,6 +7,10 @@ import packageJson from '../package.json'
 const REPO_URL = 'https://github.com/tmjssz/safe-vanity-blockie'
 const SAFE_URL = 'https://safe.global'
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function externalLink(name: RegExp) {
   return screen.getByRole('link', { name }) as HTMLAnchorElement
 }
@@ -225,14 +229,14 @@ describe('Footer', () => {
     it('links to the exact commit when a SHA is available', () => {
       vi.stubEnv('VERCEL_GIT_COMMIT_SHA', 'abcdef1234567890')
       render(<Footer />)
-      const link = externalLink(new RegExp(`v${packageJson.version.replace(/\./g, '\\.')}`))
+      const link = externalLink(new RegExp(`v${escapeRegExp(packageJson.version)}`))
       expect(link.href).toBe(`${REPO_URL}/commit/abcdef1234567890`)
     })
 
     it('links to the release tag on a build with no SHA', () => {
       vi.stubEnv('VERCEL_GIT_COMMIT_SHA', '')
       render(<Footer />)
-      const link = externalLink(new RegExp(`v${packageJson.version.replace(/\./g, '\\.')}`))
+      const link = externalLink(new RegExp(`v${escapeRegExp(packageJson.version)}`))
       expect(link.href).toBe(`${REPO_URL}/releases/tag/v${packageJson.version}`)
     })
   })
