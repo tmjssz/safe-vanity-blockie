@@ -85,12 +85,14 @@ export function bloSvg(address: string, size = 64): string {
   }
   const path = (color: Hsl, d: string) =>
     '<path fill="hsl(' + color[0] + ' ' + color[1] + '% ' + color[2] + '%)" d="' + d + '"/>'
+  const numericSize = Number(size)
+  const safeSize = Number.isFinite(numericSize) && numericSize >= 0 ? numericSize : 64
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="optimizeSpeed" ' +
     'width="' +
-    size +
+    safeSize +
     '" height="' +
-    size +
+    safeSize +
     '">' +
     path(b, 'M0,0H8V8H0z') +
     path(c, paths[0]) +
