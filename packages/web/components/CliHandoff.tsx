@@ -23,9 +23,17 @@ import {
 } from './ui/input-group'
 
 /**
- * `--two-color`/`--no-two-color`, `--min-contrast` and `--min-match` map 1:1 onto the browser's
- * live filters (packages/miner/src/args.ts) — passed through so the handed-off search enforces the
- * same standard the user was already looking at, instead of silently reverting to the CLI defaults.
+ * `--target` names the accepted expressions, and `--two-color`/`--no-two-color`, `--min-contrast`
+ * and `--min-match` map 1:1 onto the browser's live filters (packages/miner/src/args.ts) — passed
+ * through so the handed-off search enforces the same standard the user was already looking at,
+ * instead of silently reverting to the CLI defaults.
+ *
+ * `--target` is not optional the way the filters are, because the omission it guards against is
+ * the one that already happened: with the flag left off, the CLI falls back to its own default of
+ * all five expressions, so a command copied off a screen showing two of them searched a wider
+ * target than the screen it came from — and said nothing about having done so. The value is the
+ * FaceSpec's own name (see lib/face-selection), which core's `faceSpecForTarget` resolves back to
+ * exactly these expressions.
  *
  * Every one of them is emitted whenever filters are given, including at a permissive value. The
  * command is a statement of the standard the screen is holding results to, and a flag that appears
@@ -39,13 +47,15 @@ import {
  */
 export function npxCommandFor(
   config: MineConfig,
-  options: { rpcUrl: string; filters?: FaceFilters },
+  options: { rpcUrl: string; target: string; filters?: FaceFilters },
 ): string {
   const args = [
     `--owners ${config.owners.join(',')}`,
     `--threshold ${config.threshold}`,
     `--safe-version ${config.safeVersion}`,
     `--rpc ${options.rpcUrl}`,
+    // In the order `--help` lists them, so a reader can follow the command down the help text.
+    `--target ${options.target}`,
   ]
   if (options.filters) {
     args.push(options.filters.twoColor ? '--two-color' : '--no-two-color')
@@ -65,15 +75,18 @@ const COPY_FAILED_MESSAGE =
 export function CliHandoff({
   config,
   rpcUrl,
+  target,
   filters,
 }: {
   config: MineConfig
   rpcUrl: string
+  /** The `--target` naming the accepted expressions: a FaceSpec name (see `npxCommandFor`). */
+  target: string
   filters?: FaceFilters
 }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | undefined>()
-  const command = npxCommandFor(config, { rpcUrl, filters })
+  const command = npxCommandFor(config, { rpcUrl, target, filters })
   const shellLabelId = useId()
 
   const copy = () => {
@@ -140,10 +153,14 @@ export function CliHandoff({
             intrinsic width and pushes the dialog out past its max, clipping the prose beside it.
             Allowed to shrink, the command field wraps inside the dialog instead of widening it. */}
         <div className="flex min-w-0 flex-col gap-3">
+          {/* This paragraph used to be a caveat: the CLI had no way to name a narrowed subset of
+              expressions, so the command searched all five and only the colour and match filters
+              carried over. `--target` accepts a list of expressions now (core's
+              `faceSpecForTarget`, comma-separated as `--owners` is), so there is nothing left to warn about — the flags below are
+              the whole standard this screen is holding results to. */}
           <p className="text-sm text-muted-foreground">
-            The CLI has no builtin <code>--target</code> for a narrowed subset of expressions, so it
-            searches the full set of faces; your two-colour, contrast and match filters still carry
-            over exactly, via the flags below.
+            Every part of the search on screen carries over exactly, via the flags below: the
+            accepted expressions, and your two-colour, contrast and match filters.
           </p>
           {/* An InputGroup with the command as a read-only textarea, and a header strip above it
               carrying the shell it is written for and the one control that acts on it.
