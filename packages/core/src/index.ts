@@ -38,6 +38,7 @@ export {
 export {
   BASE_TARGET,
   BASE_WEIGHTS,
+  faceSpecForTarget,
   faceWithMouths,
   getTemplate,
   MOUTH_BG_WEIGHT,
@@ -47,6 +48,7 @@ export {
   MOUTHS,
   parseFaceSpec,
   TEMPLATES,
+  targetNameForMouths,
 } from './templates.js'
 export type {
   BloImage,

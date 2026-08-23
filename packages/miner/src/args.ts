@@ -8,7 +8,7 @@ export interface MineArgs {
   threshold: number
   safeVersion: SupportedSafeVersion
   rpcUrl: string
-  /** Builtin template name, or a path to a FaceSpec JSON file. */
+  /** Builtin template name, a comma-separated list of expressions, or a path to a FaceSpec JSON file. */
   target: string
   twoColor: boolean
   minContrast: number
@@ -50,7 +50,9 @@ Mine options:
   --threshold <n>        1          signatures required
   --safe-version <v>     1.4.1      one of: ${SUPPORTED_SAFE_VERSIONS.join(', ')}
   --rpc <url>            required   used once, for chainId and canonical contract addresses
-  --target <name|file>   faces      builtin template or a FaceSpec JSON file
+  --target <name|file>   faces      builtin template (faces, or one expression: smile, frown,
+                                     neutral, open, small), a comma-separated list of expressions
+                                     (e.g. smile,open), or a FaceSpec JSON file
   --two-color            on         only report blockies that use exactly two colours
   --no-two-color                    report three-colour results too
   --min-contrast <n>     0          drop results whose two colours are closer than this (0-442)
