@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Blockie } from '../components/Blockie'
+import { escapeRegExp } from './support/regexp'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890'
 const OTHER_ADDRESS = '0x0987654321098765432109876543210987654321'
@@ -27,7 +28,7 @@ describe('Blockie', () => {
 
   it('labels itself with the address it renders', () => {
     const { getByRole } = render(<Blockie address={ADDRESS} />)
-    expect(getByRole('img', { name: new RegExp(ADDRESS) })).toBeTruthy()
+    expect(getByRole('img', { name: new RegExp(escapeRegExp(ADDRESS)) })).toBeTruthy()
   })
 
   // Memoised, and load-bearing rather than tidy — the same reason DecorativeBlockie is. bloSvg

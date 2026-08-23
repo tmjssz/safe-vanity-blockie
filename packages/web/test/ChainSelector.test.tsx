@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CHAIN_ICON_ATTR } from '../components/ChainIcon'
 import { ChainSelector } from '../components/ChainSelector'
 import { SUPPORTED_CHAINS } from '../lib/config'
+import { escapeRegExp } from './support/regexp'
 
 const SEPOLIA = 11155111
 const POLYGON = 137
@@ -163,7 +164,9 @@ describe('ChainSelector', () => {
     // Every option, not most: a list where some rows have a mark and others do not is harder to
     // scan than one with no marks at all, because the gap reads as meaning something.
     for (const chain of SUPPORTED_CHAINS) {
-      const option = await screen.findByRole('option', { name: new RegExp(chain.name, 'i') })
+      const option = await screen.findByRole('option', {
+        name: new RegExp(escapeRegExp(chain.name), 'i'),
+      })
       expect(iconIn(option, chain.id)).not.toBeNull()
     }
   })

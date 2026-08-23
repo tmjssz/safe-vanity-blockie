@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Footer } from '../components/Footer'
 import packageJson from '../package.json'
+import { escapeRegExp } from './support/regexp'
 
 const REPO_URL = 'https://github.com/tmjssz/safe-vanity-blockie'
 const SAFE_URL = 'https://safe.global'
@@ -190,7 +191,7 @@ describe('Footer', () => {
   it('links the word Safe to safe.global', () => {
     render(<Footer />)
     const link = externalLink(/^Safe$/)
-    expect(link.href).toMatch(new RegExp(`^${SAFE_URL}/?$`))
+    expect(link.href).toMatch(new RegExp(`^${escapeRegExp(SAFE_URL)}/?$`))
     expect(link.target).toBe('_blank')
     expect(link.rel).toContain('noopener')
   })
@@ -209,7 +210,9 @@ describe('Footer', () => {
       expect(text).toContain(packageJson.version)
       expect(text).not.toMatch(/undefined/i)
       // No dangling separator such as "0.1.0 ()" or "0.1.0 -".
-      expect(text).not.toMatch(new RegExp(`${packageJson.version}\\s*[(-]\\s*[)]?(?!\\S)`))
+      expect(text).not.toMatch(
+        new RegExp(`${escapeRegExp(packageJson.version)}\\s*[(-]\\s*[)]?(?!\\S)`),
+      )
     })
 
     it('shows a short commit SHA alongside the version when one is available', () => {
@@ -225,14 +228,14 @@ describe('Footer', () => {
     it('links to the exact commit when a SHA is available', () => {
       vi.stubEnv('VERCEL_GIT_COMMIT_SHA', 'abcdef1234567890')
       render(<Footer />)
-      const link = externalLink(new RegExp(`v${packageJson.version.replace(/\./g, '\\.')}`))
+      const link = externalLink(new RegExp(`v${escapeRegExp(packageJson.version)}`))
       expect(link.href).toBe(`${REPO_URL}/commit/abcdef1234567890`)
     })
 
     it('links to the release tag on a build with no SHA', () => {
       vi.stubEnv('VERCEL_GIT_COMMIT_SHA', '')
       render(<Footer />)
-      const link = externalLink(new RegExp(`v${packageJson.version.replace(/\./g, '\\.')}`))
+      const link = externalLink(new RegExp(`v${escapeRegExp(packageJson.version)}`))
       expect(link.href).toBe(`${REPO_URL}/releases/tag/v${packageJson.version}`)
     })
   })

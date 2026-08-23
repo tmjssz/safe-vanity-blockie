@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FacePicker } from '../components/FacePicker'
 import { DEFAULT_FACE_FILTERS, type FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES, targetGridFor } from '../lib/face-selection'
+import { escapeRegExp } from './support/regexp'
 
 function renderPicker(
   overrides: Partial<{
@@ -53,7 +54,7 @@ function ControlledPicker({
 }
 
 function tile(name: string): HTMLElement {
-  return screen.getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') })
+  return screen.getByRole('checkbox', { name: new RegExp(`^${escapeRegExp(name)}$`, 'i') })
 }
 
 /** The cells one tile actually draws, as "row:col" pairs. */
@@ -265,7 +266,7 @@ describe('FacePicker', () => {
       for (const name of ALL_MOUTH_NAMES) {
         expect(
           screen
-            .getByRole('checkbox', { name: new RegExp(`^${name}$`, 'i') })
+            .getByRole('checkbox', { name: new RegExp(`^${escapeRegExp(name)}$`, 'i') })
             .getAttribute('aria-checked'),
         ).toBe('true')
       }
