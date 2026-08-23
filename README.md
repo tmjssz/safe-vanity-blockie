@@ -147,9 +147,15 @@ results found so far.
 
 ### Targets
 
-`--target` accepts a builtin name (`faces`, `smile`, `frown`, `neutral`, `open`, `small`) or a path
-to a `FaceSpec` JSON file. `faces` pins the eyes and accepts any of the five expressions, crediting
-each candidate with its best-fitting one.
+`--target` accepts a builtin name (`faces`, `smile`, `frown`, `neutral`, `open`, `small`), a
+comma-separated list of expressions, or a path to a `FaceSpec` JSON file. `faces` pins the eyes and
+accepts any of the five expressions, crediting each candidate with its best-fitting one.
+
+A list narrows that set to the expressions you want and nothing else — `--target smile,open`
+accepts either of those two mouths. It is what the web app's "Run on your machine" command uses, so
+a native run searches exactly the target the browser was searching:
+
+    npx safe-vanity-blockie --owners 0xYourOwner --rpc <url> --target smile,open
 
 ### Resuming and merging runs
 

@@ -75,6 +75,67 @@ export function getTemplate(name: string): FaceSpec {
   return TEMPLATES[name]
 }
 
+/**
+ * The name a set of accepted expressions is known by, both as a FaceSpec name and as a `--target`
+ * value: the builtin `faces` when it is all of them, otherwise the names joined by commas.
+ *
+ * Commas because that is the one list separator the CLI already has — `--owners 0x..,0x..` — and a
+ * second convention for a second list is one more thing to remember at the prompt for no gain.
+ *
+ * Lives beside TEMPLATES rather than in the app that needs it, because it is one half of a
+ * round-trip whose other half is `faceSpecForTarget` below — the app names a selection with this,
+ * hands that name to the CLI, and the CLI resolves it back to the same set of expressions. Split
+ * across two packages, the two halves would be free to drift apart with nothing failing.
+ *
+ * Validates nothing: the caller builds the spec from the same names, and `faceWithMouths` is where
+ * an unknown one is caught, with the error that lists the expressions.
+ */
+export function targetNameForMouths(mouthNames: string[]): string {
+  const unique = [...new Set(mouthNames)]
+  const isEveryMouth =
+    unique.length === MOUTHS.length && MOUTHS.every((mouth) => unique.includes(mouth.name))
+  return isEveryMouth ? 'faces' : unique.join(',')
+}
+
+/**
+ * A `--target` name: a builtin template, or a comma-separated list of expressions — so
+ * `smile,frown` accepts either of those two mouths and nothing else.
+ *
+ * The list form exists because the builtins name only the two ends of the range, one expression or
+ * all five, while the browser app accepts any subset of them. A narrowed selection therefore had no
+ * name to be handed to the CLI at all, and the command the app offered for "run this same search
+ * natively" quietly searched a wider target than the screen it was copied from.
+ *
+ * A repeat is deduped rather than rejected: it names the same expression twice, which is not
+ * ambiguous, and a second identical alternative is scoring work for no wider target.
+ */
+export function faceSpecForTarget(target: string): FaceSpec {
+  // Same null-prototype reasoning as TEMPLATES: `hasOwn`, so a URL- or argv-supplied
+  // "constructor" cannot resolve to an inherited key.
+  if (Object.hasOwn(TEMPLATES, target)) return TEMPLATES[target]
+
+  const known = new Set(MOUTHS.map((mouth) => mouth.name))
+  const names = [
+    ...new Set(
+      target
+        .split(',')
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0),
+    ),
+  ]
+  if (names.length === 0 || names.some((name) => !known.has(name))) {
+    // One error for every way of getting this wrong, naming both alphabets: a template is a legal
+    // target and an expression is a legal list entry, so a value like "faces,smile" is a plausible
+    // confusion of the two and neither list alone would explain it. It is also what a `+` between
+    // two otherwise valid expressions lands on, which is the whole message a wrong separator needs.
+    throw new Error(
+      `unknown target "${target}"; expected a template (${Object.keys(TEMPLATES).join(', ')}) ` +
+        `or a comma-separated list of expressions (${MOUTHS.map((mouth) => mouth.name).join(', ')})`,
+    )
+  }
+  return faceWithMouths(targetNameForMouths(names), names)
+}
+
 /** Guards the `entry as Record<string, unknown>` casts below: a null or primitive entry would
  *  otherwise surface as a raw TypeError from the first property read. */
 function requireObject(value: unknown, label: string): Record<string, unknown> {

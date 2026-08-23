@@ -47,7 +47,7 @@ resume where you left off.
 | `--threshold <n>` | `1` | signatures required |
 | `--safe-version <v>` | `1.4.1` | Safe contract version |
 | `--rpc <url>` | required | used once, for chainId and canonical contract addresses |
-| `--target <name\|file>` | `faces` | builtin template or a FaceSpec JSON file |
+| `--target <name\|file>` | `faces` | builtin template (`faces`, or one expression), a comma-separated list of expressions (`smile,open`), or a FaceSpec JSON file |
 | `--two-color` / `--no-two-color` | on | only report blockies using exactly two colours |
 | `--min-contrast <n>` | `0` | drop results whose two colours are closer than this (0–442) |
 | `--min-match <n>` | `0` | drop results matching the face less closely than this (0–100%) |

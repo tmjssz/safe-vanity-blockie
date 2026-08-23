@@ -1124,6 +1124,10 @@ describe('MiningView', () => {
     const command = screen.getByText(/npx safe-vanity-blockie/)
     expect(command.textContent).toContain('--no-two-color')
     expect(command.textContent).toContain('--min-contrast 300')
+    // The same hop for the accepted expressions, which the command left out entirely: without
+    // `--target` the native run searches all five faces whatever this run was narrowed to. The
+    // run's own FaceSpec name IS the target (see lib/face-selection), so this is the wiring.
+    expect(command.textContent).toContain(`--target ${FACE_SPEC.name}`)
   })
 
   it('does not toast when there is no worker error', () => {

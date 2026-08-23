@@ -296,11 +296,15 @@ export function MiningView({
             </Select>
           </>
         )}
-        {/* `filters` goes with it so the copied command enforces the same standard as the
-          screen rather than the CLI's own defaults. */}
+        {/* `target` and `filters` go with it so the copied command enforces the same standard as
+          the screen rather than the CLI's own defaults — which, for the expressions, means all
+          five of them whatever this run was narrowed to. The FaceSpec's name IS its `--target`
+          (see lib/face-selection), so the run on screen and the command that reproduces it cannot
+          name different targets. */}
         <CliHandoff
           config={config}
           rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
+          target={faceSpec.name}
           filters={filters}
         />
       </div>

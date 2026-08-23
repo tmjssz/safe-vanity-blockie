@@ -1,16 +1,26 @@
-import { type FaceSpec, faceWithMouths, MOUTHS } from '@safe-vanity-blockie/core'
+import {
+  type FaceSpec,
+  faceWithMouths,
+  MOUTHS,
+  targetNameForMouths,
+} from '@safe-vanity-blockie/core'
 
 export const ALL_MOUTH_NAMES: string[] = MOUTHS.map((mouth) => mouth.name)
 
 /**
  * A FaceSpec accepting exactly the chosen expressions. Every expression is normalised to the
  * same budget, so accepting more of them widens the target without changing the maximum score.
+ *
+ * Named by core's `targetNameForMouths` rather than by anything of this app's own devising,
+ * because that name is also the `--target` value the CLI handoff hands over (see CliHandoff): the
+ * spec on screen and the command that reproduces it are then the same statement in two places,
+ * and core's `faceSpecForTarget` resolves the name back to this same set of expressions.
  */
 export function faceSpecFromSelection(mouthNames: string[]): FaceSpec {
   if (mouthNames.length === 0) {
     throw new Error('Choose at least one expression: a face needs a mouth to score against.')
   }
-  return faceWithMouths(mouthNames.join('+'), mouthNames)
+  return faceWithMouths(targetNameForMouths(mouthNames), mouthNames)
 }
 
 /**

@@ -43,8 +43,20 @@ describe('resolveFaceSpec', () => {
     expect(() => resolveFaceSpec(file)).toThrow(/could not parse face spec/)
   })
 
+  // What the browser app's "Run on your machine" command hands over for a narrowed selection:
+  // the builtins name one expression or all five, and nothing in between.
+  it('resolves a comma-separated list of expressions, as --owners lists its addresses', () => {
+    const spec = resolveFaceSpec('smile,open')
+    expect(spec.name).toBe('smile,open')
+    expect(spec.regions[0].alternatives.map((alternative) => alternative.name)).toEqual([
+      'smile',
+      'open',
+    ])
+  })
+
   it('rejects an unknown name that is not a file path', () => {
-    expect(() => resolveFaceSpec('grin')).toThrow(/unknown template "grin"/)
+    expect(() => resolveFaceSpec('grin')).toThrow(/unknown target "grin"/)
+    expect(() => resolveFaceSpec('smile,grin')).toThrow(/unknown target "smile,grin"/)
   })
 })
 

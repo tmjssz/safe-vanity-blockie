@@ -44,7 +44,10 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.APP_ID }}
+          # Not app-id: v3 of this action deprecated that input in favour of client-id, which is
+          # also the issuer GitHub's own JWT docs now ask for. The Client ID is a different value
+          # from the numeric App ID — copy it from the App's settings page into APP_CLIENT_ID.
+          client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           # Without these, the token inherits every permission the App installation holds, not
           # just what this job uses. Down-scope to the three release-please actually calls:
@@ -78,5 +81,7 @@ jobs:
           elif [ "$PRS_CREATED" = "true" ]; then
             echo "::notice::release PR opened or refreshed; merge it to release"
           else
-            echo "::notice::nothing to release (no feat/fix commits since the last release)"
+            # prs_created is "created or updated", so it is also false when an open release PR
+            # already matches main. Do not claim there is nothing to release — check the PR list.
+            echo "::notice::no release action taken: either no releasable commits since the last release, or the open release PR is already up to date"
           fi

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MiningStatusBar } from '../components/MiningStatusBar'
+import { escapeRegExp } from './support/regexp'
 
 const OWNER_A = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 const OWNER_B = '0x' + '22'.repeat(20)
@@ -268,7 +269,7 @@ describe('MiningStatusBar', () => {
       renderBar({ ...CONFIG, owners: [OWNER_A, OWNER_B, OWNER_C], threshold: 2 })
 
       expect(screen.getByText(/0xd8dA.*6045/)).toBeDefined()
-      expect(screen.queryByText(new RegExp(OWNER_B))).toBeNull()
+      expect(screen.queryByText(new RegExp(escapeRegExp(OWNER_B)))).toBeNull()
 
       await user.click(screen.getByRole('button', { name: /2 more owners/i }))
 
