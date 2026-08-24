@@ -563,7 +563,14 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           dead button with nothing on screen to fix. */}
       <Collapsible
         open={advancedOpen || Boolean(startNonceComplaint)}
-        onOpenChange={setAdvancedOpen}
+        // A press while a complaint is showing is REFUSED, not deferred: Radix still fires this
+        // with `next = false` (a controlled Collapsible reports what the trigger asked for, not
+        // what `open` ends up being), and recording that refusal would fire it for real the
+        // instant the complaint later clears on its own — unmounting the panel with focus still
+        // inside the input it had just been corrected in, and dropping a keyboard user to <body>.
+        onOpenChange={(next) => {
+          if (next || !startNonceComplaint) setAdvancedOpen(next)
+        }}
       >
         <CollapsibleTrigger asChild>
           {/* Same quiet text-button treatment as "Add another owner": the only filled control on

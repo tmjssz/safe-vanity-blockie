@@ -1014,4 +1014,30 @@ describe('ConfigForm: start from saltNonce', () => {
     expect(startNonceField()).toBeDefined()
     expect(await screen.findByText(/digits only/i)).toBeDefined()
   })
+
+  // The refused press above must not be remembered: a naive `onOpenChange={setAdvancedOpen}`
+  // records the collapse Radix reports even though the panel stays open, and that recorded intent
+  // fires for real the moment the complaint clears on its own — unmounting the field mid-correction
+  // with focus still inside it. This is the path neither test above reaches: this one goes on to
+  // fix the value AFTER the refused press.
+  it('does not carry a refused collapse into the next valid keystroke', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    await user.type(startNonceField(), 'abc')
+    await user.tab()
+    // The refused press: Radix asks to close, the complaint keeps it open.
+    await user.click(advancedToggle())
+    expect(await screen.findByText(/digits only/i)).toBeDefined()
+
+    // Corrected without ever re-opening the disclosure — there is nothing to re-open, the panel
+    // never left. If the refusal above had been recorded, this keystroke is the one that would
+    // unmount the field out from under the cursor correcting it.
+    await user.clear(startNonceField())
+    await user.type(startNonceField(), '500')
+
+    expect(screen.queryByLabelText(/^start from saltnonce$/i)).not.toBeNull()
+    expect(startNonceField()).toBe(document.activeElement)
+  })
 })
