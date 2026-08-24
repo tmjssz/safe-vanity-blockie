@@ -242,14 +242,18 @@ vi.mock('../components/ConfigForm', () => ({
     chainId,
     onSubmit,
   }: {
-    initial?: { owners?: string[]; threshold?: number; safeVersion?: string }
+    initial?: { owners?: string[]; threshold?: number; safeVersion?: string; start?: number }
     chainId: number
-    onSubmit: (config: unknown) => void
+    onSubmit: (config: unknown, run: { start: number }) => void
   }) => (
     <button
       type="button"
       data-initial={initial ? JSON.stringify(initial) : ''}
-      onClick={() => onSubmit({ ...CONFIG, chainId })}
+      // The real form always hands back a `run` alongside the config (see RunOptions); this
+      // mock is not exercising the start-nonce field itself, so it submits the untouched
+      // default rather than the seed it was handed — a real form does the same for a field
+      // nobody opened.
+      onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 0 })}
     >
       submit-config
     </button>
@@ -1866,6 +1870,9 @@ describe('Page', () => {
       owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
+      // Nothing has been mined yet, so there is no resume point to seed — the link never carries
+      // one anyway.
+      start: 0,
     })
     // …and the fourth to the header, which is where the chain is chosen now.
     expect(shownChain()).toContain('Polygon')
@@ -1885,6 +1892,8 @@ describe('Page', () => {
       owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
+      // The mock submitted the untouched default; "Start over" hands that back too.
+      start: 0,
     })
     // The header, though, stays where it is. It is chrome rather than one of Configure's fields,
     // and dropping an unpicked header back to the default would move the user to the OTHER
@@ -1909,7 +1918,7 @@ describe('Page', () => {
 
     expect(
       JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
-    ).toEqual({ owners, threshold: 2, safeVersion: '1.4.1' })
+    ).toEqual({ owners, threshold: 2, safeVersion: '1.4.1', start: 0 })
   })
 
   // The link is read at RENDER, not seeded once at mount. This subtree reaches its first client
@@ -1943,6 +1952,7 @@ describe('Page', () => {
       owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
+      start: 0,
     })
     expect(shownChain()).toContain('Polygon')
 

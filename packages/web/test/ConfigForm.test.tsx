@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfigForm } from '../components/ConfigForm'
+import { maxStartNonce } from '../lib/config'
 
 // Hoisted so each test can drive its own connection state — a module-scoped factory can only ever
 // return one fixed state, and the prefill below is defined entirely by how that state CHANGES.
@@ -23,6 +24,8 @@ const WALLET = '0x' + '99'.repeat(20)
 const ownerField = (n: number) =>
   screen.getByLabelText(new RegExp(`^owner ${n}$`, 'i')) as HTMLInputElement
 const startButton = () => screen.getByRole('button', { name: /^start mining$/i })
+const advancedToggle = () => screen.getByRole('button', { name: /^advanced$/i })
+const startNonceField = () => screen.getByLabelText(/^start from saltnonce$/i) as HTMLInputElement
 const addOwner = () => screen.getByRole('button', { name: /add another owner/i })
 /** Radix renders the threshold Select as a combobox, not a native select. */
 const thresholdTrigger = () => screen.getByRole('combobox', { name: /threshold/i })
@@ -87,12 +90,15 @@ describe('ConfigForm', () => {
     await userEvent.type(ownerField(1), OWNER)
     await userEvent.click(startButton())
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      owners: [OWNER],
-      threshold: 1,
-      safeVersion: '1.4.1',
-      chainId: 1,
-    })
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        owners: [OWNER],
+        threshold: 1,
+        safeVersion: '1.4.1',
+        chainId: 1,
+      },
+      { start: 0 },
+    )
   })
 
   // The "changing them re-rolls every result" warning is no longer the form's to make: it moved
@@ -128,7 +134,9 @@ describe('ConfigForm', () => {
     await userEvent.type(ownerField(1), OWNER)
     await userEvent.click(startButton())
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 11155111 }))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 11155111 }), {
+      start: 0,
+    })
   })
 
   // The chain is picked in the header now, so a chain error has no field to sit under — and
@@ -228,6 +236,7 @@ describe('ConfigForm', () => {
         expect.objectContaining({
           owners: [OWNER, OWNER_B, OWNER_C],
         }),
+        { start: 0 },
       )
     })
 
@@ -253,7 +262,9 @@ describe('ConfigForm', () => {
       expect(ownerField(2).value).toBe(OWNER_C)
 
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER, OWNER_C] }))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER, OWNER_C] }), {
+        start: 0,
+      })
     })
 
     // A row of identically-named boxes, and a row of bare "Remove" buttons, are unusable to a
@@ -421,6 +432,7 @@ describe('ConfigForm', () => {
           owners: [OWNER, OWNER_B],
           threshold: 2,
         }),
+        { start: 0 },
       )
     })
 
@@ -453,6 +465,7 @@ describe('ConfigForm', () => {
           owners: [OWNER, OWNER_B],
           threshold: 2,
         }),
+        { start: 0 },
       )
       expect(screen.queryByText(/exceeds/i)).toBeNull()
     })
@@ -477,6 +490,7 @@ describe('ConfigForm', () => {
           owners: [OWNER],
           threshold: 1,
         }),
+        { start: 0 },
       )
     })
 
@@ -514,6 +528,7 @@ describe('ConfigForm', () => {
           owners: [OWNER, OWNER_B],
           threshold: 2,
         }),
+        { start: 0 },
       )
     })
   })
@@ -563,7 +578,9 @@ describe('ConfigForm', () => {
       expect((startButton() as HTMLButtonElement).disabled).toBe(false)
       expect(screen.queryByText(/not a valid address/i)).toBeNull()
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER] }))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER] }), {
+        start: 0,
+      })
     })
 
     // An unfilled row is not an invalid one. It is the same rule N counts by, so a row that does
@@ -580,7 +597,9 @@ describe('ConfigForm', () => {
       expect(screen.queryByText(/not a valid address/i)).toBeNull()
 
       await user.click(startButton())
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER] }))
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER] }), {
+        start: 0,
+      })
     })
 
     // A disabled control with no reason is worse than a button that explains itself when pressed,
@@ -873,5 +892,126 @@ describe('ConfigForm', () => {
       expect(onSubmit).toHaveBeenCalledOnce()
       expect(onSubmit.mock.calls[0][0].owners).toEqual([WALLET])
     })
+  })
+})
+
+describe('ConfigForm: start from saltNonce', () => {
+  // Pinned so the bound, and the message that names it, are the same on every machine that runs
+  // this suite. Two workers of hardware means one worker of pool (one core stays with the UI).
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true })
+  })
+
+  // The first screen a new visitor sees is owners, threshold, version, Start. This field is for
+  // the returning user resuming a search, so it is reachable rather than present.
+  it('keeps the field behind a collapsed disclosure', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    expect(advancedToggle()).toBeDefined()
+    expect(screen.queryByLabelText(/^start from saltnonce$/i)).toBeNull()
+  })
+
+  it('submits 0 for a field nobody opened', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(startButton())
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ owners: [OWNER] }), {
+      start: 0,
+    })
+  })
+
+  it('carries a typed start through as a number, beside the config rather than inside it', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    await user.type(startNonceField(), '41200000000')
+    await user.click(startButton())
+    const [config, run] = onSubmit.mock.calls[0]
+    expect(run).toEqual({ start: 41_200_000_000 })
+    // The address is derived from the config, and `?config=` encodes exactly that object. A start
+    // that leaked into it would travel in every share link.
+    expect(config).not.toHaveProperty('start')
+  })
+
+  // Blur-then-live, the same schedule the owner rows are on: denouncing "4" as invalid while it
+  // is still being typed is how people learn to ignore these messages.
+  it('complains about a malformed value once the field has been left, and blocks Start', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    await user.type(startNonceField(), '4.12e10')
+    expect(startNonceField().getAttribute('aria-invalid')).toBeNull()
+    await user.tab()
+    expect(await screen.findByText(/digits only/i)).toBeDefined()
+    expect(startNonceField().getAttribute('aria-invalid')).toBe('true')
+    expect((startButton() as HTMLButtonElement).disabled).toBe(true)
+    await user.click(startButton())
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('names the limit, and the worker count it depends on, when the value is too high', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    // One worker on this machine, so the ceiling is MAX_SAFE_INTEGER - WORKER_BLOCK.
+    await user.type(startNonceField(), String(maxStartNonce(1) + 1))
+    await user.tab()
+    const complaint = await screen.findByText(/enter at most/i)
+    expect(complaint.textContent).toContain(maxStartNonce(1).toLocaleString('en-US'))
+    expect(complaint.textContent).toContain('1 worker')
+  })
+
+  it('clears the complaint, and the block, as soon as the value is corrected', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    await user.type(startNonceField(), '1.5')
+    await user.tab()
+    expect((startButton() as HTMLButtonElement).disabled).toBe(true)
+    await user.clear(startNonceField())
+    await user.type(startNonceField(), '500')
+    expect(screen.queryByText(/digits only/i)).toBeNull()
+    expect((startButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  // "Start over" brings the form back holding what it was mining, and the start is part of that:
+  // retyping an eleven-digit resume point is exactly the work this feature exists to avoid.
+  it('opens already holding a seeded start, with the disclosure open', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(startNonceField().value).toBe('41200000000')
+  })
+
+  // A seeded 0 is the same thing as an untouched field, and opening the disclosure to show a zero
+  // would advertise a setting nobody chose.
+  it('stays collapsed for a seeded 0', () => {
+    render(<ConfigForm chainId={1} initial={{ owners: [OWNER], start: 0 }} onSubmit={vi.fn()} />)
+    expect(screen.queryByLabelText(/^start from saltnonce$/i)).toBeNull()
+  })
+
+  // The Start button is disabled with its reason inside the disclosure. Letting the disclosure
+  // close over that reason leaves a dead button and nothing on screen to fix.
+  it('refuses to collapse over a complaint', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    await user.type(ownerField(1), OWNER)
+    await user.click(advancedToggle())
+    await user.type(startNonceField(), 'abc')
+    await user.tab()
+    await user.click(advancedToggle())
+    expect(startNonceField()).toBeDefined()
+    expect(await screen.findByText(/digits only/i)).toBeDefined()
   })
 })
