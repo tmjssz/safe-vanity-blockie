@@ -304,6 +304,10 @@ const miningViewPropsRef = {
     | {
         config?: { chainId: number }
         paused?: boolean
+        // Captured, not rendered: it is the one prop with no visible consequence in this mock,
+        // and the page forwarding it is what makes the Advanced field more than a number the app
+        // collects and throws away.
+        startFrom?: number
         onPauseToggle?: () => void
         onStartOver?: () => void
         onAdjustFilters?: () => void
@@ -315,6 +319,7 @@ vi.mock('../components/MiningView', () => ({
   MiningView: (props: {
     config?: { chainId: number }
     paused?: boolean
+    startFrom?: number
     onPauseToggle?: () => void
     onStartOver?: () => void
     onAdjustFilters?: () => void
@@ -2070,6 +2075,19 @@ describe('Page', () => {
     expect(JSON.parse(form.getAttribute('data-initial') || '{}')).toMatchObject({
       start: 41_200_000_000,
     })
+  })
+
+  // The other end of the same wire, and the one link in it nothing else covered: the page holds
+  // the start the form submitted, and MiningView is what has to receive it. With `startFrom={0}`
+  // hard-coded at that call site the whole suite still passed, and the field would be collected
+  // and thrown away.
+  it('hands the submitted start saltNonce to MiningView', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config-with-start' }))
+
+    expect(miningViewPropsRef.current?.startFrom).toBe(41_200_000_000)
   })
 
   // S1(a). Escape, the X and a backdrop click all unmount DialogContent, and every terminal

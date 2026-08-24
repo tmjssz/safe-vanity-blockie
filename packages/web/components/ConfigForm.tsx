@@ -296,8 +296,9 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    // A press is a way of leaving the field. Without this, a start typed and submitted without
-    // ever blurring would block the button with nothing on screen saying why.
+    // A press is a way of leaving the field, so the complaint stops being withheld as one about
+    // a field nobody has finished with. Belt and braces rather than a fix: an invalid start
+    // disables the button, so the press this would have to rescue cannot land.
     setStartNonceTouched(true)
     const result = validateMineConfig({
       // Every row, in order, exactly as typed. Empties and whitespace are dropped by
@@ -622,10 +623,11 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
               first saltNonce to try; leave empty to start at 0, or paste the resume point from a
               previous run.
             </p>
-            {/* Always mounted, holding its line of space whether or not it has anything to say —
-                the same treatment as an owner row's complaint, and for the same two reasons: a
-                message appearing must not move the control below it, and a live region that is
-                always in the tree is the one screen readers announce reliably. */}
+            {/* Always mounted while the disclosure is open, holding its line of space whether or
+                not it has anything to say — the same treatment as an owner row's complaint, and
+                for the same two reasons: a message appearing must not move the control below it,
+                and a live region that is already in the tree is the one screen readers announce
+                reliably. */}
             <p id={startNonceErrorId} role="alert" className="min-h-5 text-sm text-destructive">
               {startNonceComplaint}
             </p>

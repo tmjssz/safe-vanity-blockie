@@ -14,11 +14,16 @@ import { useState } from 'react'
  * Not in lib/worker-protocol, which would be the obvious home: workers/mine.worker.ts imports that
  * module, and the hook below would pull React into the worker bundle.
  *
- * The `typeof` guard is load-bearing rather than defensive. ConfigForm is a client component that
- * Next still renders on the SERVER, where there is no navigator — and unlike MiningView, which only
- * ever mounts after a submit, it is on screen for that render. Reading navigator unguarded there
- * takes down the whole starting screen. Four is the fallback because it is the commonest core count
- * a browser that declines to answer actually has.
+ * The `typeof` guard is defence for a runtime that defines no `navigator`, and this deployment is
+ * not one. ConfigForm is a client component that Next still renders on the SERVER — and unlike
+ * MiningView, which only ever mounts after a submit, it is on screen for that render — but Node has
+ * defined `navigator.hardwareConcurrency` since 21, so on this repo's Node 24 the guard never
+ * fires: the server render reads the SERVER's core count. That is harmless here because the number
+ * never reaches that render's DOM — the only text carrying it is the field's complaint, which needs
+ * the field touched, and touching happens on the client. The guard stays because it costs a
+ * `typeof` and a runtime without `navigator` would otherwise take the whole starting screen down
+ * with a TypeError. Four is the fallback because it is the commonest core count a browser that
+ * declines to answer actually has.
  */
 export function plannedWorkerCount(): number {
   const cores = typeof navigator === 'undefined' ? 0 : navigator.hardwareConcurrency

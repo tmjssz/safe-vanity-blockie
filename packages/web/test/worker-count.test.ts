@@ -33,9 +33,10 @@ describe('plannedWorkerCount', () => {
     expect(plannedWorkerCount()).toBe(3)
   })
 
-  // ConfigForm reads this during render, and unlike MiningView it renders on the server, where
-  // there is no navigator at all. Throwing here would take the whole starting screen down.
-  it('survives having no navigator, as on the server', () => {
+  // Not the server case: Node has defined navigator.hardwareConcurrency since 21, so this repo's
+  // own SSR render answers it. This pins the guard for a runtime that does not — where ConfigForm
+  // reads this during render and a TypeError would take the whole starting screen down.
+  it('survives a runtime that defines no navigator at all', () => {
     vi.stubGlobal('navigator', undefined)
     expect(plannedWorkerCount()).toBe(3)
   })

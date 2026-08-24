@@ -214,10 +214,11 @@ export function MiningStatusBar({
         <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ConfigSummary config={config} />
           <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-            {/* Gated on `scanned`, not on the value: with a non-zero configured start
-                `nextStartFrom` returns that start before anything has been scanned, and "Resume
-                from 41,200,000,000" over a run that has mined nothing is a claim about progress
-                that has not happened. */}
+            {/* Gated on `scanned`, not on the value: the blocks are handed out before any nonce
+                is tried, so `nextStartFrom` already stands a whole block per worker above the
+                configured start when nothing has been reported — "Resume from 4,041,200,000,000"
+                over a run that has mined nothing is a claim about progress that has not
+                happened, and the size of the number makes it a worse one. */}
             {status.scanned > 0 && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <span>Resume from</span>
@@ -242,11 +243,15 @@ export function MiningStatusBar({
                   align="end"
                   content={
                     <p className="max-w-xs text-sm">
-                      Where a follow-up run should pick this search up: {status.workers} worker
-                      {status.workers === 1 ? '' : 's'} scanned up to here. Nothing before it is
-                      rescanned — but coverage is not complete, because when a run stops the
-                      unfinished tails of its slower workers are skipped, and resuming with a
-                      different worker count skips a different tail.
+                      Where a follow-up run should pick this search up: the point past the far end
+                      of every block this run handed out, across {status.workers} worker
+                      {status.workers === 1 ? '' : 's'}. Nothing already scanned is rescanned — but
+                      this is not a measure of how far the search got, and it sits far above the
+                      nonce count beside it, because those blocks lie side by side rather than end
+                      to end. Coverage is not complete either: each worker keeps to a block of its
+                      own, so whatever its neighbours had not reached when the run stopped is
+                      skipped rather than picked up later, and resuming with a different worker
+                      count skips a different amount.
                     </p>
                   }
                 >

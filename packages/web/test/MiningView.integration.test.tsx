@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MiningView } from '../components/MiningView'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
-import type { WorkerEvent, WorkerRequest } from '../lib/worker-protocol'
+import { WORKER_BLOCK, type WorkerEvent, type WorkerRequest } from '../lib/worker-protocol'
 
 // NEW-2 regression coverage: unlike MiningView.test.tsx (which mocks useMiner entirely, so it
 // cannot see whether a real leaderboard survives a pause/resume cycle), this exercises the real
@@ -72,7 +72,8 @@ function startInputOf(worker: FakeWorker) {
 beforeEach(() => {
   instances.length = 0
   vi.stubGlobal('Worker', FakeWorker)
-  // A single worker keeps range/index arithmetic trivial to reason about in these tests.
+  // A single worker (one core is left for the UI) keeps range/index arithmetic trivial to reason
+  // about in these tests. The case that turns on more than one worker overrides this itself.
   Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true })
 })
 
@@ -429,5 +430,49 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     rerender(view(false))
     expect(instances).toHaveLength(2)
     expect(startInputOf(instances[1]).start).toBe(41_200_000_500)
+  })
+
+  // Every other case here runs one worker, where the block offset in `nextStartFrom` is always
+  // 0 × WORKER_BLOCK and a resume point collapses to start + scanned — the one width at which the
+  // geometry cannot be seen. Two workers is where it bites: the blocks lie side by side, so the
+  // resume point is decided by the LAST block's start and not by the biggest scanned count. Drop
+  // that offset and the follow-up run's first worker walks straight back into ground the second
+  // worker already covered, which is the whole thing the resume point promises not to do.
+  it('carries the last worker’s block offset into the resumed run, not just the scanned total', () => {
+    Object.defineProperty(navigator, 'hardwareConcurrency', { value: 3, configurable: true })
+    const view = (paused: boolean) => (
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={paused}
+        startFrom={41_200_000_000}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />
+    )
+    const { rerender } = render(view(false))
+    expect(instances).toHaveLength(2)
+    expect(startInputOf(instances[0]).start).toBe(41_200_000_000)
+    expect(startInputOf(instances[1]).start).toBe(41_200_000_000 + WORKER_BLOCK)
+
+    // The second worker reports LESS ground than the first, deliberately: it is the one whose
+    // block sits higher, so it is the one that decides the resume point.
+    act(() => instances[0].emit({ type: 'progress', scanned: 900, candidates: [CANDIDATE] }))
+    act(() => instances[1].emit({ type: 'progress', scanned: 400, candidates: [] }))
+    // The count beside the resume point on the bar is the two workers' work added up, and is
+    // nowhere near it — the gap the hint copy exists to explain.
+    expect(screen.getByText(/1,300\s*nonces/)).toBeDefined()
+
+    rerender(view(true))
+    rerender(view(false))
+
+    // A fresh pool of two, picking up past the far end of the higher block — not at
+    // 41,200,000,900, which is where a resume point built from the scanned total alone would put
+    // it, and which would hand worker 0 a block overlapping the one just abandoned.
+    expect(instances).toHaveLength(4)
+    expect(startInputOf(instances[2]).start).toBe(41_200_000_000 + WORKER_BLOCK + 400)
+    expect(startInputOf(instances[3]).start).toBe(41_200_000_000 + 2 * WORKER_BLOCK + 400)
   })
 })

@@ -229,6 +229,15 @@ export interface RunOptions {
  *
  * Clamped at 0 for an absurd worker count, so the form's message can never read "at most
  * -3,000,000,000,000".
+ *
+ * It bounds the FIRST plan and only the first. A pause and resume re-plans from the run's own
+ * `nextStart` (components/MiningView → lib/use-miner), which is higher than where the run began by
+ * up to a block per worker, and nothing consults this ceiling again — so a run started at exactly
+ * the limit the form advertises can put the last worker's block past 2^53 after a single
+ * Pause/Resume, where nonces stop being distinct integers and two workers re-derive the same
+ * addresses with nothing on screen saying so. Deliberately not guarded: no fixed ceiling bounds an
+ * unbounded sequence of resumes, so a runtime clamp would trade a documented edge for silent
+ * behaviour nobody asked for. Start well below the limit if you intend to mine for hours.
  */
 export function maxStartNonce(workers: number): number {
   return Math.max(0, Number.MAX_SAFE_INTEGER - workers * WORKER_BLOCK)

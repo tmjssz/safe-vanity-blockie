@@ -41,9 +41,14 @@ reporting while you scroll through results far below it.
 
 Once anything has been scanned the bar also carries the run's **resume point** — the nonce a
 follow-up run should begin at — as a copyable number beside "Start over", with the worker count and
-the caveat behind it: nothing before that point is rescanned, but coverage is not complete, because
-when a run stops the unfinished tails of its slower workers are skipped. Resuming with a different
-worker count skips a different tail.
+the caveat behind it. The number is the point past the far end of every block the run handed out,
+across all its workers, which is what makes it safe to resume from: nothing already scanned is
+rescanned. It is *not* a measure of how far the search got, and on a multi-worker machine it sits
+far above the nonce count beside it, because the blocks lie side by side rather than end to end — a
+five-worker run that has scanned a million nonces reports a resume point four trillion above where
+it began. Coverage is not complete either: each worker keeps to a block of its own, so whatever its
+neighbours had not reached when the run stopped is skipped rather than picked up later, and resuming
+with a different worker count skips a different amount.
 
 The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
 contrast floor past everything and it goes to 0 while the bar keeps reporting the best result
@@ -116,12 +121,23 @@ CLI's own printed `nextStart`. It accepts digits only, which is stricter than th
 number or a BigInt literal is refused with a message rather than reinterpreted as some other nonce.
 Its ceiling depends on this machine, because the last worker's block sits `workers × 10^12` above
 the start and that far end has to stay a distinct JS integer — so a 32-core desktop accepts a
-slightly lower start than a laptop does, and the message says which limit it is quoting.
+slightly lower start than a laptop does, and the message says which limit it is quoting. That
+ceiling bounds the first plan and only the first: a pause and resume re-plans from the run's own
+resume point, which is higher than where it began, and nothing checks the limit again — so a run
+started at exactly the advertised maximum can put its last worker past 2^53 after a single
+Pause/Resume, where nonces stop being distinct and two workers re-derive the same addresses without
+saying so. There is no guard, deliberately, since no fixed ceiling can bound an unbounded run of
+resumes; start well below the limit if you mean to mine for hours.
 
 Where the search began is deliberately absent from `?config=` share links. A link names an address,
 and an address does not depend on the search that found it. "Run on your machine" does carry it:
-with progress on the board the generated command grows `--workers` and `--start`, as a pair, so the
-native run continues the browser's search instead of repeating it.
+once anything has been scanned — the same condition the bar's resume point appears under, not
+whether any result reached the grid — the generated command grows `--workers` and `--start`, as a
+pair, so the native run continues the browser's search instead of repeating it. Pinning `--workers`
+to the browser's pool has a price worth knowing: it can hold a big machine to a browser tab's worth
+of workers. No-rescan does not require it — any pool starting at the resume point rescans nothing —
+only the symmetry does, so that the tail the native run leaves behind is the same width as the one
+the browser left. Edit the flag out if you would rather have the cores.
 
 ## Wallets
 
