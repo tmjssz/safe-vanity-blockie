@@ -1,6 +1,6 @@
 'use client'
 
-import type { MineConfig } from '../lib/config'
+import type { MineConfig, RunOptions } from '../lib/config'
 import { AboutDialog } from './AboutDialog'
 import { ConfigForm, type ConfigFormProps } from './ConfigForm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
@@ -23,7 +23,7 @@ export function ConfigSection({
   initial?: ConfigFormProps['initial']
   /** The chain chosen in the header, which the form submits as part of the config. */
   chainId: number
-  onSubmit: (config: MineConfig) => void
+  onSubmit: (config: MineConfig, run: RunOptions) => void
 }) {
   return (
     // Narrow and centred, rather than the full content width the results grid uses. The card is a

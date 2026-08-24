@@ -9,6 +9,7 @@ import type { FaceFilters, MineConfig } from '../lib/config'
 import { type ResultSort, useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
 import { chainById } from '../lib/wagmi'
+import { useWorkerCount } from '../lib/worker-count'
 import { useRegisterStartOver } from './AppTitle'
 import { CliHandoff } from './CliHandoff'
 import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from './MiningStatusBar'
@@ -90,6 +91,17 @@ export interface MiningViewProps {
   onAdjustFilters?: () => void
   /** Called with the candidate whose card was clicked; the page opens the deploy dialog for it. */
   onSelect: (candidate: Candidate) => void
+  /**
+   * Where a FRESH run begins. A resume ignores it and continues from `state.nextStart` instead —
+   * that is the difference between "where the user asked the search to start" and "how far this
+   * search has got", and conflating them makes every pause rescan the ground since the start.
+   *
+   * It cannot change while this component is mounted: the Configure card that sets it is unmounted
+   * for the whole run, and the only route back to it unmounts this. It is in the run identity and
+   * the effect deps anyway, because a different start IS a different search, and a value that
+   * silently failed to take effect would be worse than a restart nobody can provoke.
+   */
+  startFrom?: number
 }
 
 export function MiningView({
@@ -102,6 +114,7 @@ export function MiningView({
   deployingAddress,
   onAdjustFilters,
   onSelect,
+  startFrom = 0,
 }: MiningViewProps) {
   const constants = useSafeConstants(config)
   const { state, start, stop, setFilters, setSort } = useMiner()
@@ -109,7 +122,7 @@ export function MiningView({
   // same way the filters are. The hook applies it: it holds the arrival numbers "Newest" needs,
   // and re-ordering there costs no mining progress.
   const [sort, setSortMode] = useState<ResultSort>('best')
-  const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
+  const workers = useWorkerCount()
   const { twoColor, minContrast, minMatch } = filters
   // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
   // reconstructed) and the user's own stop are combined in the page, which is where the second
@@ -161,6 +174,7 @@ export function MiningView({
     initCodeHash?: string
     faceSpec: FaceSpec
     workers: number
+    startFrom: number
   } | null>(null)
 
   // Restart only on what genuinely invalidates the run in progress. twoColor/minContrast/minMatch
@@ -186,8 +200,16 @@ export function MiningView({
       runIdentityRef.current.factory === factory &&
       runIdentityRef.current.initCodeHash === initCodeHash &&
       runIdentityRef.current.faceSpec === faceSpec &&
-      runIdentityRef.current.workers === workers
-    runIdentityRef.current = { initializerHash, factory, initCodeHash, faceSpec, workers }
+      runIdentityRef.current.workers === workers &&
+      runIdentityRef.current.startFrom === startFrom
+    runIdentityRef.current = {
+      initializerHash,
+      factory,
+      initCodeHash,
+      faceSpec,
+      workers,
+      startFrom,
+    }
 
     start({
       constantsHex: constants.data.constantsHex,
@@ -198,10 +220,13 @@ export function MiningView({
       minContrast,
       minMatch,
       resume: sameRun,
-      start: sameRun ? state.nextStart : undefined,
+      // A resume continues from where the run reached; anything else is a fresh run, and a fresh
+      // run begins where the user asked. That covers the chain crossing too: it changes the
+      // constants, so it takes this branch and restarts at the configured start rather than at 0.
+      start: sameRun ? state.nextStart : startFrom,
     })
     return stop
-  }, [initializerHash, factory, initCodeHash, faceSpec, start, stop, workers, paused])
+  }, [initializerHash, factory, initCodeHash, faceSpec, start, stop, workers, paused, startFrom])
 
   // Applies a filter change to the already-mined leaderboard without touching the worker pool.
   useEffect(() => {
@@ -306,6 +331,9 @@ export function MiningView({
           rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
           target={faceSpec.name}
           filters={filters}
+          // Offered only once something has been scanned, and both halves together: `nextStart`
+          // is only a resume point because a worker reported reaching it.
+          resume={state.scanned > 0 ? { start: state.nextStart, workers } : undefined}
         />
       </div>
     </div>
@@ -385,6 +413,7 @@ export function MiningView({
     elapsedMs: state.elapsedMs,
     bestScore: state.bestOverall?.score,
     bestMaxScore: state.bestOverall?.maxScore,
+    nextStart: state.nextStart,
   }
   const statusBar = (
     <MiningStatusBar

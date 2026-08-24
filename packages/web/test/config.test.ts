@@ -3,11 +3,14 @@ import {
   chainSwitchDiscardsResults,
   DEFAULT_FACE_FILTERS,
   isOwnerAddress,
+  maxStartNonce,
   ownerAddressError,
+  parseStartNonce,
   SUPPORTED_CHAINS,
   safeSingletonFor,
   validateMineConfig,
 } from '../lib/config'
+import { WORKER_BLOCK } from '../lib/worker-protocol'
 
 const OWNER_A = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 const OWNER_B = '0x' + '22'.repeat(20)
@@ -182,5 +185,83 @@ describe('DEFAULT_FACE_FILTERS', () => {
   // the eye reliably separates, which made the first run every user sees the least useful one.
   it('defaults to two colours only and a usable minimum contrast', () => {
     expect(DEFAULT_FACE_FILTERS).toEqual({ twoColor: true, minContrast: 80, minMatch: 0 })
+  })
+})
+
+describe('parseStartNonce', () => {
+  // The field's resting state. An empty box is not a mistake to complain about — it is the
+  // default the helper text promises, and the run has to be startable without opening the
+  // disclosure at all.
+  it('reads an empty field as 0', () => {
+    expect(parseStartNonce('', 7)).toEqual({ value: 0 })
+    expect(parseStartNonce('   ', 7)).toEqual({ value: 0 })
+  })
+
+  it('accepts a plain run of digits', () => {
+    expect(parseStartNonce('41200000000', 7)).toEqual({ value: 41_200_000_000 })
+    expect(parseStartNonce('0', 7)).toEqual({ value: 0 })
+  })
+
+  // The value arrives by paste, off a terminal or another tab, so it arrives with whatever
+  // whitespace came with the selection.
+  it('strips the whitespace a paste brings with it', () => {
+    expect(parseStartNonce('  41200000000\n', 7)).toEqual({ value: 41_200_000_000 })
+  })
+
+  // Every one of these is a way the SAME number is legitimately written somewhere else — grouped
+  // by a locale, a BigInt literal, an exponent, hex, a signed value. Number() would accept the
+  // last three of them silently and mine somewhere the user never named, so they are rejected by
+  // shape rather than by what Number makes of them.
+  it.each([
+    ['41,200,000,000', 'thousands separators'],
+    ['41 200 000 000', 'spaced groups'],
+    ['41200000000n', 'a BigInt literal'],
+    ['4.12e10', 'an exponent'],
+    ['0x10', 'hex'],
+    ['1.5', 'a decimal point'],
+    ['-1', 'a sign'],
+    ['+41200000000', 'a leading plus'],
+    ['abc', 'not a number at all'],
+  ])('rejects %s (%s)', (raw) => {
+    const result = parseStartNonce(raw, 7)
+    expect(result.value).toBeUndefined()
+    expect(result.error).toContain('digits only')
+  })
+
+  // The ceiling is not 2^53 flat: the last worker's range sits `workers × WORKER_BLOCK` above the
+  // start, and it is that END that has to stay a safe integer — see the range plan in
+  // worker-protocol.
+  it('accepts the largest start the worker plan leaves room for', () => {
+    const max = maxStartNonce(7)
+    expect(max).toBe(Number.MAX_SAFE_INTEGER - 7 * WORKER_BLOCK)
+    expect(parseStartNonce(String(max), 7)).toEqual({ value: max })
+  })
+
+  it('rejects one past it, naming the limit and the worker count', () => {
+    const result = parseStartNonce(String(maxStartNonce(7) + 1), 7)
+    expect(result.value).toBeUndefined()
+    expect(result.error).toContain(maxStartNonce(7).toLocaleString('en-US'))
+    expect(result.error).toContain('7 workers')
+  })
+
+  // A value that is fine on a 2-core laptop is not fine on a 32-core desktop, because the pool
+  // behind it is wider. The limit has to move with the machine, and say which machine it is on.
+  it('tightens the limit as workers are added', () => {
+    expect(maxStartNonce(32)).toBeLessThan(maxStartNonce(1))
+    const forOneWorker = String(maxStartNonce(1))
+    expect(parseStartNonce(forOneWorker, 1).value).toBe(maxStartNonce(1))
+    expect(parseStartNonce(forOneWorker, 32).error).toContain('32 workers')
+  })
+
+  it('says "worker" in the singular for a one-worker machine', () => {
+    expect(parseStartNonce(String(maxStartNonce(1) + 1), 1).error).toContain('1 worker.')
+  })
+
+  // Far past anything Number can hold, so this is the digits path proving it does not fall over
+  // on a 40-digit paste — it is rejected by the bound, with a limit, not by a NaN.
+  it('rejects a value far outside the number space', () => {
+    const result = parseStartNonce('9'.repeat(40), 7)
+    expect(result.value).toBeUndefined()
+    expect(result.error).toContain('at most')
   })
 })

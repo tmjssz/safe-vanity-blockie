@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, X } from 'lucide-react'
+import { ChevronDown, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
 import {
@@ -8,17 +8,30 @@ import {
   isOwnerAddress,
   type MineConfig,
   ownerAddressError,
+  parseStartNonce,
+  type RunOptions,
   SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
 } from '../lib/config'
+import { useWorkerCount } from '../lib/worker-count'
 import { DecorativeBlockie } from './Blockie'
 import { Button } from './ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 export interface ConfigFormProps {
-  initial?: Partial<{ owners: string[]; threshold: number; safeVersion: string }>
+  initial?: Partial<{
+    owners: string[]
+    threshold: number
+    safeVersion: string
+    /**
+     * The starting saltNonce to seed the field with. Absent, or 0, leaves it empty and the
+     * disclosure closed — a seeded zero is indistinguishable from a field nobody opened.
+     */
+    start: number
+  }>
   /**
    * The chain chosen in the page header. It is still one of the four inputs the address is derived
    * from and still travels in the submitted config and the share link — it is simply no longer
@@ -26,7 +39,11 @@ export interface ConfigFormProps {
    * started without invalidating anything (see `chainSwitchDiscardsResults`).
    */
   chainId: number
-  onSubmit: (config: MineConfig) => void
+  /**
+   * `run` travels beside the config rather than inside it: MineConfig is what `?config=` encodes,
+   * and where a search began is not part of the address it found. See RunOptions.
+   */
+  onSubmit: (config: MineConfig, run: RunOptions) => void
 }
 
 /**
@@ -63,6 +80,17 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? '1.4.1')
   const [errors, setErrors] = useState<ConfigErrors>({})
 
+  // The field's RAW TEXT, not a parsed number. The complaint has to be able to quote what was
+  // typed, and a field that reinterpreted "4.12e10" into 41200000000 as you left it would be
+  // choosing a nonce the user never wrote.
+  const [startNonceInput, setStartNonceInput] = useState(
+    initial?.start ? String(initial.start) : '',
+  )
+  // Same schedule as an owner row: complain after the field has been left once, then live.
+  const [startNonceTouched, setStartNonceTouched] = useState(false)
+  // Open when there is a seeded value to show. A seeded 0 is the default, so it opens nothing.
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.start))
+
   // `initial` does not necessarily exist when this form first renders, and the initialisers above
   // only ever see that first render. page.tsx latches the `?config=` link on FIRST SIGHT rather
   // than capturing it on the first render — its subtree reaches that render through a Suspense
@@ -90,6 +118,12 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
     setOwners(makeRows(initial.owners?.length ? initial.owners : [''], nextRowId))
     if (initial.threshold !== undefined) setThreshold(initial.threshold)
     if (initial.safeVersion !== undefined) setSafeVersion(initial.safeVersion)
+    if (initial.start) {
+      setStartNonceInput(String(initial.start))
+      // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
+      // one silently moves where the search begins.
+      setAdvancedOpen(true)
+    }
   }, [initial])
 
   // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
@@ -128,6 +162,9 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const thresholdId = `${fieldPrefix}-threshold`
   const safeVersionId = `${fieldPrefix}-safe-version`
   const startHintId = `${fieldPrefix}-start-hint`
+  const startNonceFieldId = `${fieldPrefix}-start-nonce`
+  const startNonceHelpId = `${fieldPrefix}-start-nonce-help`
+  const startNonceErrorId = `${fieldPrefix}-start-nonce-error`
 
   // Focus after a row is added or removed, applied once the list has re-rendered. Removing a row
   // destroys the button that had focus, and without this focus falls to <body> — a keyboard user
@@ -166,12 +203,24 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   // added-but-empty row neither counts toward N nor blocks the button, and it never reaches the
   // config either — validateMineConfig drops it. One rule, three places.
   const filled = owners.filter((owner) => owner.value.trim().length > 0)
-  const startBlocker: 'empty' | 'invalid' | undefined =
+
+  // The pool this machine will run, which is what the ceiling on the field depends on: the last
+  // worker's block sits `workers × WORKER_BLOCK` above the start (see maxStartNonce).
+  const workers = useWorkerCount()
+  const startNonce = parseStartNonce(startNonceInput, workers)
+  const startNonceComplaint = startNonceTouched ? startNonce.error : undefined
+
+  // Note the gate reads `startNonce.error`, not `startNonceComplaint`: the button must never be
+  // pressable over a value the submit would reject, whether or not the field has been blurred
+  // yet — the same reason the owner rows' gate above reads the value rather than the touched flag.
+  const startBlocker: 'empty' | 'invalid' | 'start-nonce' | undefined =
     filled.length === 0
       ? 'empty'
       : filled.some((owner) => !isOwnerAddress(owner.value))
         ? 'invalid'
-        : undefined
+        : startNonce.error !== undefined
+          ? 'start-nonce'
+          : undefined
 
   // Every route by which the USER answers this form marks it answered, and nothing else does —
   // see `edited` above. The wallet prefill is deliberately not one of them; "Use connected wallet"
@@ -247,6 +296,10 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
+    // A press is a way of leaving the field, so the complaint stops being withheld as one about
+    // a field nobody has finished with. Belt and braces rather than a fix: an invalid start
+    // disables the button, so the press this would have to rescue cannot land.
+    setStartNonceTouched(true)
     const result = validateMineConfig({
       // Every row, in order, exactly as typed. Empties and whitespace are dropped by
       // validateMineConfig itself — the same filter `signerCount` counts with.
@@ -256,7 +309,9 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
       chainId,
     })
     setErrors(result.errors)
-    if (result.config) onSubmit(result.config)
+    if (result.config && startNonce.value !== undefined) {
+      onSubmit(result.config, { start: startNonce.value })
+    }
   }
 
   return (
@@ -499,6 +554,94 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         </div>
       </div>
 
+      {/* Everything above is a question every run has to answer. This is the one that only a
+          resumed run answers, so it is reachable rather than present: the first screen a new
+          visitor sees stays four controls long, and the returning user pasting an eleven-digit
+          resume point is a click away from the field for it.
+
+          `open` is not simply `advancedOpen`: while the value is invalid the Start button is
+          disabled and its reason lives in here, so collapsing over the complaint would leave a
+          dead button with nothing on screen to fix. */}
+      <Collapsible
+        open={advancedOpen || Boolean(startNonceComplaint)}
+        // A press while a complaint is showing is REFUSED, not deferred: Radix still fires this
+        // with `next = false` (a controlled Collapsible reports what the trigger asked for, not
+        // what `open` ends up being), and recording that refusal would fire it for real the
+        // instant the complaint later clears on its own — unmounting the panel with focus still
+        // inside the input it had just been corrected in, and dropping a keyboard user to <body>.
+        onOpenChange={(next) => {
+          if (next || !startNonceComplaint) setAdvancedOpen(next)
+        }}
+      >
+        <CollapsibleTrigger asChild>
+          {/* Same quiet text-button treatment as "Add another owner": the only filled control on
+              this card is the one that starts the search. */}
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="group/advanced h-auto gap-1 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+          >
+            {/* Points down closed, up open. Rotated rather than swapped for a second glyph so the
+                change is a turn rather than a cut.
+
+                The rotation reads the trigger's data-state through a named GROUP, not off the icon
+                itself. Radix puts `data-state` on the button — `asChild` merges the trigger onto it
+                — and a bare `data-[state=open]:` compiles to a self-selector, so on this SVG it
+                asks the icon about a state the icon never carries and silently never matches. The
+                chevron then points down in both states, which is the only visual cue the disclosure
+                has. Same shape as FaceSection's card chevron, which is where the working version
+                already lived. */}
+            <ChevronDown
+              aria-hidden="true"
+              className="size-4 transition-transform duration-200 group-data-[state=open]/advanced:rotate-180"
+            />
+            Advanced
+          </Button>
+        </CollapsibleTrigger>
+        {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash —
+            same treatment as FaceSection's panel, whose keyframes these are (app/globals.css). */}
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <div className="flex flex-col gap-2 pt-3">
+            <Label htmlFor={startNonceFieldId}>Start from saltNonce</Label>
+            <Input
+              id={startNonceFieldId}
+              value={startNonceInput}
+              onChange={(event) => {
+                // An answer, so the share link must not overwrite it later — the same rule the
+                // owners and the threshold are held to (see `edited`).
+                edited.current = true
+                setStartNonceInput(event.target.value)
+              }}
+              onBlur={() => setStartNonceTouched(true)}
+              // `inputMode` rather than `type="number"`: a number input brings spinners nobody
+              // wants on an eleven-digit nonce, and silently accepts the exponent notation this
+              // field exists to reject. This asks a phone for the digit keypad and nothing else.
+              inputMode="numeric"
+              autoComplete="off"
+              // The value it stands in for, so the field says what leaving it empty means.
+              placeholder="0"
+              aria-invalid={startNonceComplaint ? true : undefined}
+              // The complaint replaces the help text as the description rather than joining it:
+              // both at once reads the rule and the objection to it in one breath.
+              aria-describedby={startNonceComplaint ? startNonceErrorId : startNonceHelpId}
+            />
+            <p id={startNonceHelpId} className="text-sm text-muted-foreground">
+              first saltNonce to try; leave empty to start at 0, or paste the resume point from a
+              previous run.
+            </p>
+            {/* Always mounted while the disclosure is open, holding its line of space whether or
+                not it has anything to say — the same treatment as an owner row's complaint, and
+                for the same two reasons: a message appearing must not move the control below it,
+                and a live region that is already in the tree is the one screen readers announce
+                reliably. */}
+            <p id={startNonceErrorId} role="alert" className="min-h-5 text-sm text-destructive">
+              {startNonceComplaint}
+            </p>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
       {/* The chain is picked in the header, so there is no field to hang this under — but
           validateMineConfig still judges it (an unsupported or zkSync-family chain), and a config
           rejected for a reason the form does not show is a submit button that silently does
@@ -527,7 +670,9 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           <p id={startHintId} className="text-sm text-muted-foreground">
             {startBlocker === 'empty'
               ? 'Add an owner address to start.'
-              : 'Fix the owner address marked above to start.'}
+              : startBlocker === 'invalid'
+                ? 'Fix the owner address marked above to start.'
+                : 'Fix the starting saltNonce under Advanced to start.'}
           </p>
         )}
         <Button

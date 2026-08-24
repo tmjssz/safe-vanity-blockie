@@ -220,4 +220,30 @@ describe('MiningView across a chain switch', () => {
     expect(startInputOf(instances[1]).constantsHex.initCodeHash).toBe(L1_INIT_CODE_HASH)
     expect(noResultCards()).toHaveLength(0)
   })
+
+  it('restarts a chain crossing from the configured start, not from zero', async () => {
+    const view = (config: unknown) => (
+      <MiningView
+        config={config as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        startFrom={41_200_000_000}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />
+    )
+    const { rerender } = render(view(SEPOLIA))
+    await waitFor(() => expect(instances).toHaveLength(1))
+    expect(startInputOf(instances[0]).start).toBe(41_200_000_000)
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+
+    // Crossing to mainnet changes the initCodeHash, so this really is a different search: the
+    // board goes, and the new run begins at the configured start — the field the user set is not
+    // forgotten by a chain switch.
+    rerender(view(MAINNET))
+    await waitFor(() => expect(instances).toHaveLength(2))
+    expect(startInputOf(instances[1]).start).toBe(41_200_000_000)
+  })
 })

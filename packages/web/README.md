@@ -10,9 +10,9 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
 ## Interface
 
 One page, top to bottom: a sticky header carrying the theme toggle and the wallet button, a sticky
-mining bar pinned directly below it, the security caveat, **Configure**, **Face**, and **Results** —
-with a "Run on your machine" disclosure beside the grid's heading that hands you the equivalent
-`npx` command.
+mining bar pinned directly below it, the security caveat, **Configure** (with an *Advanced*
+disclosure for the starting saltNonce), **Face**, and **Results** — with a "Run on your machine"
+disclosure beside the grid's heading that hands you the equivalent `npx` command.
 
 The chain is named with its brand mark wherever it appears: in the header selector and its list,
 in the confirmation for a switch that costs results, on the deploy dialog's wrong-chain button and
@@ -38,6 +38,17 @@ which is not the same as "once mining has started": on a `?config=…` link that
 it shows up already paused, offering Resume, before a single nonce has been scanned, because the
 link's address is being re-derived first. It is fed by the mining state itself, so it keeps
 reporting while you scroll through results far below it.
+
+Once anything has been scanned the bar also carries the run's **resume point** — the nonce a
+follow-up run should begin at — as a copyable number beside "Start over", with the worker count and
+the caveat behind it. The number is the highest end position any one of the run's workers reached,
+which is what makes it safe to resume from: nothing already scanned is rescanned. It is *not* a
+measure of how far the search got, and on a multi-worker machine it sits far above the nonce count
+beside it, because the workers' blocks lie side by side rather than end to end — a five-worker run
+that has scanned a million nonces reports a resume point four trillion above where it began.
+Coverage is not complete either: each worker keeps to a block of its own, so whatever its neighbours
+had not reached when the run stopped is skipped rather than picked up later, and resuming with a
+different worker count skips a different amount.
 
 The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
 contrast floor past everything and it goes to 0 while the bar keeps reporting the best result
@@ -102,6 +113,32 @@ different host. The CLI's measured rate is ~470k nonces/s per worker
 core. Treat all of them as a starting point for your own hardware, not a guarantee: a real focused
 desktop tab with dedicated cores should do at least as well, and a background or mobile tab will
 do considerably worse.
+
+A run does not have to begin at 0. **Start from saltNonce**, under *Advanced* on the Configure card,
+takes the first nonce to try — normally the resume point off a previous run, in this tab or from the
+CLI's own printed `nextStart`. It accepts digits only, which is stricter than the CLI's `--start`
+(that one parses with `Number` and would take `4.12e10`): a value pasted from a locale-grouped
+number or a BigInt literal is refused with a message rather than reinterpreted as some other nonce.
+Its ceiling depends on this machine, because the last worker's block sits `workers × 10^12` above
+the start and that far end has to stay a safe integer — `core`'s deriver rejects anything else — so
+a 32-core desktop accepts a slightly lower start than a laptop does, and the message says which
+limit it is quoting. That ceiling bounds the first plan and only the first: a pause and resume
+re-plans from the run's own resume point, which is higher than where it began, and nothing checks
+the limit again — so a run started near the advertised maximum can put its last worker past 2^53
+after a single Pause/Resume. Nothing is mis-mined if it does: the deriver throws, the worker reports
+it, and the run stops with the error on screen. There is no guard, deliberately, since no fixed
+ceiling can bound an unbounded run of resumes; start well below the limit if you mean to mine for
+hours.
+
+Where the search began is deliberately absent from `?config=` share links. A link names an address,
+and an address does not depend on the search that found it. "Run on your machine" does carry it:
+once anything has been scanned — the same condition the bar's resume point appears under, not
+whether any result reached the grid — the generated command grows `--workers` and `--start`, as a
+pair, so the native run continues the browser's search instead of repeating it. Pinning `--workers`
+to the browser's pool has a price worth knowing: it can hold a big machine to a browser tab's worth
+of workers. No-rescan does not require it — any pool starting at the resume point rescans nothing —
+only the symmetry does, so that the tail the native run leaves behind is the same width as the one
+the browser left. Edit the flag out if you would rather have the cores.
 
 ## Wallets
 

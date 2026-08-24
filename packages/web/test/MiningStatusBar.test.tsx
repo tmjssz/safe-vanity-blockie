@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MiningStatusBar } from '../components/MiningStatusBar'
@@ -24,6 +24,7 @@ const status = {
   elapsedMs: 125_000,
   bestScore: 120,
   bestMaxScore: 133,
+  nextStart: 4_200_500,
 }
 
 describe('MiningStatusBar', () => {
@@ -158,7 +159,10 @@ describe('MiningStatusBar', () => {
         onStartOver={vi.fn()}
       />,
     )
-    expect(screen.getByRole('button', { name: /resume/i })).toBeDefined()
+    // Anchored, not a bare /resume/i: the resume-point copy control's accessible name ("Copy
+    // resume point") also contains the word, and this assertion is about the pause/resume
+    // toggle specifically.
+    expect(screen.getByRole('button', { name: /^resume$/i })).toBeDefined()
   })
 
   it('says so plainly before any candidate exists', () => {
@@ -400,5 +404,78 @@ describe('MiningStatusBar', () => {
       renderBar({ status: { ...status, running: false, paused: false, scanned: 0 } })
       expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
     })
+  })
+})
+
+describe('MiningStatusBar: the resume point', () => {
+  it('shows where a follow-up run should pick up, grouped for reading', () => {
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('4,200,500')).toBeDefined()
+  })
+
+  // Grouped on screen, ungrouped on the clipboard: the separators are for the eye, and a value
+  // pasted into `--start` has to be digits (the CLI would read "4,200,500" as 4).
+  //
+  // fireEvent, not userEvent: userEvent.setup() unconditionally replaces navigator.clipboard with
+  // its own stub (see CopyButton.test.tsx), clobbering the writeText spy stubbed in below.
+  it('copies the bare digits', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /copy resume point/i }))
+    expect(writeText).toHaveBeenCalledWith('4200500')
+    vi.unstubAllGlobals()
+  })
+
+  // `nextStartFrom` returns the START when nothing has been scanned, so a non-zero configured
+  // start would otherwise advertise a resume point for a run that has not begun.
+  it('says nothing before a single nonce has been scanned', () => {
+    render(
+      <MiningStatusBar
+        status={{ ...status, scanned: 0, nextStart: 41_200_000_000 }}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/resume from/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /copy resume point/i })).toBeNull()
+  })
+
+  // The guarantee is no-rescan, NOT full coverage (see nextStartFrom): an early stop leaves the
+  // slower workers' tails unscanned. A number offered as a resume point without that caveat is a
+  // claim the miner does not make.
+  it('says what the number does and does not guarantee', async () => {
+    const user = userEvent.setup()
+    render(
+      <MiningStatusBar
+        status={status}
+        onPauseToggle={vi.fn()}
+        config={CONFIG}
+        resultCount={0}
+        onStartOver={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /what the resume point means/i }))
+    const hint = await screen.findByText(/not complete/i)
+    expect(hint.textContent).toContain('5 workers')
+    expect(hint.textContent).toMatch(/rescan/i)
   })
 })

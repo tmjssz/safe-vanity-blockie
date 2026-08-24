@@ -20,6 +20,7 @@ import {
   DEFAULT_FACE_FILTERS,
   type FaceFilters,
   type MineConfig,
+  type RunOptions,
   validateMineConfig,
 } from '../lib/config'
 import { candidateFromSaltNonce, decodeConfigParam, shareConfigPath } from '../lib/deep-link'
@@ -103,6 +104,9 @@ function HomeContent() {
   )
 
   const [config, setConfig] = useState<MineConfig | undefined>()
+  // Where the search starts. Held here rather than in the form, which is unmounted for the whole
+  // run, and deliberately NOT folded into `config`: that object is what `?config=` encodes.
+  const [startNonce, setStartNonce] = useState(0)
   const [mouths, setMouths] = useState<string[]>(ALL_MOUTH_NAMES)
   const [filters, setFilters] = useState<FaceFilters>(DEFAULT_FACE_FILTERS)
   // The candidate whose deploy dialog is open, together with the config its address was derived
@@ -262,12 +266,16 @@ function HomeContent() {
         owners: linked.owners,
         threshold: linked.threshold,
         safeVersion: linked.safeVersion,
+        // Never from the link — `?config=` does not carry it (and must not). This is the value
+        // this session last submitted, which is what "Start over" has to hand back.
+        start: startNonce,
       }
     : lastSubmitted
       ? {
           owners: lastSubmitted.owners,
           threshold: lastSubmitted.threshold,
           safeVersion: lastSubmitted.safeVersion,
+          start: startNonce,
         }
       : undefined
 
@@ -637,6 +645,9 @@ function HomeContent() {
     // Nothing is running to be paused any more, and the next run must not inherit a stop the
     // user asked of the one before it.
     setPausedByUser(false)
+    // `startNonce` is deliberately NOT reset. The run is discarded; where the user asked the
+    // search to begin is an answer they gave the form, and the form is about to come back asking
+    // it again. Re-typing an eleven-digit resume point is the work this feature exists to avoid.
   }, [chainId, closeSelection])
 
   // Starting a search. With a run already on screen this is a RESTART, and the results below
@@ -645,8 +656,9 @@ function HomeContent() {
   // Safes mined for a config nobody is on any more. The form only submits when it is idle or when
   // its fields have been edited away from the run (a plain resume goes through `toggleMining`
   // instead), so this cannot fire on a press that was only meant to continue.
-  const submitConfig = useCallback((next: MineConfig) => {
+  const submitConfig = useCallback((next: MineConfig, run: RunOptions) => {
     setLastSubmitted(next)
+    setStartNonce(run.start)
     setConfig(next)
     // A fresh run is never born stopped, whatever the previous one was left at.
     setPausedByUser(false)
@@ -1025,6 +1037,7 @@ function HomeContent() {
               // grid ignorant of a card in a subtree it cannot see.
               onAdjustFilters={filtersOpen ? undefined : revealFilters}
               onSelect={selectFromGrid}
+              startFrom={startNonce}
             />
           </>
         )}

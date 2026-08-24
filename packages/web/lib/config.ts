@@ -1,4 +1,5 @@
 import { ZKSYNC_CHAIN_IDS } from '@safe-vanity-blockie/safe-config'
+import { WORKER_BLOCK } from './worker-protocol'
 
 export const SUPPORTED_SAFE_VERSIONS = ['1.4.1', '1.3.0'] as const
 export type SupportedSafeVersion = (typeof SUPPORTED_SAFE_VERSIONS)[number]
@@ -199,4 +200,85 @@ export function validateMineConfig(input: {
     },
     errors: {},
   }
+}
+
+/**
+ * What a run needs that the Safe address does not depend on.
+ *
+ * Deliberately NOT part of MineConfig. That type is what `?config=` encodes (lib/deep-link), and
+ * where a search happened to begin is not part of what a shared address IS: two people who mine
+ * the same Safe from different starting nonces have found the same address, and a link that
+ * carried the difference would invite the recipient to reproduce a search rather than to look at
+ * a result.
+ */
+export interface RunOptions {
+  /** First saltNonce to try. 0 unless the user asked otherwise. */
+  start: number
+}
+
+/**
+ * The highest saltNonce a browser run may start from, given how many workers will share the range
+ * behind it.
+ *
+ * Not 2^53 flat. `planWorkerRanges` gives worker w the block starting at `start + w × WORKER_BLOCK`
+ * (lib/worker-protocol), so the position the LAST worker walks toward is `start + workers ×
+ * WORKER_BLOCK` — and every nonce in between has to stay a safe integer, because core's `derive`
+ * (packages/core/src/address.ts) rejects anything else outright. So the ceiling is the safe-integer
+ * limit minus the whole pool's reach, which is why it tightens as cores are added rather than being
+ * one number for every machine.
+ *
+ * Clamped at 0 for an absurd worker count, so the form's message can never read "at most
+ * -3,000,000,000,000".
+ *
+ * It bounds the FIRST plan and only the first. A pause and resume re-plans from the run's own
+ * `nextStart` (components/MiningView → lib/use-miner), which is higher than where the run began by
+ * up to a block per worker, and nothing consults this ceiling again — so a run started near the
+ * limit the form advertises can put the last worker's block past 2^53 after a single Pause/Resume.
+ * That failure is LOUD, not silent: `derive` throws `derive() needs a non-negative safe integer`,
+ * the worker reports the error, and use-miner tears the pool down and shows the message. Nothing is
+ * mis-mined — the run dies. Deliberately not guarded here, because no fixed ceiling bounds an
+ * unbounded sequence of resumes; the improvement worth making, if this is ever seen in the wild, is
+ * catching that throw and saying "this search has run past the addressable range, start lower"
+ * rather than surfacing an internal message.
+ */
+export function maxStartNonce(workers: number): number {
+  return Math.max(0, Number.MAX_SAFE_INTEGER - workers * WORKER_BLOCK)
+}
+
+const START_NONCE_PATTERN = /^\d+$/
+
+/**
+ * Reads what is in the "Start from saltNonce" field.
+ *
+ * Digits only, which is stricter than the CLI's own `--start` (packages/miner/src/args.ts parses it
+ * with `Number`, and therefore accepts `4.12e10` and `0x10`). The asymmetry is deliberate and in
+ * the safe direction: every value this accepts the CLI accepts too — which is the direction that
+ * matters, since this app's resume point is pasted INTO that CLI — while the formats a number is
+ * legitimately written in elsewhere (a grouped `41,200,000,000`, a BigInt literal, an exponent) are
+ * turned away here with a message instead of being silently reinterpreted as some other nonce.
+ *
+ * The bound is compared in BigInt. Not because Number would misjudge it — anything at or below the
+ * limit is exactly representable, and anything above 2^53 rounds to a value still above it — but
+ * because the bound is a claim about exact integers, and comparing it as one leaves no float
+ * reasoning for the next reader to redo.
+ */
+export function parseStartNonce(raw: string, workers: number): { value?: number; error?: string } {
+  const trimmed = raw.trim()
+  // The default the helper text promises, not an error: the run must be startable without ever
+  // opening the disclosure this field lives in.
+  if (trimmed.length === 0) return { value: 0 }
+  if (!START_NONCE_PATTERN.test(trimmed)) {
+    return {
+      error: 'Enter digits only — no separators, decimal points, exponents, hex or an "n" suffix.',
+    }
+  }
+  const max = maxStartNonce(workers)
+  if (BigInt(trimmed) > BigInt(max)) {
+    return {
+      error: `Enter at most ${max.toLocaleString('en-US')} — the limit on this machine, with ${workers} worker${
+        workers === 1 ? '' : 's'
+      }.`,
+    }
+  }
+  return { value: Number(trimmed) }
 }

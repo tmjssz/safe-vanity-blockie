@@ -182,7 +182,7 @@ describe('ConfigSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^start mining$/i }))
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 }))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ chainId: 137 }), { start: 0 })
   })
 
   // S4. CardTitle renders a <div> by default, so Configure, Face and Deploy were invisible to

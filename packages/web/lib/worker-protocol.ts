@@ -19,6 +19,14 @@ export type WorkerEvent =
 /**
  * Block size handed to each worker on an unbounded run. Large enough that a worker never
  * reaches the next worker's territory.
+ *
+ * packages/miner/src/pool.ts carries the same number, independently, and since the resume point is
+ * copied out of this app and pasted into that CLI's `--start` the two are a numeric contract rather
+ * than a coincidence: the block width is what decides how much ground a stopped run leaves behind,
+ * so a browser and a CLI disagreeing about it means a handed-over search whose gap neither tool can
+ * state. Deliberately not hoisted into a shared package — the CLI does not depend on the web app,
+ * and giving it one to keep a constant in step would be the larger cost — so anyone changing this
+ * changes both.
  */
 export const WORKER_BLOCK = 1_000_000_000_000
 
