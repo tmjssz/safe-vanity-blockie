@@ -41,14 +41,14 @@ reporting while you scroll through results far below it.
 
 Once anything has been scanned the bar also carries the run's **resume point** — the nonce a
 follow-up run should begin at — as a copyable number beside "Start over", with the worker count and
-the caveat behind it. The number is the point past the far end of every block the run handed out,
-across all its workers, which is what makes it safe to resume from: nothing already scanned is
-rescanned. It is *not* a measure of how far the search got, and on a multi-worker machine it sits
-far above the nonce count beside it, because the blocks lie side by side rather than end to end — a
-five-worker run that has scanned a million nonces reports a resume point four trillion above where
-it began. Coverage is not complete either: each worker keeps to a block of its own, so whatever its
-neighbours had not reached when the run stopped is skipped rather than picked up later, and resuming
-with a different worker count skips a different amount.
+the caveat behind it. The number is the highest end position any one of the run's workers reached,
+which is what makes it safe to resume from: nothing already scanned is rescanned. It is *not* a
+measure of how far the search got, and on a multi-worker machine it sits far above the nonce count
+beside it, because the workers' blocks lie side by side rather than end to end — a five-worker run
+that has scanned a million nonces reports a resume point four trillion above where it began.
+Coverage is not complete either: each worker keeps to a block of its own, so whatever its neighbours
+had not reached when the run stopped is skipped rather than picked up later, and resuming with a
+different worker count skips a different amount.
 
 The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
 contrast floor past everything and it goes to 0 while the bar keeps reporting the best result

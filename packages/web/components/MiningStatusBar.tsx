@@ -243,15 +243,15 @@ export function MiningStatusBar({
                   align="end"
                   content={
                     <p className="max-w-xs text-sm">
-                      Where a follow-up run should pick this search up: the point past the far end
-                      of every block this run handed out, across {status.workers} worker
-                      {status.workers === 1 ? '' : 's'}. Nothing already scanned is rescanned — but
-                      this is not a measure of how far the search got, and it sits far above the
-                      nonce count beside it, because those blocks lie side by side rather than end
-                      to end. Coverage is not complete either: each worker keeps to a block of its
-                      own, so whatever its neighbours had not reached when the run stopped is
-                      skipped rather than picked up later, and resuming with a different worker
-                      count skips a different amount.
+                      Where a follow-up run should pick this search up: the highest end position any
+                      one of this run's {status.workers} worker
+                      {status.workers === 1 ? '' : 's'} reached. Nothing already scanned is
+                      rescanned — but this is not a measure of how far the search got, and it sits
+                      far above the nonce count beside it, because the workers' blocks lie side by
+                      side rather than end to end. Coverage is not complete either: each worker
+                      keeps to a block of its own, so whatever its neighbours had not reached when
+                      the run stopped is skipped rather than picked up later, and resuming with a
+                      different worker count skips a different amount.
                     </p>
                   }
                 >
