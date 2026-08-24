@@ -410,6 +410,7 @@ export function MiningView({
     elapsedMs: state.elapsedMs,
     bestScore: state.bestOverall?.score,
     bestMaxScore: state.bestOverall?.maxScore,
+    nextStart: state.nextStart,
   }
   const statusBar = (
     <MiningStatusBar

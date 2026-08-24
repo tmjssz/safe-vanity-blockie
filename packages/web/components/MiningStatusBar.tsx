@@ -1,10 +1,11 @@
 'use client'
 
 import { formatScore } from '@safe-vanity-blockie/core'
-import { Pause, Play, RotateCcw } from 'lucide-react'
+import { Info, Pause, Play, RotateCcw } from 'lucide-react'
 import type { MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
+import { CopyButton } from './CopyButton'
 import { useStartOverConfirm } from './StartOverDialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -32,6 +33,12 @@ export interface MiningStatus {
    */
   bestScore?: number
   bestMaxScore?: number
+  /**
+   * Where a follow-up run should begin: the highest end position any worker reached (see
+   * `nextStartFrom`). Required rather than optional — a bar that silently omitted it would be a
+   * run whose progress cannot be handed on, which is exactly the failure this reports against.
+   */
+  nextStart: number
 }
 
 function formatRate(rate: number): string {
@@ -199,15 +206,56 @@ export function MiningStatusBar({
           )}
         </div>
 
-        {/* Both controls are hard right, one per row. Pause sits with the counters it acts on;
-            Start over sits a row below with the config it discards, and one step quieter. Side by
-            side they were a pixel apart in position and a whole run apart in consequence — and
-            Pause is pressed dozens of times where this is pressed once. */}
+        {/* Both controls hard right, one per row. Pause sits with the counters it acts on; Start
+            over sits a row below with the config it discards, and one step quieter. Side by side
+            they were a pixel apart in position and a whole run apart in consequence. The resume
+            point joins that row rather than the counters above: it belongs with the things you
+            reach for when you are done with this run, not with the figures that tick. */}
         <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ConfigSummary config={config} />
-          {started && (
-            <div className="ml-auto flex items-center">
-              {/* Available while paused too: it is the only route back to the form. */}
+          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
+            {/* Gated on `scanned`, not on the value: with a non-zero configured start
+                `nextStartFrom` returns that start before anything has been scanned, and "Resume
+                from 41,200,000,000" over a run that has mined nothing is a claim about progress
+                that has not happened. */}
+            {status.scanned > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span>Resume from</span>
+                {/* Grouped for the eye and monospaced so the digits line up between publishes;
+                    `tabular-nums` stops the number jittering as it grows. What goes on the
+                    clipboard is the bare digits — see the CopyButton below. */}
+                <span className="font-mono tabular-nums text-foreground">
+                  {status.nextStart.toLocaleString('en-US')}
+                </span>
+                <CopyButton
+                  // Digits only. This value's destination is `--start`, and the CLI parses that
+                  // with Number: a grouped "4,200,500" would be read as 4 and silently rescan
+                  // the whole run.
+                  value={String(status.nextStart)}
+                  label="Copy resume point"
+                  copiedMessage="Resume point copied"
+                  failedMessage="Could not copy automatically. Select the number and copy it manually."
+                />
+                <HintPopover
+                  label="What the resume point means"
+                  side="top"
+                  align="end"
+                  content={
+                    <p className="max-w-xs text-sm">
+                      Where a follow-up run should pick this search up: {status.workers} worker
+                      {status.workers === 1 ? '' : 's'} scanned up to here. Nothing before it is
+                      rescanned — but coverage is not complete, because when a run stops the
+                      unfinished tails of its slower workers are skipped, and resuming with a
+                      different worker count skips a different tail.
+                    </p>
+                  }
+                >
+                  <Info aria-hidden="true" className="size-3.5" />
+                </HintPopover>
+              </div>
+            )}
+            {started && (
+              /* Available while paused too: it is the only route back to the form. */
               <Button
                 variant="ghost"
                 size="sm"
@@ -216,8 +264,8 @@ export function MiningStatusBar({
               >
                 <RotateCcw className="mr-1 size-3" /> Start over
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
