@@ -331,6 +331,9 @@ export function MiningView({
           rpcUrl={chainById(config.chainId).rpcUrls.default.http[0]}
           target={faceSpec.name}
           filters={filters}
+          // Offered only once something has been scanned, and both halves together: `nextStart`
+          // is only a resume point because a worker reported reaching it.
+          resume={state.scanned > 0 ? { start: state.nextStart, workers } : undefined}
         />
       </div>
     </div>

@@ -120,6 +120,50 @@ describe('npxCommandFor', () => {
     expect(command).not.toContain('--min-contrast')
     expect(command).not.toContain('--min-match')
   })
+
+  // The two travel together or not at all. A `--start` without its `--workers` invites a native
+  // run whose skipped tail nobody can account for: the pool's width is what decides which tails
+  // the browser left behind.
+  it('hands the resume point over with the pool that produced it', () => {
+    const command = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      target: 'faces',
+      resume: { start: 41_200_000_000, workers: 7 },
+    })
+    expect(command).toContain('--start 41200000000')
+    expect(command).toContain('--workers 7')
+    // In the order `--help` lists them, so a reader can follow the command down the help text.
+    expect(command.indexOf('--workers')).toBeLessThan(command.indexOf('--start'))
+  })
+
+  // Digits, not a grouped number: the CLI parses `--start` with Number.
+  it('writes the nonce as bare digits', () => {
+    const command = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      target: 'faces',
+      resume: { start: 41_200_000_000, workers: 7 },
+    })
+    expect(command).not.toContain('41,200,000,000')
+  })
+
+  // Nothing scanned yet, so there is nothing to resume from — and a `--start 0` would be a flag
+  // that says only "we thought about it".
+  it('omits both flags when there is no progress to hand over', () => {
+    const command = npxCommandFor(config, { rpcUrl: 'https://rpc.example', target: 'faces' })
+    expect(command).not.toContain('--start')
+    expect(command).not.toContain('--workers')
+  })
+
+  it('still pastes as one command with the resume flags on it', () => {
+    const command = npxCommandFor(config, {
+      rpcUrl: 'https://rpc.example',
+      target: 'faces',
+      resume: { start: 500, workers: 3 },
+    })
+    const lines = command.split('\n')
+    expect(lines.slice(0, -1).every((line) => line.endsWith(' \\'))).toBe(true)
+    expect(lines[lines.length - 1].endsWith('\\')).toBe(false)
+  })
 })
 
 // The handoff is a dialog: its content is unmounted while closed, so every test below opens it
@@ -346,5 +390,24 @@ describe('CliHandoff', () => {
     expect(writeText).toHaveBeenCalledTimes(1)
     expect(await screen.findByRole('button', { name: /^copied$/i })).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('explains the resume flags in the dialog, and only when they are there', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(
+      <CliHandoff
+        config={config}
+        rpcUrl="https://rpc.example"
+        target="faces"
+        resume={{ start: 41_200_000_000, workers: 7 }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /run on your machine/i }))
+    expect(await screen.findByText(/picks up where the browser left off/i)).toBeDefined()
+    unmount()
+
+    render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
+    await user.click(screen.getByRole('button', { name: /run on your machine/i }))
+    expect(screen.queryByText(/picks up where the browser left off/i)).toBeNull()
   })
 })

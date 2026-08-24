@@ -38,10 +38,21 @@ import { InputGroup, InputGroupButton, InputGroupTextarea } from './ui/input-gro
  * keep that true while making the thing readable — a POSIX shell treats the block as one
  * invocation. (A shell that does not use `\` for continuation, cmd or PowerShell, would need the
  * lines rejoined; the previous single line pasted anywhere.)
+ *
+ * `resume` carries `--workers` and `--start` as ONE option rather than two, because they are one
+ * statement: pick this search up where the browser left off, with the pool that produced that
+ * point. `--start` alone would invite a native run whose skipped tail nobody can account for — the
+ * pool's width is what decides which tails an early stop leaves behind (see `nextStartFrom`) — and
+ * `--workers` alone would pin the pool of a run that starts from scratch anyway.
  */
 export function npxCommandFor(
   config: MineConfig,
-  options: { rpcUrl: string; target: string; filters?: FaceFilters },
+  options: {
+    rpcUrl: string
+    target: string
+    filters?: FaceFilters
+    resume?: { start: number; workers: number }
+  },
 ): string {
   const args = [
     `--owners ${config.owners.join(',')}`,
@@ -55,6 +66,11 @@ export function npxCommandFor(
     args.push(options.filters.twoColor ? '--two-color' : '--no-two-color')
     args.push(`--min-contrast ${options.filters.minContrast}`)
     args.push(`--min-match ${options.filters.minMatch}`)
+  }
+  if (options.resume) {
+    // `--help` order again: workers, then start.
+    args.push(`--workers ${options.resume.workers}`)
+    args.push(`--start ${options.resume.start}`)
   }
   // Every line but the last carries the continuation. Putting it on the last one too would leave
   // the shell waiting for an argument that never comes.
@@ -71,16 +87,22 @@ export function CliHandoff({
   rpcUrl,
   target,
   filters,
+  resume,
 }: {
   config: MineConfig
   rpcUrl: string
   /** The `--target` naming the accepted expressions: a FaceSpec name (see `npxCommandFor`). */
   target: string
   filters?: FaceFilters
+  /**
+   * Where the browser run got to, and the pool it got there with. Absent until something has
+   * actually been scanned — a `--start 0` is a flag that says only that someone thought about it.
+   */
+  resume?: { start: number; workers: number }
 }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | undefined>()
-  const command = npxCommandFor(config, { rpcUrl, target, filters })
+  const command = npxCommandFor(config, { rpcUrl, target, filters, resume })
 
   const copy = () => {
     setCopyError(undefined)
@@ -155,6 +177,17 @@ export function CliHandoff({
             Every part of the search on screen carries over exactly, via the flags below: the
             accepted expressions, and your two-colour, contrast and match filters.
           </p>
+          {/* Only when there is something to resume. The dialog's standing promise is that the
+              search carries over exactly; this is the second half of it — that the PROGRESS
+              carries over too, so the native run does not spend its first minutes re-mining what
+              the tab already covered. */}
+          {resume && (
+            <p className="text-sm text-muted-foreground">
+              It also picks up where the browser left off: <code>--start</code> is the resume point
+              this run has reached and <code>--workers</code> is the pool that reached it, so
+              nothing already scanned is scanned again.
+            </p>
+          )}
           {/* An InputGroup with the command as a read-only textarea and one control laid over its
               top-right corner.
 
