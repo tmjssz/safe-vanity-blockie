@@ -246,17 +246,29 @@ vi.mock('../components/ConfigForm', () => ({
     chainId: number
     onSubmit: (config: unknown, run: { start: number }) => void
   }) => (
-    <button
-      type="button"
-      data-initial={initial ? JSON.stringify(initial) : ''}
-      // The real form always hands back a `run` alongside the config (see RunOptions); this
-      // mock is not exercising the start-nonce field itself, so it submits the untouched
-      // default rather than the seed it was handed — a real form does the same for a field
-      // nobody opened.
-      onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 0 })}
-    >
-      submit-config
-    </button>
+    <>
+      <button
+        type="button"
+        data-initial={initial ? JSON.stringify(initial) : ''}
+        // The real form always hands back a `run` alongside the config (see RunOptions); this
+        // mock is not exercising the start-nonce field itself, so it submits the untouched
+        // default rather than the seed it was handed — a real form does the same for a field
+        // nobody opened.
+        onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 0 })}
+      >
+        submit-config
+      </button>
+      {/* Stands in for a submit made after typing into the "Start from saltNonce" field under
+          Advanced — a second button rather than a real field, since this mock does not render
+          one. Exists so a test can put a resume point into the page's `startNonce` state without
+          reaching through the real form, which is exercised separately in ConfigForm.test.tsx. */}
+      <button
+        type="button"
+        onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 41_200_000_000 })}
+      >
+        submit-config-with-start
+      </button>
+    </>
   ),
 }))
 
@@ -2041,6 +2053,22 @@ describe('Page', () => {
       owners: CONFIG.owners,
       threshold: CONFIG.threshold,
       safeVersion: CONFIG.safeVersion,
+    })
+  })
+
+  // The field the user typed under Advanced is not thrown away with the rest of the run: it is
+  // exactly what "Start over" has to hand back, and re-typing an eleven-digit resume point is the
+  // work this feature exists to avoid.
+  it('hands a start saltNonce back to the form after Start over', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config-with-start' }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
+
+    const form = screen.getByRole('button', { name: 'submit-config' })
+    expect(JSON.parse(form.getAttribute('data-initial') || '{}')).toMatchObject({
+      start: 41_200_000_000,
     })
   })
 

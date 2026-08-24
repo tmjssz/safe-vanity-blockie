@@ -1037,6 +1037,7 @@ function HomeContent() {
               // grid ignorant of a card in a subtree it cannot see.
               onAdjustFilters={filtersOpen ? undefined : revealFilters}
               onSelect={selectFromGrid}
+              startFrom={startNonce}
             />
           </>
         )}

@@ -389,4 +389,45 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(startInputOf(lastWorker).start).toBe(0)
     expect(noResultCards()).toHaveLength(0)
   })
+
+  // The configured start reaches the workers, which is the whole point: without this the field
+  // is a number the app collects and throws away.
+  it('starts a fresh run from the configured nonce', () => {
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={false}
+        startFrom={41_200_000_000}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(startInputOf(instances[0]).start).toBe(41_200_000_000)
+  })
+
+  // A resume is measured from where the run REACHED, never from where it was told to begin. With
+  // `startFrom` winning here, every pause would rescan the ground since the configured start.
+  it('resumes from the run’s own progress, not from the configured start', () => {
+    const view = (paused: boolean) => (
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC_A as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused={paused}
+        startFrom={41_200_000_000}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />
+    )
+    const { rerender } = render(view(false))
+    act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
+    rerender(view(true))
+    rerender(view(false))
+    expect(instances).toHaveLength(2)
+    expect(startInputOf(instances[1]).start).toBe(41_200_000_500)
+  })
 })
