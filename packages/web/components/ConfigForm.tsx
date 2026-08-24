@@ -580,14 +580,21 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
             type="button"
             variant="link"
             size="sm"
-            className="h-auto gap-1 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+            className="group/advanced h-auto gap-1 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
           >
             {/* Points down closed, up open. Rotated rather than swapped for a second glyph so the
-                change is a turn rather than a cut; it reads the trigger's own data-state, which
-                Radix puts on this button because of `asChild`. */}
+                change is a turn rather than a cut.
+
+                The rotation reads the trigger's data-state through a named GROUP, not off the icon
+                itself. Radix puts `data-state` on the button — `asChild` merges the trigger onto it
+                — and a bare `data-[state=open]:` compiles to a self-selector, so on this SVG it
+                asks the icon about a state the icon never carries and silently never matches. The
+                chevron then points down in both states, which is the only visual cue the disclosure
+                has. Same shape as FaceSection's card chevron, which is where the working version
+                already lived. */}
             <ChevronDown
               aria-hidden="true"
-              className="size-4 transition-transform duration-200 data-[state=open]:rotate-180"
+              className="size-4 transition-transform duration-200 group-data-[state=open]/advanced:rotate-180"
             />
             Advanced
           </Button>

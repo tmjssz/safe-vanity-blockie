@@ -222,22 +222,24 @@ export interface RunOptions {
  *
  * Not 2^53 flat. `planWorkerRanges` gives worker w the block starting at `start + w × WORKER_BLOCK`
  * (lib/worker-protocol), so the position the LAST worker walks toward is `start + workers ×
- * WORKER_BLOCK` — and every nonce in between has to stay a distinct JS integer, or two different
- * nonces derive the same address and the search quietly stops covering new ground. So the ceiling
- * is the safe-integer limit minus the whole pool's reach, which is why it tightens as cores are
- * added rather than being one number for every machine.
+ * WORKER_BLOCK` — and every nonce in between has to stay a safe integer, because core's `derive`
+ * (packages/core/src/address.ts) rejects anything else outright. So the ceiling is the safe-integer
+ * limit minus the whole pool's reach, which is why it tightens as cores are added rather than being
+ * one number for every machine.
  *
  * Clamped at 0 for an absurd worker count, so the form's message can never read "at most
  * -3,000,000,000,000".
  *
  * It bounds the FIRST plan and only the first. A pause and resume re-plans from the run's own
  * `nextStart` (components/MiningView → lib/use-miner), which is higher than where the run began by
- * up to a block per worker, and nothing consults this ceiling again — so a run started at exactly
- * the limit the form advertises can put the last worker's block past 2^53 after a single
- * Pause/Resume, where nonces stop being distinct integers and two workers re-derive the same
- * addresses with nothing on screen saying so. Deliberately not guarded: no fixed ceiling bounds an
- * unbounded sequence of resumes, so a runtime clamp would trade a documented edge for silent
- * behaviour nobody asked for. Start well below the limit if you intend to mine for hours.
+ * up to a block per worker, and nothing consults this ceiling again — so a run started near the
+ * limit the form advertises can put the last worker's block past 2^53 after a single Pause/Resume.
+ * That failure is LOUD, not silent: `derive` throws `derive() needs a non-negative safe integer`,
+ * the worker reports the error, and use-miner tears the pool down and shows the message. Nothing is
+ * mis-mined — the run dies. Deliberately not guarded here, because no fixed ceiling bounds an
+ * unbounded sequence of resumes; the improvement worth making, if this is ever seen in the wild, is
+ * catching that throw and saying "this search has run past the addressable range, start lower"
+ * rather than surfacing an internal message.
  */
 export function maxStartNonce(workers: number): number {
   return Math.max(0, Number.MAX_SAFE_INTEGER - workers * WORKER_BLOCK)

@@ -120,14 +120,15 @@ CLI's own printed `nextStart`. It accepts digits only, which is stricter than th
 (that one parses with `Number` and would take `4.12e10`): a value pasted from a locale-grouped
 number or a BigInt literal is refused with a message rather than reinterpreted as some other nonce.
 Its ceiling depends on this machine, because the last worker's block sits `workers × 10^12` above
-the start and that far end has to stay a distinct JS integer — so a 32-core desktop accepts a
-slightly lower start than a laptop does, and the message says which limit it is quoting. That
-ceiling bounds the first plan and only the first: a pause and resume re-plans from the run's own
-resume point, which is higher than where it began, and nothing checks the limit again — so a run
-started at exactly the advertised maximum can put its last worker past 2^53 after a single
-Pause/Resume, where nonces stop being distinct and two workers re-derive the same addresses without
-saying so. There is no guard, deliberately, since no fixed ceiling can bound an unbounded run of
-resumes; start well below the limit if you mean to mine for hours.
+the start and that far end has to stay a safe integer — `core`'s deriver rejects anything else — so
+a 32-core desktop accepts a slightly lower start than a laptop does, and the message says which
+limit it is quoting. That ceiling bounds the first plan and only the first: a pause and resume
+re-plans from the run's own resume point, which is higher than where it began, and nothing checks
+the limit again — so a run started near the advertised maximum can put its last worker past 2^53
+after a single Pause/Resume. Nothing is mis-mined if it does: the deriver throws, the worker reports
+it, and the run stops with the error on screen. There is no guard, deliberately, since no fixed
+ceiling can bound an unbounded run of resumes; start well below the limit if you mean to mine for
+hours.
 
 Where the search began is deliberately absent from `?config=` share links. A link names an address,
 and an address does not depend on the search that found it. "Run on your machine" does carry it:
