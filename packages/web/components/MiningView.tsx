@@ -9,6 +9,7 @@ import type { FaceFilters, MineConfig } from '../lib/config'
 import { type ResultSort, useMiner } from '../lib/use-miner'
 import { useSafeConstants } from '../lib/use-safe-constants'
 import { chainById } from '../lib/wagmi'
+import { useWorkerCount } from '../lib/worker-count'
 import { useRegisterStartOver } from './AppTitle'
 import { CliHandoff } from './CliHandoff'
 import { MINING_STATUS_BAR_SLOT_ID, type MiningStatus, MiningStatusBar } from './MiningStatusBar'
@@ -109,7 +110,7 @@ export function MiningView({
   // same way the filters are. The hook applies it: it holds the arrival numbers "Newest" needs,
   // and re-ordering there costs no mining progress.
   const [sort, setSortMode] = useState<ResultSort>('best')
-  const [workers] = useState(() => Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
+  const workers = useWorkerCount()
   const { twoColor, minContrast, minMatch } = filters
   // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
   // reconstructed) and the user's own stop are combined in the page, which is where the second
