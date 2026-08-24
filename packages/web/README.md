@@ -10,9 +10,9 @@ A Next.js app that mines a Safe `saltNonce` in your browser and deploys the resu
 ## Interface
 
 One page, top to bottom: a sticky header carrying the theme toggle and the wallet button, a sticky
-mining bar pinned directly below it, the security caveat, **Configure**, **Face**, and **Results** —
-with a "Run on your machine" disclosure beside the grid's heading that hands you the equivalent
-`npx` command.
+mining bar pinned directly below it, the security caveat, **Configure** (with an *Advanced*
+disclosure for the starting saltNonce), **Face**, and **Results** — with a "Run on your machine"
+disclosure beside the grid's heading that hands you the equivalent `npx` command.
 
 The chain is named with its brand mark wherever it appears: in the header selector and its list,
 in the confirmation for a switch that costs results, on the deploy dialog's wrong-chain button and
@@ -38,6 +38,12 @@ which is not the same as "once mining has started": on a `?config=…` link that
 it shows up already paused, offering Resume, before a single nonce has been scanned, because the
 link's address is being re-derived first. It is fed by the mining state itself, so it keeps
 reporting while you scroll through results far below it.
+
+Once anything has been scanned the bar also carries the run's **resume point** — the nonce a
+follow-up run should begin at — as a copyable number beside "Start over", with the worker count and
+the caveat behind it: nothing before that point is rescanned, but coverage is not complete, because
+when a run stops the unfinished tails of its slower workers are skipped. Resuming with a different
+worker count skips a different tail.
 
 The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
 contrast floor past everything and it goes to 0 while the bar keeps reporting the best result
@@ -102,6 +108,20 @@ different host. The CLI's measured rate is ~470k nonces/s per worker
 core. Treat all of them as a starting point for your own hardware, not a guarantee: a real focused
 desktop tab with dedicated cores should do at least as well, and a background or mobile tab will
 do considerably worse.
+
+A run does not have to begin at 0. **Start from saltNonce**, under *Advanced* on the Configure card,
+takes the first nonce to try — normally the resume point off a previous run, in this tab or from the
+CLI's own printed `nextStart`. It accepts digits only, which is stricter than the CLI's `--start`
+(that one parses with `Number` and would take `4.12e10`): a value pasted from a locale-grouped
+number or a BigInt literal is refused with a message rather than reinterpreted as some other nonce.
+Its ceiling depends on this machine, because the last worker's block sits `workers × 10^12` above
+the start and that far end has to stay a distinct JS integer — so a 32-core desktop accepts a
+slightly lower start than a laptop does, and the message says which limit it is quoting.
+
+Where the search began is deliberately absent from `?config=` share links. A link names an address,
+and an address does not depend on the search that found it. "Run on your machine" does carry it:
+with progress on the board the generated command grows `--workers` and `--start`, as a pair, so the
+native run continues the browser's search instead of repeating it.
 
 ## Wallets
 
