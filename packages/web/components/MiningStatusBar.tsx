@@ -294,11 +294,14 @@ export function MiningStatusBar({
             tick. */}
         <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ConfigSummary config={config} />
-          {/* Gated on `scanned`, not on the value: `nextStartFrom` hands out a whole block per
-              worker before any nonce is tried, so a checkpoint over a run that has mined nothing
-              is a claim about progress that has not happened, and the size of the number makes
-              it a worse one. */}
-          {status.paused && status.scanned > 0 && (
+          {/* Gated on `running`, not on `paused`: a worker error clears `running` and leaves
+              `paused` false (see use-miner), and that is precisely the state whose on-screen
+              advice is "reload the page" — the one moment this number is the only thing that
+              can carry the run across. Gated on `scanned` too, not on the value: `nextStartFrom`
+              hands out a whole block per worker before any nonce is tried, so a checkpoint over
+              a run that has mined nothing is a claim about progress that has not happened, and
+              the size of the number makes it a worse one. */}
+          {!status.running && status.scanned > 0 && (
             <div className="ml-auto flex items-center">
               <CheckpointChip nextStart={status.nextStart} />
             </div>

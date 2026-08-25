@@ -395,6 +395,16 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeDefined()
   })
 
+  // `paused` is not the same as "stopped". A worker `error`, an `onerror` and an
+  // `onmessageerror` all clear `running` and leave `paused` false (see use-miner), and the
+  // message the user gets in that state is "reload the page" — the one moment the checkpoint
+  // is the only thing that can carry the run across, and the moment a `paused` gate would
+  // take it off the bar.
+  it('offers the chip on a run a worker error stopped, not only on a pause', () => {
+    renderBar({ status: { ...status, running: false, paused: false } })
+    expect(screen.getByRole('button', { name: /checkpoint/i })).toBeDefined()
+  })
+
   it('hands the chip the checkpoint this run has reached', async () => {
     const user = userEvent.setup()
     renderBar({ status: pausedStatus })
