@@ -25,7 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
  * this run left behind. CliHandoff emits `--workers` and `--start` as a pair for the same
  * reason; this panel says so rather than handing out the bare digits and hoping.
  */
-export function CheckpointChip({ nextStart, workers }: { nextStart: number; workers: number }) {
+export function CheckpointTrigger({ nextStart, workers }: { nextStart: number; workers: number }) {
   return (
     // Uncontrolled: nothing outside the trigger's own `data-state` ever needs to know whether
     // this is open, so tracking it a second time here would just be a second source for one
