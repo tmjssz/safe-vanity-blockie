@@ -25,19 +25,17 @@ describe('CheckpointTrigger', () => {
     expect(await screen.findByText('60,000,016,650,000')).toBeDefined()
   })
 
-  // The trigger is the last item of the summary line, which starts at the left edge of the bar
-  // and runs only as far as the config needs. A panel aligned to its right edge would open to
-  // the left of a trigger that has the whole width of the page to its right.
-  it('aligns the panel to the start of the trigger', async () => {
+  // The trigger is pinned to the right edge of the summary line, so it has the whole width of
+  // the page to its left and none of it to its right. A 320px panel aligned to its left edge
+  // would hang off the side.
+  it('aligns the panel to the end of the trigger', async () => {
     const user = userEvent.setup()
     render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
     const content = await screen.findByText('60,000,016,650,000')
-    expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe(
-      'start',
-    )
+    expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe('end')
   })
 
   it('says what the number is for', async () => {

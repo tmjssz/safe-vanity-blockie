@@ -514,32 +514,45 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(container.textContent).not.toMatch(/4,200,500/)
   })
 
-  // Last of the dot-separated items, in among the config it belongs to, rather than a control
-  // pinned to the far side of a row whose only other content starts at the left edge. Two
-  // things anchored to opposite ends of one line reads as two unrelated groups.
-  it('ends the config summary, with nothing on that row pinned right', () => {
+  // Pinned to the right edge of the config line, not trailing the dot-separated facts. It is the
+  // only thing on that row that does something, where the rest of the line is there to be read,
+  // and it ends at the same edge the stats group on the row above does.
+  it('sits at the right end of the config line, a row below the controls', () => {
     const { container } = renderBar({ status: pausedStatus })
     const rows = container.querySelectorAll('[data-slot="status-row"]')
     const trigger = screen.getByRole('button', { name: /checkpoint/i })
     const resume = screen.getByRole('button', { name: /^resume$/i })
 
     expect(rows[0].contains(resume)).toBe(true)
-    const summary = rows[1].firstElementChild
-    expect(summary?.contains(trigger)).toBe(true)
-    expect(summary?.lastElementChild).toBe(trigger)
-    expect(rows[1].innerHTML).not.toMatch(/ml-auto/)
+    expect(rows[1].contains(trigger)).toBe(true)
+    expect(trigger.parentElement?.className).toMatch(/ml-auto/)
   })
 
-  // The separator earns its place: without it "Safe 1.4.1 Checkpoint" runs together as one
-  // phrase, and the trigger stops looking like an item of its own.
-  it('is separated from the rest of the summary the same way the rest of it is', () => {
+  // The trigger is a plain button with no type size of its own. While it lived among the
+  // summary's facts it inherited theirs; as a sibling of the summary it would fall back to the
+  // page's 16px and sit a size above every other word on the bar. The row declares the size for
+  // everything on it, the way the stats row above declares its own.
+  it('is drawn at the same size as the rest of the bar', () => {
+    const { container } = renderBar({ status: pausedStatus })
+    const rows = container.querySelectorAll('[data-slot="status-row"]')
+    const trigger = screen.getByRole('button', { name: /checkpoint/i })
+
+    expect(rows[1].contains(trigger)).toBe(true)
+    expect(rows[1].className.split(/\s+/)).toContain('text-sm')
+    expect(rows[0].className.split(/\s+/)).toContain('text-sm')
+    // Nothing between the row and the trigger overrides it.
+    expect(trigger.className).not.toMatch(/(^|\s)text-(xs|base|lg|\[)/)
+  })
+
+  // Outside the summary, so the run's facts end where they ended before there was a checkpoint:
+  // no trailing separator, and nothing for "Safe 1.4.1 Checkpoint" to run together into.
+  it("is not one of the summary's dot-separated facts", () => {
     const { container } = renderBar({ status: pausedStatus })
     const summary = container.querySelectorAll('[data-slot="status-row"]')[1].firstElementChild
     const trigger = screen.getByRole('button', { name: /checkpoint/i })
 
-    expect(trigger.previousElementSibling?.textContent).toBe('·')
-    // No spaces around the separators: the gaps on this line are flex, not text.
-    expect(summary?.textContent).toMatch(/Safe 1\.4\.1·Checkpoint$/)
+    expect(summary?.contains(trigger)).toBe(false)
+    expect(summary?.textContent).toMatch(/Safe 1\.4\.1$/)
   })
 
   // The bar is sticky, so every pixel it gains shoves the whole page down under it, and without
@@ -589,6 +602,20 @@ describe('MiningStatusBar: the config summary line', () => {
   it('leaves the chain to the header', () => {
     renderWithConfig()
     expect(screen.queryByText(/ethereum/i)).toBeNull()
+  })
+
+  // The same badge the best result wears on the row above, rather than a shape of its own: the
+  // two values the bar carries about this run are drawn one way. `secondary` fills instead of
+  // outlining, so the border it carries is transparent and there is no ring around it.
+  it('draws the owner in the same badge as the best result, without a border', () => {
+    const { container } = renderWithConfig()
+    const owner = container.querySelector('[data-slot="summary-identicon"]')?.parentElement
+    const best = screen.getByText('90.2%')
+
+    expect(owner?.dataset.slot).toBe('badge')
+    expect(best.dataset.slot).toBe('badge')
+    expect(owner?.dataset.variant).toBe(best.dataset.variant)
+    expect(owner?.className).toMatch(/border-transparent/)
   })
 
   it('shows the owner identicon, hidden from assistive tech', () => {

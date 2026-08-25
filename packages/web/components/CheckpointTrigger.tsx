@@ -73,10 +73,10 @@ export function CheckpointTrigger({
           />
         </button>
       </PopoverTrigger>
-      {/* Aligned to the trigger's start. The summary line begins at the left edge of the bar and
-          runs only as far as the config needs, so the trigger has the width of the page to its
-          right and none of it to its left. */}
-      <PopoverContent align="start" side="bottom" className="w-80">
+      {/* Aligned to the trigger's end. The trigger is pinned to the right edge of the summary
+          line, so it has the width of the page to its left and none of it to its right: aligned
+          any other way this panel would hang off the side. */}
+      <PopoverContent align="end" side="bottom" className="w-80">
         <div className="flex items-start gap-2">
           {/* Grouped for the eye and monospaced so the digits line up; `tabular-nums` keeps the
               columns even. What goes on the clipboard is the bare digits, see below. */}
