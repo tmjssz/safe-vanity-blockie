@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronDown, Flag } from 'lucide-react'
+import { useState } from 'react'
 import { CopyButton } from './CopyButton'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
@@ -28,14 +29,27 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
  * `workers` travels with the number because a checkpoint alone is half a resume: each worker
  * keeps to a block of its own, so a pool of a different size skips a different slice of what
  * this run left behind. CliHandoff emits `--workers` and `--start` as a pair for the same
- * reason; this panel says so rather than handing out the bare digits and hoping.
+ * reason; this panel says so rather than handing out the bare digits and hoping — and
+ * `onShowCommand` is what makes that sentence worth reading, since naming the handoff and
+ * leaving the reader to go and find it below a full screen of results is half a job.
  */
-export function CheckpointTrigger({ nextStart, workers }: { nextStart: number; workers: number }) {
+export function CheckpointTrigger({
+  nextStart,
+  workers,
+  onShowCommand,
+}: {
+  nextStart: number
+  workers: number
+  /** Raises the "Run on your machine" dialog, which lives elsewhere on the page. */
+  onShowCommand: () => void
+}) {
+  // Controlled, where this used to ride on the trigger's own `data-state`: the link below hands
+  // over to a dialog that covers this panel, and a panel still open behind it is one the reader
+  // has to dismiss a second time after reading the command.
+  const [open, setOpen] = useState(false)
+
   return (
-    // Uncontrolled: nothing outside the trigger's own `data-state` ever needs to know whether
-    // this is open, so tracking it a second time here would just be a second source for one
-    // fact that could drift from the first.
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         {/* A plain button, not the `Button` component: every variant it offers is a control with
             a shape, and the point of this one is that it has none. That means bringing the focus
@@ -86,7 +100,21 @@ export function CheckpointTrigger({ nextStart, workers }: { nextStart: number; w
           To continue this search on another machine, carry{' '}
           <span className="font-mono text-foreground">--workers {workers}</span> with it: each
           worker keeps to a block of its own, so a different worker count skips a different slice of
-          what this run left behind. The Run on your machine command writes out both.
+          what this run left behind. The{' '}
+          {/* The sentence's own words as the control, rather than a button bolted on after it:
+              the handoff IS what the sentence is about, and a reader who has got this far has
+              already been told the thing they would press it for. */}
+          <button
+            type="button"
+            className="rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            onClick={() => {
+              setOpen(false)
+              onShowCommand()
+            }}
+          >
+            Run on your machine
+          </button>{' '}
+          command writes out both.
         </p>
       </PopoverContent>
     </Popover>

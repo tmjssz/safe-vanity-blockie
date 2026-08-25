@@ -172,6 +172,23 @@ describe('npxCommandFor', () => {
 // rather than what it says.
 
 describe('CliHandoff', () => {
+  // The checkpoint panel on the status bar links to this dialog, and that link is nowhere near
+  // this component in the tree. Owning the open state here alone would leave the dialog
+  // reachable only from the row it happens to sit on.
+  it('can be opened by its owner, not only by its own trigger', () => {
+    render(
+      <CliHandoff
+        config={config}
+        rpcUrl="https://rpc.example"
+        target="faces"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('dialog').textContent).toMatch(/run on your machine/i)
+  })
+
   it('shows nothing but its trigger until asked', () => {
     render(<CliHandoff config={config} rpcUrl="https://rpc.example" target="faces" />)
     expect(screen.getByRole('button', { name: /run on your machine/i })).toBeDefined()

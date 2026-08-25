@@ -88,6 +88,8 @@ export function CliHandoff({
   target,
   filters,
   resume,
+  open,
+  onOpenChange,
 }: {
   config: MineConfig
   rpcUrl: string
@@ -99,6 +101,14 @@ export function CliHandoff({
    * actually been scanned — a `--start 0` is a flag that says only that someone thought about it.
    */
   resume?: { start: number; workers: number }
+  /**
+   * Both together, or neither. Given, the owner holds the dialog open or shut and can raise it
+   * from elsewhere on the page: the checkpoint panel on the status bar links to this command, and
+   * a dialog that only its own trigger could open would leave that link with nothing to call.
+   * Omitted, this is uncontrolled and the trigger below is the only way in.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | undefined>()
@@ -136,11 +146,15 @@ export function CliHandoff({
   }
 
   return (
+    // Controlled only when someone asks: with both props undefined this is the uncontrolled
+    // dialog it has always been, opened by its own trigger below. The status bar's checkpoint
+    // panel links here, and that link is in a different part of the tree, so the state has to be
+    // reachable from their common owner (MiningView) rather than private to this component.
     // A dialog rather than the expander this used to be. What it holds is two paragraphs, a
     // command and a copy button — read once, and then never again by the same person — and
     // expanding it in place pushed the entire leaderboard down the screen to make room. As a
     // dialog it costs one row beside the Results heading and nothing at all once it is closed.
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button
           type="button"

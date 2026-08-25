@@ -11,14 +11,14 @@ async function findPanel(): Promise<HTMLElement> {
 
 describe('CheckpointTrigger', () => {
   it('says Checkpoint, and shows nothing until it is opened', () => {
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeDefined()
     expect(screen.queryByText('60,000,016,650,000')).toBeNull()
   })
 
   it('opens on click, with the full saltNonce grouped for reading', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
@@ -30,7 +30,7 @@ describe('CheckpointTrigger', () => {
   // the left of a trigger that has the whole width of the page to its right.
   it('aligns the panel to the start of the trigger', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
@@ -42,7 +42,7 @@ describe('CheckpointTrigger', () => {
 
   it('says what the number is for', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
@@ -60,7 +60,7 @@ describe('CheckpointTrigger', () => {
   // that loses keyspace silently.
   it('names the pool the checkpoint belongs to, and what a different one costs', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
     const panel = await findPanel()
@@ -78,7 +78,7 @@ describe('CheckpointTrigger', () => {
   it('copies the bare digits', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: /checkpoint/i }))
     fireEvent.click(await screen.findByRole('button', { name: /copy checkpoint/i }))
@@ -92,7 +92,7 @@ describe('CheckpointTrigger', () => {
   // thing on the row you are meant to press, which is what the Resume button a line above is.
   // The dotted underline is the whole affordance, and it has to survive a restyle.
   it('reads as one more item of metadata, not as a control', () => {
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
     const trigger = screen.getByRole('button', { name: /checkpoint/i })
 
     expect(trigger.className).not.toMatch(/(^|\s|:)border/)
@@ -100,11 +100,43 @@ describe('CheckpointTrigger', () => {
     expect(trigger.className).toMatch(/decoration-dotted/)
   })
 
+  // The panel already names the handoff as the thing that writes out both halves of a resume.
+  // Naming it and leaving the reader to go and find it, on a page whose whole first screen is
+  // now a results grid, is the sentence doing half its job.
+  it('opens the handoff dialog from the sentence that names it', async () => {
+    const user = userEvent.setup()
+    const onShowCommand = vi.fn()
+    render(
+      <CheckpointTrigger
+        nextStart={60_000_016_650_000}
+        workers={5}
+        onShowCommand={onShowCommand}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    await user.click(await screen.findByRole('button', { name: /run on your machine/i }))
+
+    expect(onShowCommand).toHaveBeenCalledOnce()
+  })
+
+  // The dialog it opens covers this panel, and a panel still open behind it is one the reader
+  // has to dismiss a second time after reading the command.
+  it('closes itself on the way to the dialog', async () => {
+    const user = userEvent.setup()
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    await user.click(await screen.findByRole('button', { name: /run on your machine/i }))
+
+    expect(screen.queryByText('60,000,016,650,000')).toBeNull()
+  })
+
   // The chip is the only thing on screen that stays put while the popover is open, so it is
   // the only thing that can show which chip the panel belongs to.
   it('marks itself active while its popover is open', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     expect(chip.getAttribute('data-state')).toBe('closed')
@@ -116,7 +148,7 @@ describe('CheckpointTrigger', () => {
 
   it('closes again on a second click', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     await user.click(chip)
@@ -132,7 +164,7 @@ describe('CheckpointTrigger', () => {
   // the keyboard's reach. Pinned here as "focus lands inside the panel".
   it('moves focus into the panel, putting the copy button in reach of a keyboard', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
     const panel = await findPanel()
@@ -146,7 +178,7 @@ describe('CheckpointTrigger', () => {
   // covers, and jsdom does not synthesise one from a pointer pair.
   it('opens from a click rather than from hover, which is what makes a tap work', async () => {
     const user = userEvent.setup()
-    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} onShowCommand={vi.fn()} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     await user.hover(chip)

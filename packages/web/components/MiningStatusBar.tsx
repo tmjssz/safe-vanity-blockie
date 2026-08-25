@@ -140,6 +140,7 @@ export function MiningStatusBar({
   resultCount,
   onPauseToggle,
   onStartOver,
+  onShowCommand,
 }: {
   status: MiningStatus
   /** The config being mined, summarised on the bar's second line. */
@@ -149,6 +150,12 @@ export function MiningStatusBar({
   onPauseToggle: () => void
   /** Throws the run away and brings the Configure card back. */
   onStartOver: () => void
+  /**
+   * Raises the "Run on your machine" dialog, which the checkpoint panel links to. The bar owns
+   * neither the dialog nor the state that opens it — both belong to MiningView, which renders
+   * this bar and the handoff alike — so this is the hop between them.
+   */
+  onShowCommand: () => void
 }) {
   // The question, and the rule about when it is worth asking, are shared with the app title in
   // the header, the other door onto this same reset. See StartOverDialog.
@@ -328,7 +335,11 @@ export function MiningStatusBar({
             checkpoint={
               !status.running &&
               status.scanned > 0 && (
-                <CheckpointTrigger nextStart={status.nextStart} workers={status.workers} />
+                <CheckpointTrigger
+                  nextStart={status.nextStart}
+                  workers={status.workers}
+                  onShowCommand={onShowCommand}
+                />
               )
             }
           />

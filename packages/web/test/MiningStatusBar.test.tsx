@@ -35,6 +35,7 @@ function renderBar(overrides: Record<string, unknown> = {}) {
       config={CONFIG}
       resultCount={0}
       onStartOver={vi.fn()}
+      onShowCommand={vi.fn()}
       {...overrides}
     />,
   )
@@ -238,6 +239,7 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         resultCount={0}
         onStartOver={vi.fn()}
+        onShowCommand={vi.fn()}
       />,
     )
     expect(screen.getByRole('button', { name: /^resume$/i })).toBeDefined()
@@ -258,6 +260,7 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         resultCount={0}
         onStartOver={vi.fn()}
+        onShowCommand={vi.fn()}
       />,
     )
     expect(screen.getByRole('button', { name: /^resume$/i }).getAttribute('data-variant')).toBe(
@@ -297,6 +300,7 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         resultCount={0}
         onStartOver={vi.fn()}
+        onShowCommand={vi.fn()}
       />,
     )
     const resumeWidthClass = screen
@@ -427,6 +431,20 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(await screen.findByText('4,200,500')).toBeDefined()
   })
 
+  // The bar owns neither the dialog nor the state that opens it, so the only thing this hop can
+  // get wrong is dropping the handler. Without this the link inside the panel typechecks,
+  // renders and does nothing at all.
+  it('hands the panel a way to open the handoff dialog', async () => {
+    const user = userEvent.setup()
+    const onShowCommand = vi.fn()
+    renderBar({ status: pausedStatus, onShowCommand })
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    await user.click(await screen.findByRole('button', { name: /run on your machine/i }))
+
+    expect(onShowCommand).toHaveBeenCalledOnce()
+  })
+
   // The pool the checkpoint was reached with is half of the resume: the bar owns that number,
   // so it is the bar's job to hand it over with the other half.
   it('hands the chip the worker count the checkpoint was reached with', async () => {
@@ -514,6 +532,7 @@ describe('MiningStatusBar: the config summary line', () => {
         config={config}
         resultCount={0}
         onStartOver={vi.fn()}
+        onShowCommand={vi.fn()}
         {...overrides}
       />,
     )

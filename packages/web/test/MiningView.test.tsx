@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppTitle, StartOverProvider } from '../components/AppTitle'
@@ -1171,6 +1171,39 @@ describe('MiningView', () => {
     // button puts them on the clipboard.
     expect(command.textContent).toContain('--start 41200000000')
     expect(command.textContent).not.toContain('41,200,000,000')
+  })
+
+  // The whole point of the link: the checkpoint panel names the handoff as the thing that writes
+  // out both halves of a resume, and the two live in different parts of the tree. This is the
+  // only test that crosses that gap.
+  it('opens the handoff dialog from the checkpoint panel on the bar', async () => {
+    const user = userEvent.setup()
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: false, scanned: 4_200_000, nextStart: 8_400_000 }
+    mountStatusBarSlot()
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    // Scoped to the panel on purpose: the handoff's OWN trigger is further down this same page,
+    // so an unscoped query finds that one and proves nothing about the link.
+    const panel = (await screen.findByText('8,400,000')).closest('[data-slot="popover-content"]')
+    if (!panel) throw new Error('no checkpoint panel on screen')
+    await user.click(
+      within(panel as HTMLElement).getByRole('button', { name: /run on your machine/i }),
+    )
+
+    expect(screen.getByRole('dialog').textContent).toMatch(/npx safe-vanity-blockie/)
   })
 
   // Nothing scanned means `nextStartFrom` has only handed out blocks, so there is no checkpoint

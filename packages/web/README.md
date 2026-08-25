@@ -137,14 +137,15 @@ hours.
 Where the search began is deliberately absent from `?config=` share links. A link names an address,
 and an address does not depend on the search that found it. "Run on your machine" does carry it:
 once anything has been scanned — not whether any result reached the grid — the generated command
-grows `--workers` and `--start`, as a pair, so the native run continues the browser's search instead
-of repeating it. That is a looser gate than the bar's Checkpoint trigger, which waits for the run to
-stop: the dialog is worth opening mid-run, and what it writes is where the search had got to when
-you opened it. Pinning `--workers`
-to the browser's pool has a price worth knowing: it can hold a big machine to a browser tab's worth
-of workers. No-rescan does not require it — any pool starting at the resume point rescans nothing —
-only the symmetry does, so that the tail the native run leaves behind is the same width as the one
-the browser left. Edit the flag out if you would rather have the cores.
+grows `--workers` and `--start`, as a pair, so the native run continues the browser's search
+instead of repeating it. That is a looser gate than the bar's Checkpoint trigger, which waits for
+the run to stop: the dialog is worth opening mid-run, and what it writes is where the search had
+got to when you opened it. The Checkpoint panel links straight to it, since the command is where
+both halves of a resume are written out together. Pinning `--workers` to the browser's pool has a
+price worth knowing: it can hold a big machine to a browser tab's worth of workers. No-rescan does
+not require it — any pool starting at the resume point rescans nothing — only the symmetry does, so
+that the tail the native run leaves behind is the same width as the one the browser left. Edit the
+flag out if you would rather have the cores.
 
 ## Wallets
 
