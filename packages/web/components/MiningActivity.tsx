@@ -60,30 +60,54 @@ function useReducedMotion(): boolean {
  * search, is work with nothing to show for it, since the faces are interchangeable by design.
  * That is also why this does not go through `DecorativeBlockie`, which takes an address and
  * draws it on every render.
+ *
+ * The fade between faces is `--animate-face-in` in globals.css, which is where its duration
+ * lives: it is shorter than FRAME_MS on purpose, and the reasoning is next to the number.
  */
 function MiningFaces() {
   const [faces] = useState(() =>
     Array.from({ length: POOL_SIZE }, () => bloSvg(randomAddress(), FACE_PX)),
   )
-  const [frame, setFrame] = useState(0)
+  // Both indices in one piece of state, so the outgoing face is always the one that was
+  // actually on screen. Deriving it as `frame - 1` would be wrong twice: at mount it names a
+  // face nobody has seen, and on the wrap from the last index it names the incoming face
+  // itself, so that one frame would not fade at all.
+  const [{ current, outgoing }, setFace] = useState({ current: 0, outgoing: 0 })
   const reduced = useReducedMotion()
 
   useEffect(() => {
     if (reduced) return
-    const timer = setInterval(() => setFrame((current) => (current + 1) % POOL_SIZE), FRAME_MS)
+    const timer = setInterval(
+      () =>
+        setFace(({ current: shown }) => ({ current: (shown + 1) % POOL_SIZE, outgoing: shown })),
+      FRAME_MS,
+    )
     return () => clearInterval(timer)
   }, [reduced])
 
   return (
-    <span
-      data-slot="activity-blockie"
-      // No size here: `bloSvg` writes FACE_PX into the svg's own width and height, and an
-      // inline-flex wrapper takes the size of what it holds. A second copy of 18 in a utility
-      // class is a second number to keep in step with the first.
-      className="inline-flex shrink-0 overflow-hidden rounded-sm"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, over addresses this module generated itself — see Blockie.tsx.
-      dangerouslySetInnerHTML={{ __html: faces[frame] }}
-    />
+    // No size here: `bloSvg` writes FACE_PX into the svg's own width and height, and this
+    // wrapper takes the size of the face in normal flow below. A second copy of 18 in a utility
+    // class is a second number to keep in step with the first.
+    <span className="relative inline-flex shrink-0 overflow-hidden rounded-sm">
+      {/* The face on its way out, and the one giving this box its size — which is why it stays
+          in flow while its replacement is the one lifted on top. Something has to hold the
+          space, and it cannot be the layer that spends part of every frame transparent. */}
+      <span
+        data-slot="activity-blockie-outgoing"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, over addresses this module generated itself — see Blockie.tsx.
+        dangerouslySetInnerHTML={{ __html: faces[outgoing] }}
+      />
+      {/* Keyed on the face, so React remounts this on every frame and the fade plays again:
+          a persistent element runs its animation once, on mount, and never again. */}
+      <span
+        key={current}
+        data-slot="activity-blockie"
+        className="absolute inset-0 animate-face-in motion-reduce:animate-none"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: bloSvg is this repo's pure blo port, over addresses this module generated itself — see Blockie.tsx.
+        dangerouslySetInnerHTML={{ __html: faces[current] }}
+      />
+    </span>
   )
 }
 

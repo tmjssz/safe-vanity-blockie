@@ -102,6 +102,30 @@
   }
 }
 
+/* The mining indicator's crossfade. Hand-written for the same reason the collapsible animation
+   above is: there is no tailwindcss-animate in this project, so `animate-*` utilities only exist
+   for the `--animate-*` names declared here.
+
+   Opacity only, and 110ms against the 170ms frame it sits in (FRAME_MS in MiningActivity): the
+   new face comes up over the outgoing one, which stays fully drawn underneath, so the two
+   overlap for part of the frame instead of one cutting to the other. A fade that filled the
+   whole frame would never leave either face fully drawn, and eight cells of colour dissolved
+   halfway into eight others is a smudge. Not `forwards` — the
+   element is remounted on every frame, so it starts from the keyframes each time and ends at
+   its natural opacity of 1. */
+@theme {
+  --animate-face-in: face-in 110ms ease-out;
+
+  @keyframes face-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

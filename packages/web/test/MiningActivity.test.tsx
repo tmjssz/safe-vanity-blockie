@@ -9,6 +9,17 @@ const barsIn = (container: HTMLElement) =>
 const faceIn = (container: HTMLElement) =>
   container.querySelector('[data-slot="activity-blockie"]')?.innerHTML
 
+/** The element the current face is drawn into, for the assertions about how it arrives. */
+const faceElementIn = (container: HTMLElement) => {
+  const face = container.querySelector('[data-slot="activity-blockie"]')
+  if (!face) throw new Error('no face on screen')
+  return face
+}
+
+/** The face being replaced, which stays on screen underneath while the new one fades over it. */
+const outgoingFaceIn = (container: HTMLElement) =>
+  container.querySelector('[data-slot="activity-blockie-outgoing"]')?.innerHTML
+
 /** The interval the flicker runs on, and the number of faces it cycles before repeating. */
 const FRAME_MS = 170
 const POOL_SIZE = 30
@@ -45,6 +56,30 @@ describe('MiningActivity, running', () => {
     advance(1)
 
     expect(faceIn(container)).not.toBe(first)
+  })
+
+  // A hard cut six times a second reads as a strobe. The new face is drawn over the one it
+  // replaces and fades in across part of the frame, so the two overlap rather than one being
+  // swapped for the other — enough to soften the change, not enough to blur what it is.
+  it('fades each new face in over the one it replaces', () => {
+    const { container } = render(<MiningActivity paused={false} />)
+    const first = faceIn(container)
+
+    advance(1)
+
+    expect(faceIn(container)).not.toBe(first)
+    expect(outgoingFaceIn(container)).toBe(first)
+  })
+
+  it('restarts the fade on every frame rather than playing it once', () => {
+    const { container } = render(<MiningActivity paused={false} />)
+
+    expect(faceElementIn(container).className).toMatch(/animate-face-in/)
+    // Keyed on the frame, so React remounts it and the animation plays again. Without that the
+    // element persists and the fade runs once, on mount, and never again.
+    const mounted = faceElementIn(container)
+    advance(1)
+    expect(faceElementIn(container)).not.toBe(mounted)
   })
 
   // Cycled from a pool built once, not drawn fresh per frame: `bloSvg` builds ~64 path segments
@@ -84,6 +119,9 @@ describe('MiningActivity, running', () => {
     expect(faceIn(container)).toBe(only)
     expect(container.querySelector('[data-slot="activity-blockie"] svg')).not.toBeNull()
     expect(vi.getTimerCount()).toBe(0)
+    // Nothing cycles under this setting, so the fade has nothing to soften — and a face that
+    // dissolves into view on mount is still movement someone asked not to see.
+    expect(faceElementIn(container).className).toMatch(/motion-reduce:animate-none/)
   })
 
   // The bar unmounts this on a pause and on a stop, so the timer has to go with it: a run held
