@@ -8,7 +8,8 @@
  *
  * One decimal, always, including "1.0M": a suffix that sometimes carries a decimal and
  * sometimes does not is a number whose width changes as it grows, which is the thing this
- * exists to stop.
+ * exists to stop. `decimals` raises that for a figure whose width is not the problem — the
+ * rate takes two, because at one it would read a frozen "1.0M/s" from 1.00M/s to 1.04M/s.
  */
 const UNITS = [
   { threshold: 1e12, suffix: 'T' },
@@ -17,7 +18,7 @@ const UNITS = [
   { threshold: 1e3, suffix: 'K' },
 ] as const
 
-export function abbreviateNumber(value: number): string {
+export function abbreviateNumber(value: number, decimals = 1): string {
   // The rate is `(scanned / elapsedMs) * 1000`, which is NaN or Infinity on a tick where no
   // time has passed yet. Neither is a speed, and both render as literal text.
   const safe = Number.isFinite(value) && value > 0 ? value : 0
@@ -29,7 +30,9 @@ export function abbreviateNumber(value: number): string {
     // decimal as "1000.0K", so it belongs to M. Nothing wider gets in — comparing the value
     // already rounded at this unit would let 950,000 through as "1.0M", a 5% overstatement
     // sitting next to a tooltip reading 950,000.
-    if (safe >= threshold - threshold / 20_000) return `${(safe / threshold).toFixed(1)}${suffix}`
+    if (safe >= threshold - threshold / (2000 * 10 ** decimals)) {
+      return `${(safe / threshold).toFixed(decimals)}${suffix}`
+    }
   }
   // Under a thousand, so it fits as it is. Ungrouped, because three digits do not need
   // separators and "900" is what the eye expects beside "1.3K".

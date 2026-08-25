@@ -42,6 +42,22 @@ describe('abbreviateNumber', () => {
     expect(abbreviateNumber(999)).toBe('999')
   })
 
+  // The nonce count is on the bar to stop changing width, so it takes one decimal whatever it
+  // reads. The rate is the one live figure on the bar, and at one decimal it would sit frozen
+  // at "1.0M/s" across every speed from 1.00M/s to 1.04M/s.
+  it('takes the number of decimals it is asked for', () => {
+    expect(abbreviateNumber(1_030_000, 2)).toBe('1.03M')
+    expect(abbreviateNumber(1_049_000, 2)).toBe('1.05M')
+    expect(abbreviateNumber(83_200_000, 2)).toBe('83.20M')
+  })
+
+  // The promotion rule is stated in printed digits, so it has to move with them: at two
+  // decimals "1000.00K" only appears from 999,995 up, and 999,950 is still a K.
+  it('promotes at the precision it is printing', () => {
+    expect(abbreviateNumber(999_995, 2)).toBe('1.00M')
+    expect(abbreviateNumber(999_950, 2)).toBe('999.95K')
+  })
+
   it('rounds rather than truncating', () => {
     expect(abbreviateNumber(3_749_000)).toBe('3.7M')
     expect(abbreviateNumber(3_750_000)).toBe('3.8M')

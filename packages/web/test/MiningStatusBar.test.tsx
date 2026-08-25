@@ -135,10 +135,25 @@ describe('MiningStatusBar: the counters while running', () => {
   it('abbreviates the rate the same way, and keeps its exact value too', () => {
     const { container } = renderBar()
     const rate = statOf(container, 'rate')!
-    expect(rate.querySelector('[aria-hidden="true"]')?.textContent).toBe('1.0M/s')
+    expect(rate.querySelector('[aria-hidden="true"]')?.textContent).toBe('1.03M/s')
     expect(rate.className).toMatch(/font-mono/)
     expect(rate.getAttribute('title')).toBe('1,030,000 nonces per second')
     expect(rate.querySelector('.sr-only')?.textContent).toBe('1,030,000 nonces per second')
+  })
+
+  // Two decimals, unlike the count beside it. The count is abbreviated to stop it changing
+  // width; the rate never ran to eleven digits, and it is the one figure on the bar that
+  // describes the current moment. At one decimal every speed from 1.00M/s to 1.04M/s renders
+  // the same frozen "1.0M/s" — a live number that has stopped moving.
+  it('keeps the rate moving across a band one decimal would flatten', () => {
+    const shown = (rate: number) =>
+      statOf(renderBar({ status: { ...status, rate } }).container, 'rate')!.querySelector(
+        '[aria-hidden="true"]',
+      )?.textContent
+
+    expect(shown(1_000_000)).toBe('1.00M/s')
+    expect(shown(1_020_000)).toBe('1.02M/s')
+    expect(shown(1_040_000)).toBe('1.04M/s')
   })
 
   // abbreviateNumber clamps a non-finite rate to 0 because `use-miner` computes

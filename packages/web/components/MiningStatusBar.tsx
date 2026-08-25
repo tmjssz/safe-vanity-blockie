@@ -224,7 +224,11 @@ export function MiningStatusBar({
                 title={rateTitle}
                 className="font-mono tabular-nums text-foreground"
               >
-                <span aria-hidden="true">{abbreviateNumber(status.rate)}/s</span>
+                {/* Two decimals, where the count above takes one. The count is abbreviated
+                    to stop it reflowing the row; the rate never ran to eleven digits, and it
+                    is the one figure here that describes the current moment — at one decimal
+                    every speed from 1.00M/s to 1.04M/s reads the same frozen "1.0M/s". */}
+                <span aria-hidden="true">{abbreviateNumber(status.rate, 2)}/s</span>
                 <span className="sr-only">{rateTitle}</span>
               </span>
             </>
