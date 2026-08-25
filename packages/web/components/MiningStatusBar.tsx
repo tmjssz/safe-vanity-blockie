@@ -2,6 +2,7 @@
 
 import { formatScore } from '@safe-vanity-blockie/core'
 import { Pause, Play, RotateCcw } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { abbreviateNumber } from '../lib/abbreviate-number'
 import type { MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
@@ -75,7 +76,7 @@ function OwnerChip({ address }: { address: string }) {
  * absent: it is in the header, permanently and changeably, and a second copy of a live value is
  * two things to keep in step.
  */
-function ConfigSummary({ config }: { config: MineConfig }) {
+function ConfigSummary({ config, checkpoint }: { config: MineConfig; checkpoint?: ReactNode }) {
   const [first, ...rest] = config.owners
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
@@ -119,6 +120,16 @@ function ConfigSummary({ config }: { config: MineConfig }) {
       </span>
       <span aria-hidden="true">·</span>
       <span>Safe {config.safeVersion}</span>
+      {/* Last, and behind the same separator as the rest: it is one more fact about the run,
+          and without the dot "Safe 1.4.1 Checkpoint" runs together as a single phrase. Passed
+          in rather than decided here, so the rule about WHEN a checkpoint is worth showing
+          stays in one place, next to the state it reads. */}
+      {checkpoint && (
+        <>
+          <span aria-hidden="true">·</span>
+          {checkpoint}
+        </>
+      )}
     </div>
   )
 }
@@ -288,35 +299,36 @@ export function MiningStatusBar({
           )}
         </div>
 
-        {/* The config being mined, and, once the search is stopped, where it stopped. The
-            checkpoint belongs on this row rather than with the counters above: it is one of the
-            things you reach for when you are done with this run, not one of the figures that
-            tick.
+        {/* The config being mined, and, once the search is stopped, where it stopped — the
+            checkpoint as the last of the same dot-separated facts, not as a control anchored to
+            the far side of the row. Nothing on this line is pinned right: one group starting at
+            the left edge and one at the right reads as two unrelated things sharing a row.
 
-            `min-h-6` is what stops the bar growing when the search stops. Without it the row is
-            only as tall as its tallest child, and that child changes with the state: the config
-            summary is 22px (a 16px identicon, 4px of padding, 2px of border — see OwnerChip),
-            where the checkpoint chip is a `size="xs"` control at 24px. So the whole bar gained
-            two pixels the moment the chip appeared and lost them again on resume, and everything
-            below this sticky bar jumped with it. 24px is the chip's own height, so the row is one
-            height in both states. FaceSection's header holds its title still the same way.
+            `min-h-6` holds the line at one height whatever the state puts on it. The bar is
+            sticky, so a row that grows shoves the whole page down under it; the floor is what
+            keeps that guarantee from depending on which items happen to be present, and on the
+            22px owner chip (a 16px identicon, 4px of padding, 2px of border) staying the tallest
+            of them. FaceSection's header holds its title still the same way.
 
-            `flex-wrap` still applies below that: align-items works per flex line, so a chip
+            `flex-wrap` still applies below that: align-items works per flex line, so a summary
             wrapping to a second line on a narrow viewport is unaffected by the floor. */}
         <div data-slot="status-row" className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
-          <ConfigSummary config={config} />
-          {/* Gated on `running`, not on `paused`: a worker error clears `running` and leaves
-              `paused` false (see use-miner), and that is precisely the state whose on-screen
-              advice is "reload the page" — the one moment this number is the only thing that
-              can carry the run across. Gated on `scanned` too, not on the value: `nextStartFrom`
-              hands out a whole block per worker before any nonce is tried, so a checkpoint over
-              a run that has mined nothing is a claim about progress that has not happened, and
-              the size of the number makes it a worse one. */}
-          {!status.running && status.scanned > 0 && (
-            <div className="ml-auto flex items-center">
-              <CheckpointTrigger nextStart={status.nextStart} workers={status.workers} />
-            </div>
-          )}
+          <ConfigSummary
+            config={config}
+            // Gated on `running`, not on `paused`: a worker error clears `running` and leaves
+            // `paused` false (see use-miner), and that is precisely the state whose on-screen
+            // advice is "reload the page" — the one moment this number is the only thing that
+            // can carry the run across. Gated on `scanned` too, not on the value:
+            // `nextStartFrom` hands out a whole block per worker before any nonce is tried, so a
+            // checkpoint over a run that has mined nothing is a claim about progress that has
+            // not happened, and the size of the number makes it a worse one.
+            checkpoint={
+              !status.running &&
+              status.scanned > 0 && (
+                <CheckpointTrigger nextStart={status.nextStart} workers={status.workers} />
+              )
+            }
+          />
         </div>
       </div>
 

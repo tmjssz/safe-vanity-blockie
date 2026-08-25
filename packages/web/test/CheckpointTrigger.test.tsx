@@ -10,7 +10,7 @@ async function findPanel(): Promise<HTMLElement> {
 }
 
 describe('CheckpointTrigger', () => {
-  it('is a chip that says Checkpoint, and shows nothing until it is opened', () => {
+  it('says Checkpoint, and shows nothing until it is opened', () => {
     render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeDefined()
     expect(screen.queryByText('60,000,016,650,000')).toBeNull()
@@ -25,16 +25,19 @@ describe('CheckpointTrigger', () => {
     expect(await screen.findByText('60,000,016,650,000')).toBeDefined()
   })
 
-  // The chip sits at the right edge of the bar, so a panel aligned any other way would hang off
-  // the side of the page.
-  it('aligns the panel to the right edge of the chip', async () => {
+  // The trigger is the last item of the summary line, which starts at the left edge of the bar
+  // and runs only as far as the config needs. A panel aligned to its right edge would open to
+  // the left of a trigger that has the whole width of the page to its right.
+  it('aligns the panel to the start of the trigger', async () => {
     const user = userEvent.setup()
     render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
     const content = await screen.findByText('60,000,016,650,000')
-    expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe('end')
+    expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe(
+      'start',
+    )
   })
 
   it('says what the number is for', async () => {
@@ -82,6 +85,19 @@ describe('CheckpointTrigger', () => {
 
     expect(writeText).toHaveBeenCalledWith('60000016650000')
     vi.unstubAllGlobals()
+  })
+
+  // It sits among the run's metadata, in the same size and rhythm as "Safe 1.4.1" beside it, so
+  // it cannot be drawn as a control: a bordered chip in a line of plain text reads as the one
+  // thing on the row you are meant to press, which is what the Resume button a line above is.
+  // The dotted underline is the whole affordance, and it has to survive a restyle.
+  it('reads as one more item of metadata, not as a control', () => {
+    render(<CheckpointTrigger nextStart={60_000_016_650_000} workers={5} />)
+    const trigger = screen.getByRole('button', { name: /checkpoint/i })
+
+    expect(trigger.className).not.toMatch(/(^|\s|:)border/)
+    expect(trigger.className).not.toMatch(/(^|\s|:)bg-/)
+    expect(trigger.className).toMatch(/decoration-dotted/)
   })
 
   // The chip is the only thing on screen that stays put while the popover is open, so it is

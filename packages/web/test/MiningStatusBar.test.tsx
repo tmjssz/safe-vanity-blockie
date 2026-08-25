@@ -445,23 +445,39 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(container.textContent).not.toMatch(/4,200,500/)
   })
 
-  it('puts the chip at the right end of the config line, a row below the controls', () => {
+  // Last of the dot-separated items, in among the config it belongs to, rather than a control
+  // pinned to the far side of a row whose only other content starts at the left edge. Two
+  // things anchored to opposite ends of one line reads as two unrelated groups.
+  it('ends the config summary, with nothing on that row pinned right', () => {
     const { container } = renderBar({ status: pausedStatus })
     const rows = container.querySelectorAll('[data-slot="status-row"]')
-    const chip = screen.getByRole('button', { name: /checkpoint/i })
+    const trigger = screen.getByRole('button', { name: /checkpoint/i })
     const resume = screen.getByRole('button', { name: /^resume$/i })
 
     expect(rows[0].contains(resume)).toBe(true)
-    expect(rows[1].contains(chip)).toBe(true)
-    expect(chip.parentElement?.className).toMatch(/ml-auto/)
+    const summary = rows[1].firstElementChild
+    expect(summary?.contains(trigger)).toBe(true)
+    expect(summary?.lastElementChild).toBe(trigger)
+    expect(rows[1].innerHTML).not.toMatch(/ml-auto/)
   })
 
-  // The bar is sticky, so every pixel it gains shoves the whole page down under it. Without a
-  // floor the config line is only as tall as its tallest child, and that child changes with the
-  // state: the summary is 22px where the chip is a `size="xs"` control at 24px, so pausing grew
-  // the bar by two pixels and resuming took them back. The floor is the chip's own height, held
-  // by the row whether the chip is there or not.
-  it('reserves the chip its height on the config line, so the bar does not grow on a pause', () => {
+  // The separator earns its place: without it "Safe 1.4.1 Checkpoint" runs together as one
+  // phrase, and the trigger stops looking like an item of its own.
+  it('is separated from the rest of the summary the same way the rest of it is', () => {
+    const { container } = renderBar({ status: pausedStatus })
+    const summary = container.querySelectorAll('[data-slot="status-row"]')[1].firstElementChild
+    const trigger = screen.getByRole('button', { name: /checkpoint/i })
+
+    expect(trigger.previousElementSibling?.textContent).toBe('·')
+    // No spaces around the separators: the gaps on this line are flex, not text.
+    expect(summary?.textContent).toMatch(/Safe 1\.4\.1·Checkpoint$/)
+  })
+
+  // The bar is sticky, so every pixel it gains shoves the whole page down under it, and without
+  // a floor the config line is only as tall as its tallest child. Inline text no longer changes
+  // that height the way the chip did, but the floor is what keeps the guarantee from depending
+  // on that: the row is one height whatever the run's state puts on it.
+  it('holds the config line at one height in both states', () => {
     const running = renderBar()
     const runningRow = running.container.querySelectorAll('[data-slot="status-row"]')[1]
     expect(runningRow.className).toMatch(/min-h-6/)
@@ -469,10 +485,7 @@ describe('MiningStatusBar: the checkpoint', () => {
 
     const paused = renderBar({ status: pausedStatus })
     const pausedRow = paused.container.querySelectorAll('[data-slot="status-row"]')[1]
-    // The same floor in both states, and it is the height the chip is drawn at: a `size="xs"`
-    // button is `h-6`. If either number moves, the row moves with it and this catches it.
     expect(pausedRow.className).toMatch(/min-h-6/)
-    expect(screen.getByRole('button', { name: /checkpoint/i }).dataset.size).toBe('xs')
   })
 })
 

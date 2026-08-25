@@ -2,22 +2,27 @@
 
 import { ChevronDown, Flag } from 'lucide-react'
 import { CopyButton } from './CopyButton'
-import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 /**
- * Where a follow-up run picks this search up, behind one chip on the config line.
+ * Where a follow-up run picks this search up, behind the last word of the config line.
  *
  * It used to be spelled out on the bar: the words "Resume from", eleven digits, a copy button
  * and an info icon, on every frame of a live run. That is a lot of row spent on a number nobody
- * reads while mining is working, and it moved as it grew. Folded into a chip it costs one small
- * outline, and only while paused, which is the only moment the value is worth anything: a
+ * reads while mining is working, and it moved as it grew. Folded away it costs one word, and
+ * only while the run is stopped, which is the only moment the value is worth anything: a
  * running search resumes from here by itself.
+ *
+ * Drawn as text rather than as a control, because that is what it is: the last of the run's
+ * dot-separated facts, in the same size and rhythm as "Safe 1.4.1" beside it. A bordered chip
+ * in a line of plain metadata reads as the thing on the row you are meant to press, and the
+ * thing you are meant to press is Resume, a line above. The dotted underline carries the whole
+ * affordance, the way the "+N more" trigger on this same line does.
  *
  * A real PopoverTrigger, not the hover-driven HintPopover the rest of this bar uses. That one
  * cancels its own open-autofocus, on the grounds that nothing inside a hint is focusable; this
  * panel holds a copy button, and cancelling autofocus would leave it outside the keyboard's
- * reach. Opening on click rather than hover suits the chip anyway — it is reached by tap as
+ * reach. Opening on click rather than hover suits it anyway — it is reached by tap as
  * often as by pointer.
  *
  * `workers` travels with the number because a checkpoint alone is half a resume: each worker
@@ -32,30 +37,32 @@ export function CheckpointTrigger({ nextStart, workers }: { nextStart: number; w
     // fact that could drift from the first.
     <Popover>
       <PopoverTrigger asChild>
-        <Button
+        {/* A plain button, not the `Button` component: every variant it offers is a control with
+            a shape, and the point of this one is that it has none. That means bringing the focus
+            ring along, which `Button` would otherwise have supplied. */}
+        <button
           type="button"
-          variant="outline"
-          size="xs"
-          // Raised rather than recoloured while open: the chip has to stay identifiable as the
-          // thing the panel is attached to, and a chip that changed colour would read as a
-          // state of the RUN rather than a state of the panel.
-          className="group text-muted-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground data-[state=open]:shadow-sm"
+          // A step brighter than the metadata around it, and brighter again while open: enough
+          // to read as the one item on the line that does something, without becoming a second
+          // colour on a row whose job is to be quiet.
+          className="group inline-flex items-center gap-1 rounded-sm text-foreground/80 underline decoration-dotted underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden data-[state=open]:text-foreground"
         >
-          <Flag aria-hidden="true" />
+          <Flag aria-hidden="true" className="size-3" />
           Checkpoint
-          {/* The chevron turns because a chip that says "Checkpoint" with a static arrow gives
-              no sign the panel below it came from here. It reads the trigger's OWN data-state
-              through `group` rather than a second copy of `open` passed down here: two sources
-              for one fact is two things that can disagree. */}
+          {/* The chevron turns because a word with a static arrow beside it gives no sign the
+              panel below it came from here. It reads the trigger's OWN data-state through
+              `group` rather than a second copy of `open` passed down here: two sources for one
+              fact is two things that can disagree. */}
           <ChevronDown
             aria-hidden="true"
-            className="transition-transform group-data-[state=open]:rotate-180"
+            className="size-3 transition-transform group-data-[state=open]:rotate-180"
           />
-        </Button>
+        </button>
       </PopoverTrigger>
-      {/* Right-aligned to the chip, which sits at the right edge of the bar: aligned any other
-          way the panel would hang off the side of the page. */}
-      <PopoverContent align="end" side="bottom" className="w-80">
+      {/* Aligned to the trigger's start. The summary line begins at the left edge of the bar and
+          runs only as far as the config needs, so the trigger has the width of the page to its
+          right and none of it to its left. */}
+      <PopoverContent align="start" side="bottom" className="w-80">
         <div className="flex items-start gap-2">
           {/* Grouped for the eye and monospaced so the digits line up; `tabular-nums` keeps the
               columns even. What goes on the clipboard is the bare digits, see below. */}
