@@ -291,8 +291,19 @@ export function MiningStatusBar({
         {/* The config being mined, and, once the search is stopped, where it stopped. The
             checkpoint belongs on this row rather than with the counters above: it is one of the
             things you reach for when you are done with this run, not one of the figures that
-            tick. */}
-        <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            tick.
+
+            `min-h-6` is what stops the bar growing when the search stops. Without it the row is
+            only as tall as its tallest child, and that child changes with the state: the config
+            summary is 22px (a 16px identicon, 4px of padding, 2px of border — see OwnerChip),
+            where the checkpoint chip is a `size="xs"` control at 24px. So the whole bar gained
+            two pixels the moment the chip appeared and lost them again on resume, and everything
+            below this sticky bar jumped with it. 24px is the chip's own height, so the row is one
+            height in both states. FaceSection's header holds its title still the same way.
+
+            `flex-wrap` still applies below that: align-items works per flex line, so a chip
+            wrapping to a second line on a narrow viewport is unaffected by the floor. */}
+        <div data-slot="status-row" className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
           <ConfigSummary config={config} />
           {/* Gated on `running`, not on `paused`: a worker error clears `running` and leaves
               `paused` false (see use-miner), and that is precisely the state whose on-screen

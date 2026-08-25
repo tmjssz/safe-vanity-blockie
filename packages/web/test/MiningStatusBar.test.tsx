@@ -455,6 +455,25 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(rows[1].contains(chip)).toBe(true)
     expect(chip.parentElement?.className).toMatch(/ml-auto/)
   })
+
+  // The bar is sticky, so every pixel it gains shoves the whole page down under it. Without a
+  // floor the config line is only as tall as its tallest child, and that child changes with the
+  // state: the summary is 22px where the chip is a `size="xs"` control at 24px, so pausing grew
+  // the bar by two pixels and resuming took them back. The floor is the chip's own height, held
+  // by the row whether the chip is there or not.
+  it('reserves the chip its height on the config line, so the bar does not grow on a pause', () => {
+    const running = renderBar()
+    const runningRow = running.container.querySelectorAll('[data-slot="status-row"]')[1]
+    expect(runningRow.className).toMatch(/min-h-6/)
+    running.unmount()
+
+    const paused = renderBar({ status: pausedStatus })
+    const pausedRow = paused.container.querySelectorAll('[data-slot="status-row"]')[1]
+    // The same floor in both states, and it is the height the chip is drawn at: a `size="xs"`
+    // button is `h-6`. If either number moves, the row moves with it and this catches it.
+    expect(pausedRow.className).toMatch(/min-h-6/)
+    expect(screen.getByRole('button', { name: /checkpoint/i }).dataset.size).toBe('xs')
+  })
 })
 
 // The Configure card is gone for the whole run, so this line is the only place the config being
