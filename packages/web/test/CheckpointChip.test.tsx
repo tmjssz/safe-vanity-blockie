@@ -19,6 +19,18 @@ describe('CheckpointChip', () => {
     expect(await screen.findByText('60,000,016,650,000')).toBeDefined()
   })
 
+  // The chip sits at the right edge of the bar, so a panel aligned any other way would hang off
+  // the side of the page.
+  it('aligns the panel to the right edge of the chip', async () => {
+    const user = userEvent.setup()
+    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+
+    const content = await screen.findByText('60,000,016,650,000')
+    expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe('end')
+  })
+
   it('says what the number is for and how it travels', async () => {
     const user = userEvent.setup()
     render(<CheckpointChip nextStart={60_000_016_650_000} />)

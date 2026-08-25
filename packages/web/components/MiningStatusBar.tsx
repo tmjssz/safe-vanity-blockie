@@ -148,6 +148,11 @@ export function MiningStatusBar({
   // The abbreviated figure and the exact one come from the same number, so the tooltip cannot
   // drift from what it is explaining.
   const scannedAbbrev = abbreviateNumber(status.scanned)
+  // Guards the same way abbreviateNumber does: the rate is `(scanned / elapsedMs) * 1000`, which
+  // is NaN on a tick where no time has passed. Without this guard the abbreviated figure reads
+  // "0/s" while the tooltip beside it reads "NaN nonces per second".
+  const exactRate = Number.isFinite(status.rate) && status.rate > 0 ? Math.round(status.rate) : 0
+  const rateTitle = `${exactRate.toLocaleString('en-US')} nonces per second`
 
   return (
     // `top-14` matches the sticky header's `h-14` in app/layout.tsx: with `top-0` the bar would
@@ -182,16 +187,31 @@ export function MiningStatusBar({
               sentence is what a stopped run has to say. The clock is frozen either way: see
               use-miner, which does not bill time spent paused as mining time. */}
           {status.paused ? (
+            // The abbreviation and the " checked in <duration>" wording both sit inside the
+            // aria-hidden span, alongside the sr-only exact figure, rather than as an exposed
+            // sibling: a sibling text node is still in the accessibility tree even next to a
+            // hidden one, and "nonces checked" from the sr-only span followed by an exposed
+            // "checked in" would read as "nonces checked checked in" to a screen reader.
             <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
-              <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
-              {' checked in '}
-              <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
+              <span aria-hidden="true">
+                <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                {' checked in '}
+                <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
+              </span>
+              <span className="sr-only">
+                {scannedTitle} in {formatDuration(status.elapsedMs)}
+              </span>
             </span>
           ) : (
             <>
+              {/* See the paused branch above for why the trailing " checked" is folded into the
+                  aria-hidden span rather than left exposed beside the sr-only copy. */}
               <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
-                <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
-                {' checked'}
+                <span aria-hidden="true">
+                  <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                  {' checked'}
+                </span>
+                <span className="sr-only">{scannedTitle}</span>
               </span>
               {/* Absent while paused rather than zero. Nothing is being scanned, so a speed is a
                   claim about work that is not happening, and "0k/s" is that claim with a number
@@ -201,10 +221,11 @@ export function MiningStatusBar({
                   current moment, and while paused there is no such moment to describe. */}
               <span
                 data-slot="stat-rate"
-                title={`${Math.round(status.rate).toLocaleString('en-US')} nonces per second`}
+                title={rateTitle}
                 className="font-mono tabular-nums text-foreground"
               >
-                {abbreviateNumber(status.rate)}/s
+                <span aria-hidden="true">{abbreviateNumber(status.rate)}/s</span>
+                <span className="sr-only">{rateTitle}</span>
               </span>
             </>
           )}
@@ -226,23 +247,26 @@ export function MiningStatusBar({
                is the one reached for dozens of times a run and Start over is the one that ends
                it. */
             <div className="ml-auto flex items-center gap-2">
-              {/* One slot, two labels. `min-w-24` is what makes it one slot: "Pause" and
+              {/* One slot, two labels. `min-w-28` is what makes it one slot: "Pause" and
                   "Resume" are different lengths, and without a floor on the width Start over
                   steps sideways every time the state flips, out from under the pointer that is
-                  about to click it. */}
+                  about to click it. 24 (96px) does not clear "Resume" set in every fallback
+                  sans-serif Tailwind's default stack can land on: DejaVu Sans measures ~57px
+                  against a 42px fixed overhead, for ~99px total; 28 (112px) clears that with
+                  room to spare. */}
               <Button
                 variant={status.paused ? 'default' : 'outline'}
                 size="sm"
-                className="min-w-24"
+                className="min-w-28"
                 onClick={onPauseToggle}
               >
                 {status.paused ? (
                   <>
-                    <Play className="mr-1 size-3" /> Resume
+                    <Play className="size-3" /> Resume
                   </>
                 ) : (
                   <>
-                    <Pause className="mr-1 size-3" /> Pause
+                    <Pause className="size-3" /> Pause
                   </>
                 )}
               </Button>

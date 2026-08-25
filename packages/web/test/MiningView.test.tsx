@@ -280,7 +280,9 @@ describe('MiningView', () => {
     )
 
     expect(resultCards()).toHaveLength(1)
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('4.2K checked')
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('4.2K checked')
   })
 
   // The grid shows everything retained and scrolls, so the number handed to the miner is a
@@ -619,7 +621,9 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('5.0K checked')
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('5.0K checked')
     expect(bloSvgSpy.mock.calls.length).toBe(drawn)
   })
 
@@ -829,7 +833,9 @@ describe('MiningView', () => {
 
     // Everything the user would have lost is still exactly where it was: the status bar with its
     // scanned count, and every card on the leaderboard.
-    expect(slot.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('4.2K checked')
+    expect(slot.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent).toBe(
+      '4.2K checked',
+    )
     expect(resultCards()).toHaveLength(1)
 
     // …and the failure is reported among them rather than in place of them — saying what stopped,
@@ -864,7 +870,10 @@ describe('MiningView', () => {
     // Nothing else at all: no status bar in the page's slot, no Results section, no grid.
     expect(slot.children).toHaveLength(0)
     expect(screen.queryByRole('heading', { name: /^results$/i })).toBeNull()
-    expect(screen.queryByText(/nonces/i)).toBeNull()
+    // Was `queryByText(/nonces/i)`, which passed either way once the exact figure moved into a
+    // `title` attribute that text queries do not search: a status bar rendered here would not
+    // have failed it. `data-slot` names the element the bar would leave behind directly.
+    expect(document.querySelector('[data-slot="stat-scanned"]')).toBeNull()
   })
 
   it('asks for the constants again when the retry beside a live run is pressed', async () => {

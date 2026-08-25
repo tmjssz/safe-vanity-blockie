@@ -1,7 +1,6 @@
 'use client'
 
 import { ChevronDown, Flag } from 'lucide-react'
-import { useState } from 'react'
 import { CopyButton } from './CopyButton'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -21,10 +20,11 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
  * the trigger's own click handling.
  */
 export function CheckpointChip({ nextStart }: { nextStart: number }) {
-  const [open, setOpen] = useState(false)
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // Uncontrolled: nothing outside the trigger's own `data-state` ever needs to know whether
+    // this is open, so tracking it a second time here would just be a second source for one
+    // fact that could drift from the first.
+    <Popover>
       <PopoverTrigger asChild>
         <Button
           type="button"

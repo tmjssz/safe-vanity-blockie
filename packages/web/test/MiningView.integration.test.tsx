@@ -146,7 +146,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
     // Under a thousand the bar prints the figure as it is, so this is still 700 rather than
     // "0.7K".
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('700 checked')
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('700 checked')
   })
 
   // The status bar now shows the elapsed time, which turned a long-standing accounting bug into
@@ -254,9 +256,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     )
 
     // The clock did not move across ninety seconds of pause and a filter change mid-pause.
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe(
-      '500 checked in 3s',
-    )
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('500 checked in 3s')
   })
 
   // The failure this pins is the whole screen contradicting itself: drag the contrast floor past
@@ -336,7 +338,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(instances).toHaveLength(2)
     expect(startInputOf(instances[1]).start).toBe(0)
     expect(noResultCards()).toHaveLength(0)
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('0 checked')
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('0 checked')
   })
 
   it('starting fresh after being paused (rather than resumed) also does not carry over the board', () => {
@@ -468,8 +472,10 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     act(() => instances[0].emit({ type: 'progress', scanned: 900, candidates: [CANDIDATE] }))
     act(() => instances[1].emit({ type: 'progress', scanned: 400, candidates: [] }))
     // The count beside the checkpoint on the bar is the two workers' work added up, and is
-    // nowhere near it: the gap the checkpoint popover's copy exists to explain.
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('1.3K checked')
+    // nowhere near it: that gap is no longer explained on the bar itself.
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('1.3K checked')
 
     rerender(view(true))
     rerender(view(false))

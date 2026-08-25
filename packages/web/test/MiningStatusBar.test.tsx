@@ -113,24 +113,43 @@ describe('MiningStatusBar: the counters while running', () => {
   it('abbreviates the nonce count, in monospace, without the word nonces', () => {
     const { container } = renderBar()
     const scanned = statOf(container, 'scanned')!
-    expect(scanned.textContent).toBe('4.2M checked')
+    // The sighted, visible rendering: the abbreviation plus its suffix, with the exact figure
+    // (which does say "nonces") held out of it in an sr-only sibling instead. `textContent` on
+    // `scanned` itself would see both, so this reaches the aria-hidden wrapper directly.
+    const visible = scanned.querySelector('[aria-hidden="true"]')
+    expect(visible?.textContent).toBe('4.2M checked')
     expect(scanned.querySelector('.font-mono')?.textContent).toBe('4.2M')
-    expect(container.textContent).not.toMatch(/nonces/)
+    expect(visible?.textContent).not.toMatch(/nonces/)
   })
 
   // Four characters that never change width, in place of a figure that ran to eleven digits and
-  // reflowed the row every time it gained one. The exact number is still here, one hover away.
-  it('keeps the exact count reachable as a tooltip', () => {
+  // reflowed the row every time it gained one. The exact number is still here: one hover away
+  // for a pointer, and as real text for anyone who cannot hover or cannot see the tooltip.
+  it('keeps the exact count reachable as a tooltip, and as text for a screen reader', () => {
     const { container } = renderBar()
-    expect(statOf(container, 'scanned')?.getAttribute('title')).toBe('4,200,000 nonces checked')
+    const scanned = statOf(container, 'scanned')!
+    expect(scanned.getAttribute('title')).toBe('4,200,000 nonces checked')
+    expect(scanned.querySelector('.sr-only')?.textContent).toBe('4,200,000 nonces checked')
   })
 
   it('abbreviates the rate the same way, and keeps its exact value too', () => {
     const { container } = renderBar()
     const rate = statOf(container, 'rate')!
-    expect(rate.textContent).toBe('1.0M/s')
+    expect(rate.querySelector('[aria-hidden="true"]')?.textContent).toBe('1.0M/s')
     expect(rate.className).toMatch(/font-mono/)
     expect(rate.getAttribute('title')).toBe('1,030,000 nonces per second')
+    expect(rate.querySelector('.sr-only')?.textContent).toBe('1,030,000 nonces per second')
+  })
+
+  // abbreviateNumber clamps a non-finite rate to 0 because `use-miner` computes
+  // `(scanned / elapsedMs) * 1000`, which is NaN on a tick where no time has passed yet. The
+  // tooltip beside the abbreviation has to clamp the same way, or a NaN tick shows "0/s" titled
+  // "NaN nonces per second".
+  it('guards the rate tooltip against non-finite input the same way the abbreviation is guarded', () => {
+    const { container } = renderBar({ status: { ...status, rate: Number.NaN } })
+    const rate = statOf(container, 'rate')!
+    expect(rate.querySelector('[aria-hidden="true"]')?.textContent).toBe('0/s')
+    expect(rate.getAttribute('title')).toBe('0 nonces per second')
   })
 
   it('shows the worker count and the elapsed time as separate items', () => {
@@ -157,7 +176,10 @@ describe('MiningStatusBar: the counters while paused', () => {
   // clock sitting either side of a speed that had nothing to say.
   it('merges the count and the frozen clock into one item', () => {
     const { container } = renderBar({ status: pausedStatus })
-    expect(statOf(container, 'scanned')?.textContent).toBe('4.2M checked in 2m 05s')
+    const scanned = statOf(container, 'scanned')!
+    expect(scanned.querySelector('[aria-hidden="true"]')?.textContent).toBe(
+      '4.2M checked in 2m 05s',
+    )
     expect(statOf(container, 'elapsed')).toBeNull()
   })
 
@@ -176,9 +198,14 @@ describe('MiningStatusBar: the counters while paused', () => {
     expect(statOf(container, 'workers')?.textContent).toBe('5 workers')
   })
 
-  it('keeps the exact count reachable as a tooltip here too', () => {
+  it('keeps the exact count reachable as a tooltip here too, and as text for a screen reader', () => {
     const { container } = renderBar({ status: pausedStatus })
-    expect(statOf(container, 'scanned')?.getAttribute('title')).toBe('4,200,000 nonces checked')
+    const scanned = statOf(container, 'scanned')!
+    expect(scanned.getAttribute('title')).toBe('4,200,000 nonces checked')
+    // The exact duration too, not just the exact count: the merged item speaks both.
+    expect(scanned.querySelector('.sr-only')?.textContent).toBe(
+      '4,200,000 nonces checked in 2m 05s',
+    )
   })
 })
 
@@ -228,7 +255,12 @@ describe('MiningStatusBar: the pause and resume controls', () => {
   // shape, or the button under the pointer moves out from under it.
   it('reserves one width for both labels, so nothing moves when the state flips', () => {
     const { rerender } = renderBar()
-    expect(screen.getByRole('button', { name: /^pause$/i }).className).toMatch(/min-w-/)
+    const pauseWidthClass = screen
+      .getByRole('button', { name: /^pause$/i })
+      .className.match(/\bmin-w-\S+\b/)?.[0]
+    // The concrete class, not just `/min-w-/`: that pattern also matches `min-w-0`, which
+    // reserves nothing at all and would let this test pass with the floor silently removed.
+    expect(pauseWidthClass).toBe('min-w-28')
 
     rerender(
       <MiningStatusBar
@@ -239,7 +271,12 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         onStartOver={vi.fn()}
       />,
     )
-    expect(screen.getByRole('button', { name: /^resume$/i }).className).toMatch(/min-w-/)
+    const resumeWidthClass = screen
+      .getByRole('button', { name: /^resume$/i })
+      .className.match(/\bmin-w-\S+\b/)?.[0]
+    // Same width class on both states is what makes this one slot rather than two: if the two
+    // buttons ever pick up different floors, Start over is back to moving under the pointer.
+    expect(resumeWidthClass).toBe(pauseWidthClass)
   })
 
   it('hides the control entirely when mining has not started', () => {
@@ -384,7 +421,7 @@ describe('MiningStatusBar: the checkpoint', () => {
 
 // The Configure card is gone for the whole run, so this line is the only place the config being
 // mined is legible. Without it there is no way to check what you set without discarding the run
-// to look — which is the one thing a user watching a long search must not have to do.
+// to look: the one thing a user watching a long search must not have to do.
 describe('MiningStatusBar: the config summary line', () => {
   function renderWithConfig(config = CONFIG, overrides = {}) {
     return render(

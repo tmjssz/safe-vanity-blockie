@@ -182,7 +182,9 @@ describe('MiningView across a chain switch', () => {
     // Read off the bar's own slot: the figure is now split across a monospace span and the word
     // beside it, so a `getByText(/900/)` would match both the number and its wrapper.
     act(() => worker.emit({ type: 'progress', scanned: 900, candidates: [CANDIDATE] }))
-    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('900 checked')
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('900 checked')
   })
 
   it('does start a fresh run when the switch genuinely changes the constants', async () => {
