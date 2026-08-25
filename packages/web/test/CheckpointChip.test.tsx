@@ -3,16 +3,22 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { CheckpointChip } from '../components/CheckpointChip'
 
+/** The open panel, as the element that holds both the number and the prose about it. */
+async function findPanel(): Promise<HTMLElement> {
+  const value = await screen.findByText('60,000,016,650,000')
+  return value.closest('[data-slot="popover-content"]') as HTMLElement
+}
+
 describe('CheckpointChip', () => {
   it('is a chip that says Checkpoint, and shows nothing until it is opened', () => {
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeDefined()
     expect(screen.queryByText('60,000,016,650,000')).toBeNull()
   })
 
   it('opens on click, with the full saltNonce grouped for reading', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
@@ -23,7 +29,7 @@ describe('CheckpointChip', () => {
   // the side of the page.
   it('aligns the panel to the right edge of the chip', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
@@ -31,17 +37,33 @@ describe('CheckpointChip', () => {
     expect(content.closest('[data-slot="popover-content"]')?.getAttribute('data-align')).toBe('end')
   })
 
-  it('says what the number is for and how it travels', async () => {
+  it('says what the number is for', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
 
     await user.click(screen.getByRole('button', { name: /checkpoint/i }))
 
     expect(
       await screen.findByText(
-        'The next saltNonce to try. Resume continues from here automatically; copy it to continue this search on another machine.',
+        'The next saltNonce to try. Resume continues from here automatically.',
       ),
     ).toBeDefined()
+  })
+
+  // The checkpoint is only half of a resume. `CliHandoff` emits `--workers` and `--start`
+  // together for exactly this reason: each worker keeps to a block of its own, so whatever its
+  // neighbours had not reached is skipped, and a pool of a different size skips a different
+  // slice. A panel that hands over the bare number and invites pasting it elsewhere is a panel
+  // that loses keyspace silently.
+  it('names the pool the checkpoint belongs to, and what a different one costs', async () => {
+    const user = userEvent.setup()
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    const panel = await findPanel()
+
+    expect(panel.textContent).toContain('--workers 5')
+    expect(panel.textContent).toMatch(/different worker count skips a different slice/i)
   })
 
   // Grouped on screen, ungrouped on the clipboard: the separators are for the eye, and this
@@ -53,7 +75,7 @@ describe('CheckpointChip', () => {
   it('copies the bare digits', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
 
     fireEvent.click(screen.getByRole('button', { name: /checkpoint/i }))
     fireEvent.click(await screen.findByRole('button', { name: /copy checkpoint/i }))
@@ -66,7 +88,7 @@ describe('CheckpointChip', () => {
   // the only thing that can show which chip the panel belongs to.
   it('marks itself active while its popover is open', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     expect(chip.getAttribute('data-state')).toBe('closed')
@@ -78,7 +100,7 @@ describe('CheckpointChip', () => {
 
   it('closes again on a second click', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     await user.click(chip)
@@ -97,7 +119,7 @@ describe('CheckpointChip', () => {
   // which the test above already covers, and jsdom does not synthesise one from a pointer pair.
   it('opens from a click rather than from hover, which is what makes a tap work', async () => {
     const user = userEvent.setup()
-    render(<CheckpointChip nextStart={60_000_016_650_000} />)
+    render(<CheckpointChip nextStart={60_000_016_650_000} workers={5} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
     await user.hover(chip)

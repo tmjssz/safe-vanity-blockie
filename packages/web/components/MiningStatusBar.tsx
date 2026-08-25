@@ -303,7 +303,7 @@ export function MiningStatusBar({
               the size of the number makes it a worse one. */}
           {!status.running && status.scanned > 0 && (
             <div className="ml-auto flex items-center">
-              <CheckpointChip nextStart={status.nextStart} />
+              <CheckpointChip nextStart={status.nextStart} workers={status.workers} />
             </div>
           )}
         </div>

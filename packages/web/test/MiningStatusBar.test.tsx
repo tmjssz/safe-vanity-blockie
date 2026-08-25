@@ -414,6 +414,19 @@ describe('MiningStatusBar: the checkpoint', () => {
     expect(await screen.findByText('4,200,500')).toBeDefined()
   })
 
+  // The pool the checkpoint was reached with is half of the resume: the bar owns that number,
+  // so it is the bar's job to hand it over with the other half.
+  it('hands the chip the worker count the checkpoint was reached with', async () => {
+    const user = userEvent.setup()
+    renderBar({ status: pausedStatus })
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+
+    expect(
+      (await screen.findByText('4,200,500')).closest('[data-slot="popover-content"]')?.textContent,
+    ).toContain('--workers 5')
+  })
+
   // `nextStartFrom` returns the configured start plus a whole block per worker before any nonce
   // is tried, so a non-zero start would otherwise advertise a checkpoint for a run that has
   // mined nothing, at a number far above where it would actually begin.

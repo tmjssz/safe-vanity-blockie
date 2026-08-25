@@ -18,8 +18,13 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
  * that opens on hover cannot be opened on a touch device at all, and this one holds precisely
  * the value someone on a phone would want to send to a desktop. Click and tap both go through
  * the trigger's own click handling.
+ *
+ * `workers` travels with the number because a checkpoint alone is half a resume: each worker
+ * keeps to a block of its own, so a pool of a different size skips a different slice of what
+ * this run left behind. CliHandoff emits `--workers` and `--start` as a pair for the same
+ * reason; this panel says so rather than handing out the bare digits and hoping.
  */
-export function CheckpointChip({ nextStart }: { nextStart: number }) {
+export function CheckpointChip({ nextStart, workers }: { nextStart: number; workers: number }) {
   return (
     // Uncontrolled: nothing outside the trigger's own `data-state` ever needs to know whether
     // this is open, so tracking it a second time here would just be a second source for one
@@ -67,8 +72,13 @@ export function CheckpointChip({ nextStart }: { nextStart: number }) {
           />
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          The next saltNonce to try. Resume continues from here automatically; copy it to continue
-          this search on another machine.
+          The next saltNonce to try. Resume continues from here automatically.
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          To continue this search on another machine, carry{' '}
+          <span className="font-mono text-foreground">--workers {workers}</span> with it: each
+          worker keeps to a block of its own, so a different worker count skips a different slice of
+          what this run left behind. The Run on your machine command writes out both.
         </p>
       </PopoverContent>
     </Popover>
