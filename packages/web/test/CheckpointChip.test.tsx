@@ -79,14 +79,20 @@ describe('CheckpointChip', () => {
   // The reason this is a real PopoverTrigger rather than the hover-driven HintPopover used
   // elsewhere on this bar: a panel that opens on hover has no way to open on a touch device,
   // and this one holds the value a user on a phone would most want to send to a desktop.
-  it('opens from a touch tap, not only from a mouse click', async () => {
+  //
+  // Pinned as "hover and focus alone do not open it", which is the property that separates this
+  // chip from a HintPopover. The tap itself arrives at the trigger as an ordinary DOM click,
+  // which the test above already covers, and jsdom does not synthesise one from a pointer pair.
+  it('opens from a click rather than from hover, which is what makes a tap work', async () => {
+    const user = userEvent.setup()
     render(<CheckpointChip nextStart={60_000_016_650_000} />)
     const chip = screen.getByRole('button', { name: /checkpoint/i })
 
-    fireEvent.pointerDown(chip, { pointerType: 'touch', button: 0, ctrlKey: false })
-    fireEvent.pointerUp(chip, { pointerType: 'touch' })
-    fireEvent.click(chip)
+    await user.hover(chip)
+    chip.focus()
+    expect(screen.queryByText('60,000,016,650,000')).toBeNull()
 
+    await user.click(chip)
     expect(await screen.findByText('60,000,016,650,000')).toBeDefined()
   })
 })
