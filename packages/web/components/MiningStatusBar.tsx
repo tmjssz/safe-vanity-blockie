@@ -260,8 +260,11 @@ export function MiningStatusBar({
           {started && (
             /* Both controls in one group, hard right. Pause is the nearer of the two, because it
                is the one reached for dozens of times a run and Start over is the one that ends
-               it. */
-            <div className="ml-auto flex items-center gap-2">
+               it — which is also why there is a whole `gap-4` between them rather than the 8px
+               a button group would normally take. They are not a pair of related actions; one
+               of them throws the run away, and a few pixels is the whole margin for error on
+               a control that does not ask twice about the results below it. */
+            <div className="ml-auto flex items-center gap-4">
               {/* One slot, two labels. `min-w-28` is what makes it one slot: "Pause" and
                   "Resume" are different lengths, and without a floor on the width Start over
                   steps sideways every time the state flips, out from under the pointer that is

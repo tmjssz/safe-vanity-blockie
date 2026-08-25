@@ -265,6 +265,19 @@ describe('MiningStatusBar: the pause and resume controls', () => {
     )
   })
 
+  // Resume and Start over do different things and one of them is irreversible, so they need to
+  // read as two controls rather than as a pair. Tight spacing is what makes a misclick on the
+  // one that discards the run a matter of a few pixels.
+  it.each([
+    ['running', {}],
+    ['paused', { status: { ...status, running: false, paused: true } }],
+  ])('keeps the two controls apart on the %s bar', (_state, overrides) => {
+    const { container } = renderBar(overrides)
+    const group = container.querySelector('[data-slot="status-row"] .ml-auto')
+
+    expect(group?.className).toMatch(/\bgap-4\b/)
+  })
+
   // "Pause" and "Resume" are different lengths, so without a floor on the width the control
   // beside them steps sideways every time a user pauses. The two states have to be the same
   // shape, or the button under the pointer moves out from under it.
