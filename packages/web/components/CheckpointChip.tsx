@@ -14,10 +14,11 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
  * outline, and only while paused, which is the only moment the value is worth anything: a
  * running search resumes from here by itself.
  *
- * A real PopoverTrigger, not the hover-driven HintPopover the rest of this bar uses. A panel
- * that opens on hover cannot be opened on a touch device at all, and this one holds precisely
- * the value someone on a phone would want to send to a desktop. Click and tap both go through
- * the trigger's own click handling.
+ * A real PopoverTrigger, not the hover-driven HintPopover the rest of this bar uses. That one
+ * cancels its own open-autofocus, on the grounds that nothing inside a hint is focusable; this
+ * panel holds a copy button, and cancelling autofocus would leave it outside the keyboard's
+ * reach. Opening on click rather than hover suits the chip anyway — it is reached by tap as
+ * often as by pointer.
  *
  * `workers` travels with the number because a checkpoint alone is half a resume: each worker
  * keeps to a block of its own, so a pool of a different size skips a different slice of what
