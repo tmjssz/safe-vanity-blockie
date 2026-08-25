@@ -3,7 +3,7 @@
 import { Check, Info } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
-import { MAX_RGB_DISTANCE } from '../lib/contrast-preview'
+import { CONTRAST_MAX } from '../lib/contrast-preview'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
 import { ContrastSwatch } from './ContrastSwatch'
@@ -29,9 +29,6 @@ export interface FacePickerProps {
   filters: FaceFilters
   onFiltersChange: (filters: FaceFilters) => void
 }
-
-/** The slider's ceiling: `MAX_RGB_DISTANCE` rounded up to a whole number a label can carry. */
-const CONTRAST_MAX = Math.ceil(MAX_RGB_DISTANCE)
 
 /** A perfect match, and the top of the match slider. */
 const MATCH_MAX = 100
