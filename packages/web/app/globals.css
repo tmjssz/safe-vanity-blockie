@@ -102,28 +102,6 @@
   }
 }
 
-/* The mining indicator's equalizer. Hand-written for the same reason the collapsible
-   animation above is: there is no tailwindcss-animate in this project, so `animate-*`
-   utilities only exist for the `--animate-*` names declared here.
-
-   Height rather than transform: the bars sit on a shared baseline and grow upward, which is
-   what makes three of them read as levels rather than as three things bouncing. The bars carry
-   a resting height of their own (see MiningActivity), so `motion-reduce:animate-none` leaves a
-   static glyph rather than nothing at all. */
-@theme {
-  --animate-equalizer: equalizer 900ms ease-in-out infinite;
-
-  @keyframes equalizer {
-    0%,
-    100% {
-      height: 5px;
-    }
-    50% {
-      height: 14px;
-    }
-  }
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
