@@ -23,12 +23,13 @@ export function abbreviateNumber(value: number): string {
   const safe = Number.isFinite(value) && value > 0 ? value : 0
 
   for (const { threshold, suffix } of UNITS) {
-    // Largest unit first, and the comparison is against the value ALREADY rounded to one
-    // decimal. Rounding afterwards is what would print "1000.0K": 999,950 belongs to M once
-    // it is rounded, and this loop reaches M with a rounded 1.0 rather than reaching K with
-    // an unrounded 999.95.
-    const scaled = Math.round((safe / threshold) * 10) / 10
-    if (scaled >= 1) return `${scaled.toFixed(1)}${suffix}`
+    // Largest unit first, against the unrounded value less half of the last digit that gets
+    // printed one unit DOWN. That slack is exactly the set of values which would otherwise
+    // render a mantissa that has outgrown its own suffix: 999,950 is 999.95K, printed at one
+    // decimal as "1000.0K", so it belongs to M. Nothing wider gets in — comparing the value
+    // already rounded at this unit would let 950,000 through as "1.0M", a 5% overstatement
+    // sitting next to a tooltip reading 950,000.
+    if (safe >= threshold - threshold / 20_000) return `${(safe / threshold).toFixed(1)}${suffix}`
   }
   // Under a thousand, so it fits as it is. Ungrouped, because three digits do not need
   // separators and "900" is what the eye expects beside "1.3K".

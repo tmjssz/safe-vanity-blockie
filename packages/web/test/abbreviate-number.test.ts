@@ -24,12 +24,22 @@ describe('abbreviateNumber', () => {
   })
 
   // 999,950 scales to 999.95K, which one decimal rounds to "1000.0K": a figure that has
-  // outgrown the unit printed next to it. Choosing the unit from the ROUNDED value is what
-  // keeps that from ever being rendered.
+  // outgrown the unit printed next to it. Promoting exactly the values that round up into the
+  // next unit is what keeps that from ever being rendered.
   it('promotes a value that rounds past its own unit', () => {
     expect(abbreviateNumber(999_950)).toBe('1.0M')
     expect(abbreviateNumber(999_950_000)).toBe('1.0B')
-    expect(abbreviateNumber(999)).toBe('1.0K')
+    expect(abbreviateNumber(999.95)).toBe('1.0K')
+  })
+
+  // The other half of the same rule, and the one that keeps the figure honest: promotion is
+  // worth a rounding step, not 5% of a unit. A bar reading "1.0M checked" whose own tooltip
+  // reads "952,300 nonces checked" is the bar contradicting itself.
+  it('leaves a value that has not reached the next unit in its own', () => {
+    expect(abbreviateNumber(950_000)).toBe('950.0K')
+    expect(abbreviateNumber(952_300)).toBe('952.3K')
+    expect(abbreviateNumber(999_949)).toBe('999.9K')
+    expect(abbreviateNumber(999)).toBe('999')
   })
 
   it('rounds rather than truncating', () => {
