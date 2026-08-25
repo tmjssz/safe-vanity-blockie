@@ -1131,6 +1131,62 @@ describe('MiningView', () => {
     expect(command.textContent).toContain(`--target ${FACE_SPEC.name}`)
   })
 
+  // The same number the Checkpoint chip shows, in the command the handoff dialog hands over.
+  // Without this, deleting the `resume` prop typechecks and every other test stays green while
+  // the copied command quietly restarts the search from zero, which is the one thing this
+  // dialog promises not to do.
+  it('injects the checkpoint this run has reached into the handoff command', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      scanned: 4_200_000,
+      nextStart: 41_200_000_000,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    // Bare digits, the way the CLI's Number parse needs them, and the way the chip's copy
+    // button puts them on the clipboard.
+    expect(command.textContent).toContain('--start 41200000000')
+    expect(command.textContent).not.toContain('41,200,000,000')
+  })
+
+  // Nothing scanned means `nextStartFrom` has only handed out blocks, so there is no checkpoint
+  // to carry over. The chip is hidden in exactly the same case, for the same reason.
+  it('leaves the checkpoint out of the command before anything has been scanned', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 0, nextStart: 41_200_000_000 }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    expect(command.textContent).not.toContain('--start')
+  })
+
   it('does not toast when there is no worker error', () => {
     constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
     minerState.current = IDLE_STATE
