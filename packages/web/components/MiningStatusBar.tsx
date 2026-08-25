@@ -178,100 +178,16 @@ export function MiningStatusBar({
     <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2">
         <div data-slot="status-row" className="flex flex-wrap items-center gap-3 text-sm">
-          {/* The state of the run leads the row the rest of it measures. Nothing at all before a
-              run exists: an animated "mining" glyph over a search that has not begun, or one a
-              worker error has stopped, is this indicator asserting exactly the thing it is for,
-              wrongly. */}
-          {(status.running || status.paused) && <MiningActivity paused={status.paused} />}
-
-          {/* No progress bar, and the percentage is labelled: a filled track next to a bare
-              "90.2%" reads as "the run is 90% done", which is not a number this search can have.
-              The keyspace is 2^256 wide and nothing is being counted down. What the number
-              actually measures is how close the best result found is to a perfect match. */}
-          {hasBest ? (
-            <span className="flex items-center gap-2">
-              <span className="text-muted-foreground">Best result</span>
-              <Badge variant="secondary" className="font-mono">
-                {formatScore(status.bestScore!, status.bestMaxScore!)}
-              </Badge>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">No candidates yet</span>
-          )}
-
-          {/* Two shapes for one pair of facts. While the search works, the count is a figure
-              that is still moving and the clock is a separate one moving beside it. Once it
-              stops, both are finished totals about the same stopped run, and reading them as one
-              sentence is what a stopped run has to say. The clock is frozen either way: see
-              use-miner, which does not bill time spent paused as mining time. */}
-          {status.paused ? (
-            // The abbreviation and the " checked in <duration>" wording both sit inside the
-            // aria-hidden span, alongside the sr-only exact figure, rather than as an exposed
-            // sibling: a sibling text node is still in the accessibility tree even next to a
-            // hidden one, and "nonces checked" from the sr-only span followed by an exposed
-            // "checked in" would read as "nonces checked checked in" to a screen reader.
-            <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
-              <span aria-hidden="true">
-                <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
-                {' checked in '}
-                <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
-              </span>
-              <span className="sr-only">
-                {scannedTitle} in {formatDuration(status.elapsedMs)}
-              </span>
-            </span>
-          ) : (
-            <>
-              {/* See the paused branch above for why the trailing " checked" is folded into the
-                  aria-hidden span rather than left exposed beside the sr-only copy. */}
-              <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
-                <span aria-hidden="true">
-                  <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
-                  {' checked'}
-                </span>
-                <span className="sr-only">{scannedTitle}</span>
-              </span>
-              {/* Absent while paused rather than zero. Nothing is being scanned, so a speed is a
-                  claim about work that is not happening, and "0k/s" is that claim with a number
-                  on it: it reads as a search that is running and getting nowhere, sitting next
-                  to a button offering to resume it. The count and the clock are cumulative facts
-                  about the run and stay; this is the one figure on the bar that describes the
-                  current moment, and while paused there is no such moment to describe. */}
-              <span
-                data-slot="stat-rate"
-                title={rateTitle}
-                className="font-mono tabular-nums text-foreground"
-              >
-                {/* Two decimals, where the count above takes one. The count is abbreviated
-                    to stop it reflowing the row; the rate never ran to eleven digits, and it
-                    is the one figure here that describes the current moment — at one decimal
-                    every speed from 1.00M/s to 1.04M/s reads the same frozen "1.0M/s". */}
-                <span aria-hidden="true">{abbreviateNumber(status.rate, 2)}/s</span>
-                <span className="sr-only">{rateTitle}</span>
-              </span>
-            </>
-          )}
-          <span data-slot="stat-workers" className="text-muted-foreground">
-            {status.workers} workers
-          </span>
-          {/* Gated on `started`, the same condition the controls use, because a clock reading
-              "0s" before anything has been mined claims a run that does not exist. The count and
-              rate can honestly read zero; a duration cannot. While paused the clock is inside
-              the item above instead, so this is the running case only. */}
-          {started && !status.paused && (
-            <span data-slot="stat-elapsed" className="text-muted-foreground tabular-nums">
-              {formatDuration(status.elapsedMs)}
-            </span>
-          )}
-
           {started && (
-            /* Both controls in one group, hard right. Pause is the nearer of the two, because it
-               is the one reached for dozens of times a run and Start over is the one that ends
-               it — which is also why there is a whole `gap-4` between them rather than the 8px
-               a button group would normally take. They are not a pair of related actions; one
-               of them throws the run away, and a few pixels is the whole margin for error on
-               a control that does not ask twice about the results below it. */
-            <div className="ml-auto flex items-center gap-4">
+            /* The row reads left to right as "what you can do about this run", then "what the
+               run has done". The controls lead because they are the half a user acts on, and
+               they sit at the edge a pointer travels least to reach. Pause is the nearer of the
+               two, because it is the one reached for dozens of times a run and Start over is the
+               one that ends it — which is also why there is a whole `gap-4` between them rather
+               than the 8px a button group would normally take. They are not a pair of related
+               actions; one of them throws the run away, and a few pixels is the whole margin for
+               error on a control that does not ask twice about the results below it. */
+            <div data-slot="status-controls" className="flex items-center gap-4">
               {/* One slot, two labels. `min-w-28` is what makes it one slot: "Pause" and
                   "Resume" are different lengths, and without a floor on the width Start over
                   steps sideways every time the state flips, out from under the pointer that is
@@ -307,6 +223,121 @@ export function MiningStatusBar({
               </Button>
             </div>
           )}
+
+          {/* Everything the run has to report, as one group hard right, so the figures end at the
+              same edge whatever the state adds or removes from the middle of them. */}
+          <div
+            data-slot="status-stats"
+            className="ml-auto flex flex-wrap items-center justify-end gap-3"
+          >
+            {/* No progress bar, and the percentage is labelled: a filled track next to a bare
+              "90.2%" reads as "the run is 90% done", which is not a number this search can have.
+              The keyspace is 2^256 wide and nothing is being counted down. What the number
+              actually measures is how close the best result found is to a perfect match. */}
+            {hasBest ? (
+              <span className="flex items-center gap-2">
+                <span className="text-muted-foreground">Best result</span>
+                <Badge variant="secondary" className="font-mono">
+                  {formatScore(status.bestScore!, status.bestMaxScore!)}
+                </Badge>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">No candidates yet</span>
+            )}
+
+            {/* Two shapes for one pair of facts. While the search works, the count is a figure
+              that is still moving and the clock is a separate one moving beside it. Once it
+              stops, both are finished totals about the same stopped run, and reading them as one
+              sentence is what a stopped run has to say. The clock is frozen either way: see
+              use-miner, which does not bill time spent paused as mining time. */}
+            {status.paused ? (
+              // The abbreviation and the " checked in <duration>" wording both sit inside the
+              // aria-hidden span, alongside the sr-only exact figure, rather than as an exposed
+              // sibling: a sibling text node is still in the accessibility tree even next to a
+              // hidden one, and "nonces checked" from the sr-only span followed by an exposed
+              // "checked in" would read as "nonces checked checked in" to a screen reader.
+              <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
+                <span aria-hidden="true">
+                  <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                  {' checked in '}
+                  <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
+                </span>
+                <span className="sr-only">
+                  {scannedTitle} in {formatDuration(status.elapsedMs)}
+                </span>
+              </span>
+            ) : (
+              <>
+                {/* See the paused branch above for why the trailing " checked" is folded into the
+                  aria-hidden span rather than left exposed beside the sr-only copy. */}
+                <span
+                  data-slot="stat-scanned"
+                  title={scannedTitle}
+                  className="text-muted-foreground"
+                >
+                  <span aria-hidden="true">
+                    <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                    {' checked'}
+                  </span>
+                  <span className="sr-only">{scannedTitle}</span>
+                </span>
+                {/* Absent while paused rather than zero. Nothing is being scanned, so a speed is a
+                  claim about work that is not happening, and "0k/s" is that claim with a number
+                  on it: it reads as a search that is running and getting nowhere, sitting next
+                  to a button offering to resume it. The count and the clock are cumulative facts
+                  about the run and stay; this is the one figure on the bar that describes the
+                  current moment, and while paused there is no such moment to describe. */}
+                <span
+                  data-slot="stat-rate"
+                  title={rateTitle}
+                  className="font-mono tabular-nums text-foreground"
+                >
+                  {/* Two decimals, where the count above takes one. The count is abbreviated
+                    to stop it reflowing the row; the rate never ran to eleven digits, and it
+                    is the one figure here that describes the current moment — at one decimal
+                    every speed from 1.00M/s to 1.04M/s reads the same frozen "1.0M/s". */}
+                  <span aria-hidden="true">{abbreviateNumber(status.rate, 2)}/s</span>
+                  <span className="sr-only">{rateTitle}</span>
+                </span>
+              </>
+            )}
+            {/* The first thing to go when the row runs short, and the last thing to be missed: the
+              pool size is the only figure here that cannot change for the length of a run. The
+              clock goes next, at the narrower breakpoint, because it at least keeps moving. */}
+            <span data-slot="stat-workers" className="hidden text-muted-foreground md:inline">
+              {status.workers} workers
+            </span>
+            {/* Gated on `started`, the same condition the controls use, because a clock reading
+              "0s" before anything has been mined claims a run that does not exist. The count and
+              rate can honestly read zero; a duration cannot. While paused the clock is inside
+              the item above instead, so this is the running case only. */}
+            {started && !status.paused && (
+              <span
+                data-slot="stat-elapsed"
+                className="hidden text-muted-foreground tabular-nums sm:inline"
+              >
+                {formatDuration(status.elapsedMs)}
+              </span>
+            )}
+            {/* Last on the row, and never dropped: it is the one item here that reports whether
+              any of the others are still being added to.
+
+              The slot is a floor on the width because the two variants are not the same size —
+              an 18px square while mining, two bars and the word "Paused" once it stops — and
+              without it every figure to the left slides sideways on every pause. 20 (80px)
+              clears the wider one in the fallback stacks Tailwind's default can land on: "Paused"
+              measures ~57px in DejaVu Sans, against 9px of bars and a 6px gap. Its content is
+              pushed right inside it, so whichever variant is showing ends at the same edge.
+
+              Nothing at all before a run exists: an animated "mining" glyph over a search that
+              has not begun, or one a worker error has stopped, is this indicator asserting
+              exactly the thing it is for, wrongly. */}
+            {(status.running || status.paused) && (
+              <span data-slot="status-indicator" className="flex min-w-20 justify-end">
+                <MiningActivity paused={status.paused} />
+              </span>
+            )}
+          </div>
         </div>
 
         {/* The config being mined, and, once the search is stopped, where it stopped — the

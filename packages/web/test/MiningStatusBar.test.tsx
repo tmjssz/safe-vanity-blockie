@@ -99,14 +99,35 @@ describe('MiningStatusBar: the activity indicator', () => {
     expect(screen.queryByRole('img', { name: /mining|paused/i })).toBeNull()
   })
 
-  // It leads the row it belongs to: the state of the run is what the rest of that row is a
-  // measurement of.
-  it('leads the stats row', () => {
+  // It ends the row it belongs to. The row reads left to right as "what you can do about this
+  // run", then "what the run has done", and the indicator is the summary of the second half:
+  // the last thing on the line, at the edge the eye stops at.
+  it('ends the stats row, with the controls leading it', () => {
     const { container } = renderBar()
-    const row = container.querySelector('[data-slot="status-row"]')!
+    const row = container.querySelector('[data-slot="status-row"]')
+    const controls = container.querySelector('[data-slot="status-controls"]')
+    const stats = container.querySelector('[data-slot="status-stats"]')
     const indicator = screen.getByRole('img', { name: 'Mining' })
-    expect(row.contains(indicator)).toBe(true)
-    expect(row.firstElementChild).toBe(indicator)
+
+    expect(row?.firstElementChild).toBe(controls)
+    expect(row?.lastElementChild).toBe(stats)
+    expect(stats?.lastElementChild?.contains(indicator)).toBe(true)
+  })
+
+  // The two variants are different widths: the running one is an 18px square, the paused one is
+  // two bars and the word "Paused". Without a slot as wide as the wider of them, every figure on
+  // the row slides sideways on every pause and again on every resume.
+  it('reserves the indicator its widest width, so the stats hold still across a pause', () => {
+    const running = renderBar()
+    expect(running.container.querySelector('[data-slot="status-indicator"]')?.className).toMatch(
+      /\bmin-w-20\b/,
+    )
+    running.unmount()
+
+    const paused = renderBar({ status: { ...status, running: false, paused: true } })
+    expect(paused.container.querySelector('[data-slot="status-indicator"]')?.className).toMatch(
+      /\bmin-w-20\b/,
+    )
   })
 })
 
@@ -166,6 +187,19 @@ describe('MiningStatusBar: the counters while running', () => {
     const rate = statOf(container, 'rate')!
     expect(rate.querySelector('[aria-hidden="true"]')?.textContent).toBe('0/s')
     expect(rate.getAttribute('title')).toBe('0 nonces per second')
+  })
+
+  // Workers first, then the clock. The pool size is the only figure on this row that cannot
+  // change for the length of a run, so it is the one worth least when there is not room for all
+  // of them; the clock at least keeps moving. The indicator is never in this list.
+  it('drops the worker count before the clock when the row runs out of room', () => {
+    const { container } = renderBar()
+
+    expect(statOf(container, 'workers')?.className).toMatch(/\bhidden\b.*\bmd:/)
+    expect(statOf(container, 'elapsed')?.className).toMatch(/\bhidden\b.*\bsm:/)
+    expect(container.querySelector('[data-slot="status-indicator"]')?.className).not.toMatch(
+      /\bhidden\b/,
+    )
   })
 
   it('shows the worker count and the elapsed time as separate items', () => {
@@ -276,7 +310,7 @@ describe('MiningStatusBar: the pause and resume controls', () => {
     ['paused', { status: { ...status, running: false, paused: true } }],
   ])('keeps the two controls apart on the %s bar', (_state, overrides) => {
     const { container } = renderBar(overrides)
-    const group = container.querySelector('[data-slot="status-row"] .ml-auto')
+    const group = container.querySelector('[data-slot="status-controls"]')
 
     expect(group?.className).toMatch(/\bgap-4\b/)
   })
@@ -376,15 +410,19 @@ describe('MiningStatusBar: the Start over control', () => {
     expect(screen.getByRole('button', { name: /start over/i })).toBeDefined()
   })
 
-  // Both controls in one group at the right end of the stats row, in both states. Start over
-  // used to sit a row below, which is where the checkpoint chip lives now.
-  it('sits beside the pause control, at the right end of the stats row', () => {
-    renderBar()
+  // Both controls in one group at the LEFT edge of the row, in both states: the half of the row
+  // a user acts on, at the edge a pointer travels least to reach. Start over used to sit a row
+  // below, which is where the checkpoint lives now.
+  it('sits beside the pause control, at the left edge of the stats row', () => {
+    const { container } = renderBar()
 
     const pause = screen.getByRole('button', { name: /^pause$/i })
     const startOver = screen.getByRole('button', { name: /start over/i })
     expect(pause.parentElement).toBe(startOver.parentElement)
-    expect(pause.parentElement?.className).toMatch(/ml-auto/)
+    expect(pause.parentElement?.dataset.slot).toBe('status-controls')
+    expect(container.querySelector('[data-slot="status-row"]')?.firstElementChild).toBe(
+      pause.parentElement,
+    )
     // Pause first: it is the one reached for dozens of times a run, and the destructive control
     // should never be the nearer of the two.
     expect(pause.compareDocumentPosition(startOver) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
