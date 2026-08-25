@@ -46,6 +46,7 @@ export {
   MOUTH_INDICES,
   MOUTH_STROKE_WEIGHT,
   MOUTHS,
+  mouthNamesForTarget,
   parseFaceSpec,
   TEMPLATES,
   targetNameForMouths,
