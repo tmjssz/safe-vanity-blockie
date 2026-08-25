@@ -82,6 +82,17 @@ describe('MiningActivity, running', () => {
     expect(faceElementIn(container)).not.toBe(mounted)
   })
 
+  // On top of the faces, and on a period of its own: the swaps are a fast, hard-edged change,
+  // and a slow swell underneath them is what turns a strobing square into something that looks
+  // alive. Deliberately not a multiple of the frame, so the two never lock into step.
+  it('breathes on a slower loop than the faces change', () => {
+    const { container } = render(<MiningActivity paused={false} />)
+    const faces = container.querySelector('[data-slot="activity-faces"]')
+
+    expect(faces?.className).toMatch(/animate-face-breathe/)
+    expect(faces?.className).toMatch(/motion-reduce:animate-none/)
+  })
+
   // Cycled from a pool built once, not drawn fresh per frame: `bloSvg` builds ~64 path segments
   // through a keccak hash, and six of those a second for the length of a search is work the
   // indicator does not need to repeat. A sequence that comes back round is what a fixed pool

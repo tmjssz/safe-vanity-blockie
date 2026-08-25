@@ -89,7 +89,14 @@ function MiningFaces() {
     // No size here: `bloSvg` writes FACE_PX into the svg's own width and height, and this
     // wrapper takes the size of the face in normal flow below. A second copy of 18 in a utility
     // class is a second number to keep in step with the first.
-    <span className="relative inline-flex shrink-0 overflow-hidden rounded-sm">
+    <span
+      data-slot="activity-faces"
+      // The swell is on this box rather than on either face, so both layers move together and
+      // the crossfade above cannot fight it: two `animation` shorthands on one element would.
+      // `transform` costs no layout — the box stays FACE_PX wide however far it swells — so the
+      // counters beside it do not shift twice a second.
+      className="relative inline-flex shrink-0 overflow-hidden rounded-sm animate-face-breathe motion-reduce:animate-none"
+    >
       {/* The face on its way out, and the one giving this box its size — which is why it stays
           in flow while its replacement is the one lifted on top. Something has to hold the
           space, and it cannot be the layer that spends part of every frame transparent. */}

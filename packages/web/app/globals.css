@@ -126,6 +126,27 @@
   }
 }
 
+/* The mining indicator's swell — the slow "getting bigger and smaller" underneath the faces.
+
+   1800ms against the 170ms the faces change on, and deliberately not a multiple of it: locked
+   to the frame the two would read as one stuttering pulse, adrift they read as a thing that is
+   alive and a thing that is working. `scale` only, so it costs no layout and the row beside it
+   never moves. The range is small on purpose — this is a mining indicator on a bar, not a
+   heartbeat. */
+@theme {
+  --animate-face-breathe: face-breathe 1800ms ease-in-out infinite;
+
+  @keyframes face-breathe {
+    0%,
+    100% {
+      scale: 0.9;
+    }
+    50% {
+      scale: 1.1;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
