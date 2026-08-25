@@ -144,7 +144,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     // The displayed scanned count also carries over rather than resetting to zero: emitting more
     // progress from the new worker should report a cumulative total, not just the new segment.
     act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
-    expect(screen.getByText(/700\s*nonces/)).toBeDefined()
+    // Under a thousand the bar prints the figure as it is, so this is still 700 rather than
+    // "0.7K".
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('700 checked')
   })
 
   // The status bar now shows the elapsed time, which turned a long-standing accounting bug into
@@ -169,7 +171,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
 
     act(() => vi.advanceTimersByTime(2_000))
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getByText('2s elapsed')).toBeDefined()
+    expect(document.querySelector('[data-slot="stat-elapsed"]')?.textContent).toBe('2s')
 
     rerender(
       <MiningView
@@ -200,8 +202,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     act(() => vi.advanceTimersByTime(2_000))
     act(() => instances[1].emit({ type: 'progress', scanned: 200, candidates: [CANDIDATE] }))
 
-    // Exact text, not a substring match: "2m 04s elapsed" contains "4s elapsed".
-    expect(screen.getByText('4s elapsed')).toBeDefined()
+    // The whole point: two seconds of mining either side of a two-minute pause is four seconds
+    // of mining, not 2m 04s.
+    expect(document.querySelector('[data-slot="stat-elapsed"]')?.textContent).toBe('4s')
   })
 
   it('holds the clock still while paused, even if a filter change re-publishes mid-pause', () => {
@@ -221,7 +224,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     )
     act(() => vi.advanceTimersByTime(3_000))
     act(() => instances[0].emit({ type: 'progress', scanned: 500, candidates: [CANDIDATE] }))
-    expect(screen.getByText('3s elapsed')).toBeDefined()
+    expect(document.querySelector('[data-slot="stat-elapsed"]')?.textContent).toBe('3s')
 
     rerender(
       <MiningView
@@ -250,7 +253,10 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
       />,
     )
 
-    expect(screen.getByText('3s elapsed')).toBeDefined()
+    // The clock did not move across ninety seconds of pause and a filter change mid-pause.
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe(
+      '500 checked in 3s',
+    )
   })
 
   // The failure this pins is the whole screen contradicting itself: drag the contrast floor past
@@ -330,7 +336,7 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     expect(instances).toHaveLength(2)
     expect(startInputOf(instances[1]).start).toBe(0)
     expect(noResultCards()).toHaveLength(0)
-    expect(screen.getByText(/^0 nonces/)).toBeDefined()
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('0 checked')
   })
 
   it('starting fresh after being paused (rather than resumed) also does not carry over the board', () => {
@@ -461,9 +467,9 @@ describe('MiningView + useMiner integration (pause/resume)', () => {
     // block sits higher, so it is the one that decides the resume point.
     act(() => instances[0].emit({ type: 'progress', scanned: 900, candidates: [CANDIDATE] }))
     act(() => instances[1].emit({ type: 'progress', scanned: 400, candidates: [] }))
-    // The count beside the resume point on the bar is the two workers' work added up, and is
-    // nowhere near it — the gap the hint copy exists to explain.
-    expect(screen.getByText(/1,300\s*nonces/)).toBeDefined()
+    // The count beside the checkpoint on the bar is the two workers' work added up, and is
+    // nowhere near it: the gap the checkpoint popover's copy exists to explain.
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('1.3K checked')
 
     rerender(view(true))
     rerender(view(false))

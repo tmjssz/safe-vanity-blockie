@@ -1,11 +1,13 @@
 'use client'
 
 import { formatScore } from '@safe-vanity-blockie/core'
-import { Info, Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play, RotateCcw } from 'lucide-react'
+import { abbreviateNumber } from '../lib/abbreviate-number'
 import type { MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
-import { CopyButton } from './CopyButton'
+import { CheckpointChip } from './CheckpointChip'
+import { MiningActivity } from './MiningActivity'
 import { useStartOverConfirm } from './StartOverDialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -39,10 +41,6 @@ export interface MiningStatus {
    * run whose progress cannot be handed on, which is exactly the failure this reports against.
    */
   nextStart: number
-}
-
-function formatRate(rate: number): string {
-  return rate >= 1e6 ? `${(rate / 1e6).toFixed(2)}M/s` : `${Math.round(rate / 1000)}k/s`
 }
 
 function truncate(address: string): string {
@@ -141,11 +139,15 @@ export function MiningStatusBar({
   /** Throws the run away and brings the Configure card back. */
   onStartOver: () => void
 }) {
-  // The question, and the rule about when it is worth asking, are shared with the app title in the
-  // header — the other door onto this same reset. See StartOverDialog.
+  // The question, and the rule about when it is worth asking, are shared with the app title in
+  // the header, the other door onto this same reset. See StartOverDialog.
   const { request, dialog } = useStartOverConfirm(onStartOver)
   const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
   const started = status.running || status.paused || status.scanned > 0
+  const scannedTitle = `${status.scanned.toLocaleString('en-US')} nonces checked`
+  // The abbreviated figure and the exact one come from the same number, so the tooltip cannot
+  // drift from what it is explaining.
+  const scannedAbbrev = abbreviateNumber(status.scanned)
 
   return (
     // `top-14` matches the sticky header's `h-14` in app/layout.tsx: with `top-0` the bar would
@@ -153,10 +155,16 @@ export function MiningStatusBar({
     <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2">
         <div data-slot="status-row" className="flex flex-wrap items-center gap-3 text-sm">
-          {/* No progress bar, and the percentage is labelled: a filled track next to a bare "90.2%"
-              reads as "the run is 90% done", which is not a number this search can have — the
-              keyspace is 2^256 wide and nothing is being counted down. What the number actually
-              measures is how close the best result found is to a perfect match. */}
+          {/* The state of the run leads the row the rest of it measures. Nothing at all before a
+              run exists: an animated "mining" glyph over a search that has not begun, or one a
+              worker error has stopped, is this indicator asserting exactly the thing it is for,
+              wrongly. */}
+          {(status.running || status.paused) && <MiningActivity paused={status.paused} />}
+
+          {/* No progress bar, and the percentage is labelled: a filled track next to a bare
+              "90.2%" reads as "the run is 90% done", which is not a number this search can have.
+              The keyspace is 2^256 wide and nothing is being counted down. What the number
+              actually measures is how close the best result found is to a perfect match. */}
           {hasBest ? (
             <span className="flex items-center gap-2">
               <span className="text-muted-foreground">Best result</span>
@@ -168,30 +176,66 @@ export function MiningStatusBar({
             <span className="text-muted-foreground">No candidates yet</span>
           )}
 
-          <span className="text-muted-foreground">
-            {status.scanned.toLocaleString('en-US')} nonces
+          {/* Two shapes for one pair of facts. While the search works, the count is a figure
+              that is still moving and the clock is a separate one moving beside it. Once it
+              stops, both are finished totals about the same stopped run, and reading them as one
+              sentence is what a stopped run has to say. The clock is frozen either way: see
+              use-miner, which does not bill time spent paused as mining time. */}
+          {status.paused ? (
+            <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
+              <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+              {' checked in '}
+              <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
+            </span>
+          ) : (
+            <>
+              <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
+                <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                {' checked'}
+              </span>
+              {/* Absent while paused rather than zero. Nothing is being scanned, so a speed is a
+                  claim about work that is not happening, and "0k/s" is that claim with a number
+                  on it: it reads as a search that is running and getting nowhere, sitting next
+                  to a button offering to resume it. The count and the clock are cumulative facts
+                  about the run and stay; this is the one figure on the bar that describes the
+                  current moment, and while paused there is no such moment to describe. */}
+              <span
+                data-slot="stat-rate"
+                title={`${Math.round(status.rate).toLocaleString('en-US')} nonces per second`}
+                className="font-mono tabular-nums text-foreground"
+              >
+                {abbreviateNumber(status.rate)}/s
+              </span>
+            </>
+          )}
+          <span data-slot="stat-workers" className="text-muted-foreground">
+            {status.workers} workers
           </span>
-          {/* Zero while paused, and not the average of the segment that just ended: nothing is
-              being scanned, so a speed is a claim about work that is not happening — sitting
-              unchanged next to a button offering to resume it. The count and the clock beside it
-              are cumulative facts about the run and stay where they are; this is the one figure on
-              the bar that describes the current moment. */}
-          <span className="text-muted-foreground">
-            {formatRate(status.paused ? 0 : status.rate)}
-          </span>
-          <span className="text-muted-foreground">{status.workers} workers</span>
-          {/* Gated on `started` — the same condition the controls use — because a clock reading
-              "0s elapsed" before anything has been mined claims a run that does not exist. The
-              count and rate can honestly read zero; a duration cannot. */}
-          {started && (
-            <span className="text-muted-foreground tabular-nums">
-              {`${formatDuration(status.elapsedMs)} elapsed`}
+          {/* Gated on `started`, the same condition the controls use, because a clock reading
+              "0s" before anything has been mined claims a run that does not exist. The count and
+              rate can honestly read zero; a duration cannot. While paused the clock is inside
+              the item above instead, so this is the running case only. */}
+          {started && !status.paused && (
+            <span data-slot="stat-elapsed" className="text-muted-foreground tabular-nums">
+              {formatDuration(status.elapsedMs)}
             </span>
           )}
 
           {started && (
+            /* Both controls in one group, hard right. Pause is the nearer of the two, because it
+               is the one reached for dozens of times a run and Start over is the one that ends
+               it. */
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={onPauseToggle}>
+              {/* One slot, two labels. `min-w-24` is what makes it one slot: "Pause" and
+                  "Resume" are different lengths, and without a floor on the width Start over
+                  steps sideways every time the state flips, out from under the pointer that is
+                  about to click it. */}
+              <Button
+                variant={status.paused ? 'default' : 'outline'}
+                size="sm"
+                className="min-w-24"
+                onClick={onPauseToggle}
+              >
                 {status.paused ? (
                   <>
                     <Play className="mr-1 size-3" /> Resume
@@ -202,65 +246,8 @@ export function MiningStatusBar({
                   </>
                 )}
               </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Both controls hard right, one per row. Pause sits with the counters it acts on; Start
-            over sits a row below with the config it discards, and one step quieter. Side by side
-            they were a pixel apart in position and a whole run apart in consequence. The resume
-            point joins that row rather than the counters above: it belongs with the things you
-            reach for when you are done with this run, not with the figures that tick. */}
-        <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <ConfigSummary config={config} />
-          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-            {/* Gated on `scanned`, not on the value: the blocks are handed out before any nonce
-                is tried, so `nextStartFrom` already stands a whole block per worker above the
-                configured start when nothing has been reported — "Resume from 4,041,200,000,000"
-                over a run that has mined nothing is a claim about progress that has not
-                happened, and the size of the number makes it a worse one. */}
-            {status.scanned > 0 && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <span>Resume from</span>
-                {/* Grouped for the eye and monospaced so the digits line up between publishes;
-                    `tabular-nums` stops the number jittering as it grows. What goes on the
-                    clipboard is the bare digits — see the CopyButton below. */}
-                <span className="font-mono tabular-nums text-foreground">
-                  {status.nextStart.toLocaleString('en-US')}
-                </span>
-                <CopyButton
-                  // Digits only. This value's destination is `--start`, and the CLI parses that
-                  // with Number: a grouped "4,200,500" would be read as 4 and silently rescan
-                  // the whole run.
-                  value={String(status.nextStart)}
-                  label="Copy resume point"
-                  copiedMessage="Resume point copied"
-                  failedMessage="Could not copy automatically. Select the number and copy it manually."
-                />
-                <HintPopover
-                  label="What the resume point means"
-                  side="top"
-                  align="end"
-                  content={
-                    <p className="max-w-xs text-sm">
-                      Where a follow-up run should pick this search up: the highest end position any
-                      one of this run's {status.workers} worker
-                      {status.workers === 1 ? '' : 's'} reached. Nothing already scanned is
-                      rescanned — but this is not a measure of how far the search got, and it sits
-                      far above the nonce count beside it, because the workers' blocks lie side by
-                      side rather than end to end. Coverage is not complete either: each worker
-                      keeps to a block of its own, so whatever its neighbours had not reached when
-                      the run stopped is skipped rather than picked up later, and resuming with a
-                      different worker count skips a different amount.
-                    </p>
-                  }
-                >
-                  <Info aria-hidden="true" className="size-3.5" />
-                </HintPopover>
-              </div>
-            )}
-            {started && (
-              /* Available while paused too: it is the only route back to the form. */
+              {/* Available while paused too: it is the only route back to the form. Quieter than
+                  its neighbour, because it is the one with consequences. */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -269,8 +256,25 @@ export function MiningStatusBar({
               >
                 <RotateCcw className="mr-1 size-3" /> Start over
               </Button>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
+
+        {/* The config being mined, and, once the search is stopped, where it stopped. The
+            checkpoint belongs on this row rather than with the counters above: it is one of the
+            things you reach for when you are done with this run, not one of the figures that
+            tick. */}
+        <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <ConfigSummary config={config} />
+          {/* Gated on `scanned`, not on the value: `nextStartFrom` hands out a whole block per
+              worker before any nonce is tried, so a checkpoint over a run that has mined nothing
+              is a claim about progress that has not happened, and the size of the number makes
+              it a worse one. */}
+          {status.paused && status.scanned > 0 && (
+            <div className="ml-auto flex items-center">
+              <CheckpointChip nextStart={status.nextStart} />
+            </div>
+          )}
         </div>
       </div>
 

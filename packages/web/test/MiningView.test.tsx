@@ -280,7 +280,7 @@ describe('MiningView', () => {
     )
 
     expect(resultCards()).toHaveLength(1)
-    expect(screen.getByText(/4,200/)).toBeDefined()
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('4.2K checked')
   })
 
   // The grid shows everything retained and scrolls, so the number handed to the miner is a
@@ -619,7 +619,7 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(screen.getByText(/5,000/)).toBeDefined()
+    expect(document.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('5.0K checked')
     expect(bloSvgSpy.mock.calls.length).toBe(drawn)
   })
 
@@ -829,7 +829,7 @@ describe('MiningView', () => {
 
     // Everything the user would have lost is still exactly where it was: the status bar with its
     // scanned count, and every card on the leaderboard.
-    expect(slot.textContent).toMatch(/4,200/)
+    expect(slot.querySelector('[data-slot="stat-scanned"]')?.textContent).toBe('4.2K checked')
     expect(resultCards()).toHaveLength(1)
 
     // …and the failure is reported among them rather than in place of them — saying what stopped,
@@ -933,7 +933,8 @@ describe('MiningView', () => {
       />,
     )
 
-    const scanned = screen.getByText(/4,200/)
+    const scanned = document.querySelector('[data-slot="stat-scanned"]')
+    expect(scanned).not.toBeNull()
     expect(slot.contains(scanned)).toBe(true)
     // The bar's own root is a direct child of the slot — nothing of MiningView's own markup is
     // hoisted along with it.
@@ -955,7 +956,7 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(container.contains(screen.getByText(/4,200/))).toBe(true)
+    expect(container.contains(document.querySelector('[data-slot="stat-scanned"]'))).toBe(true)
   })
 
   // What this component still owns after the pause state moved to the page: obeying `paused`, and
