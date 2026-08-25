@@ -326,18 +326,19 @@ export function MiningStatusBar({
             {/* Last on the row, and never dropped: it is the one item here that reports whether
               any of the others are still being added to.
 
-              The slot is a floor on the width because the two variants are not the same size —
-              an 18px square while mining, two bars and the word "Paused" once it stops — and
-              without it every figure to the left slides sideways on every pause. 20 (80px)
-              clears the wider one in the fallback stacks Tailwind's default can land on: "Paused"
-              measures ~57px in DejaVu Sans, against 9px of bars and a 6px gap. Its content is
-              pushed right inside it, so whichever variant is showing ends at the same edge.
+              No width reserved for it. The two variants are not the same size — an 18px square
+              while mining, two bars and the word "Paused" once it stops — and a floor at the
+              wider one would hold the figures still across a pause. It is not worth what it
+              costs: the figures change content on a pause anyway (the rate goes, the clock folds
+              into the count), so the floor bought a fraction of a shift that happens regardless,
+              and spent 60px of empty row beside an 18px glyph to do it, in the state the bar
+              spends its life in.
 
               Nothing at all before a run exists: an animated "mining" glyph over a search that
               has not begun, or one a worker error has stopped, is this indicator asserting
               exactly the thing it is for, wrongly. */}
             {(status.running || status.paused) && (
-              <span data-slot="status-indicator" className="flex min-w-20 justify-end">
+              <span data-slot="status-indicator" className="flex items-center">
                 <MiningActivity paused={status.paused} />
               </span>
             )}

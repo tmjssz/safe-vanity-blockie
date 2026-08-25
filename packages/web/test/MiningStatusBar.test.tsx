@@ -114,20 +114,16 @@ describe('MiningStatusBar: the activity indicator', () => {
     expect(stats?.lastElementChild?.contains(indicator)).toBe(true)
   })
 
-  // The two variants are different widths: the running one is an 18px square, the paused one is
-  // two bars and the word "Paused". Without a slot as wide as the wider of them, every figure on
-  // the row slides sideways on every pause and again on every resume.
-  it('reserves the indicator its widest width, so the stats hold still across a pause', () => {
-    const running = renderBar()
-    expect(running.container.querySelector('[data-slot="status-indicator"]')?.className).toMatch(
-      /\bmin-w-20\b/,
-    )
-    running.unmount()
+  // It sits with the figures, not at arm's length from them. This used to reserve the width of
+  // its widest variant so the stats could not shift on a pause, but the stats change content on
+  // a pause anyway (the rate goes, the clock folds into the count), so the reservation bought a
+  // fraction of a shift that happens regardless — and cost 60px of empty row beside an 18px
+  // glyph, in the state the bar spends its life in.
+  it('sits next to the figures rather than behind reserved space', () => {
+    const { container } = renderBar()
+    const slot = container.querySelector('[data-slot="status-indicator"]')
 
-    const paused = renderBar({ status: { ...status, running: false, paused: true } })
-    expect(paused.container.querySelector('[data-slot="status-indicator"]')?.className).toMatch(
-      /\bmin-w-20\b/,
-    )
+    expect(slot?.className).not.toMatch(/\bmin-w-/)
   })
 })
 
