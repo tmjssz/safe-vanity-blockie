@@ -179,8 +179,12 @@ describe('MiningView across a chain switch', () => {
     expect(resultCards().map((card) => card.textContent)).toEqual(addresses)
 
     // …and the scanned count keeps climbing from where it was rather than restarting at zero.
+    // Read off the bar's own slot: the figure is now split across a monospace span and the word
+    // beside it, so a `getByText(/900/)` would match both the number and its wrapper.
     act(() => worker.emit({ type: 'progress', scanned: 900, candidates: [CANDIDATE] }))
-    expect(screen.getByText(/900\s*nonces/)).toBeDefined()
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('900 checked')
   })
 
   it('does start a fresh run when the switch genuinely changes the constants', async () => {

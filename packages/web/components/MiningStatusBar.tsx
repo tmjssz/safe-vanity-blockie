@@ -1,11 +1,13 @@
 'use client'
 
 import { formatScore } from '@safe-vanity-blockie/core'
-import { Info, Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play, RotateCcw } from 'lucide-react'
+import { abbreviateNumber } from '../lib/abbreviate-number'
 import type { MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
-import { CopyButton } from './CopyButton'
+import { CheckpointTrigger } from './CheckpointTrigger'
+import { MiningActivity } from './MiningActivity'
 import { useStartOverConfirm } from './StartOverDialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -41,26 +43,33 @@ export interface MiningStatus {
   nextStart: number
 }
 
-function formatRate(rate: number): string {
-  return rate >= 1e6 ? `${(rate / 1e6).toFixed(2)}M/s` : `${Math.round(rate / 1000)}k/s`
-}
-
 function truncate(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
-/** An owner as a chip: the identicon it produces, then the address it is. */
+/**
+ * An owner as a badge: the identicon it produces, then the address it is.
+ *
+ * The same `secondary` Badge the best result wears on the row above, so the two values the bar
+ * carries about this run are drawn as one shape rather than each in a box of its own. No border:
+ * the variant fills instead of outlining, which is what keeps a lone pill on a line of plain text
+ * from reading as a control.
+ *
+ * `gap-1.5` over the badge's own `gap-1`, and it is the identicon that earns it: 4px is spacing
+ * between words, and this is a picture set against them.
+ */
 function OwnerChip({ address }: { address: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-1.5 py-0.5">
+    <Badge variant="secondary" className="gap-1.5">
       <DecorativeBlockie
         address={address}
         size={16}
         slot="summary-identicon"
         className="size-4 rounded-sm"
       />
-      <span className="font-mono text-xs">{truncate(address)}</span>
-    </span>
+      {/* The badge sets the size; this sets the face, the same way the best result's does. */}
+      <span className="font-mono">{truncate(address)}</span>
+    </Badge>
   )
 }
 
@@ -80,7 +89,7 @@ function OwnerChip({ address }: { address: string }) {
 function ConfigSummary({ config }: { config: MineConfig }) {
   const [first, ...rest] = config.owners
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
       <span>Mining for</span>
       {first && <OwnerChip address={first} />}
       {rest.length > 0 && (
@@ -131,6 +140,7 @@ export function MiningStatusBar({
   resultCount,
   onPauseToggle,
   onStartOver,
+  onShowCommand,
 }: {
   status: MiningStatus
   /** The config being mined, summarised on the bar's second line. */
@@ -140,127 +150,73 @@ export function MiningStatusBar({
   onPauseToggle: () => void
   /** Throws the run away and brings the Configure card back. */
   onStartOver: () => void
+  /**
+   * Raises the "Run on your machine" dialog, which the checkpoint panel links to. The bar owns
+   * neither the dialog nor the state that opens it — both belong to MiningView, which renders
+   * this bar and the handoff alike — so this is the hop between them.
+   */
+  onShowCommand: () => void
 }) {
-  // The question, and the rule about when it is worth asking, are shared with the app title in the
-  // header — the other door onto this same reset. See StartOverDialog.
+  // The question, and the rule about when it is worth asking, are shared with the app title in
+  // the header, the other door onto this same reset. See StartOverDialog.
   const { request, dialog } = useStartOverConfirm(onStartOver)
   const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
   const started = status.running || status.paused || status.scanned > 0
+  const scannedTitle = `${status.scanned.toLocaleString('en-US')} nonces checked`
+  // The abbreviated figure and the exact one come from the same number, so the tooltip cannot
+  // drift from what it is explaining.
+  const scannedAbbrev = abbreviateNumber(status.scanned)
+  // Guards the same way abbreviateNumber does: the rate is `(scanned / elapsedMs) * 1000`, which
+  // is NaN on a tick where no time has passed. Without this guard the abbreviated figure reads
+  // "0/s" while the tooltip beside it reads "NaN nonces per second".
+  const exactRate = Number.isFinite(status.rate) && status.rate > 0 ? Math.round(status.rate) : 0
+  const rateTitle = `${exactRate.toLocaleString('en-US')} nonces per second`
 
   return (
     // `top-14` matches the sticky header's `h-14` in app/layout.tsx: with `top-0` the bar would
     // pin underneath it and be invisible for the whole run. z-40 keeps it below the header.
     <div className="sticky top-14 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2">
+      {/* `gap-2` between the rows rather than the 4px they had: the second line is a different
+          kind of statement from the first — what is being mined, against how it is going — and at
+          4px the two read as one block of text that happens to wrap. It is a fixed gap, so it
+          costs the same in every state and cannot reintroduce the shift `min-h-6` below removes. */}
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-2">
         <div data-slot="status-row" className="flex flex-wrap items-center gap-3 text-sm">
-          {/* No progress bar, and the percentage is labelled: a filled track next to a bare "90.2%"
-              reads as "the run is 90% done", which is not a number this search can have — the
-              keyspace is 2^256 wide and nothing is being counted down. What the number actually
-              measures is how close the best result found is to a perfect match. */}
-          {hasBest ? (
-            <span className="flex items-center gap-2">
-              <span className="text-muted-foreground">Best result</span>
-              <Badge variant="secondary" className="font-mono">
-                {formatScore(status.bestScore!, status.bestMaxScore!)}
-              </Badge>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">No candidates yet</span>
-          )}
-
-          <span className="text-muted-foreground">
-            {status.scanned.toLocaleString('en-US')} nonces
-          </span>
-          {/* Zero while paused, and not the average of the segment that just ended: nothing is
-              being scanned, so a speed is a claim about work that is not happening — sitting
-              unchanged next to a button offering to resume it. The count and the clock beside it
-              are cumulative facts about the run and stay where they are; this is the one figure on
-              the bar that describes the current moment. */}
-          <span className="text-muted-foreground">
-            {formatRate(status.paused ? 0 : status.rate)}
-          </span>
-          <span className="text-muted-foreground">{status.workers} workers</span>
-          {/* Gated on `started` — the same condition the controls use — because a clock reading
-              "0s elapsed" before anything has been mined claims a run that does not exist. The
-              count and rate can honestly read zero; a duration cannot. */}
           {started && (
-            <span className="text-muted-foreground tabular-nums">
-              {`${formatDuration(status.elapsedMs)} elapsed`}
-            </span>
-          )}
-
-          {started && (
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={onPauseToggle}>
+            /* The row reads left to right as "what you can do about this run", then "what the
+               run has done". The controls lead because they are the half a user acts on, and
+               they sit at the edge a pointer travels least to reach. Pause is the nearer of the
+               two, because it is the one reached for dozens of times a run and Start over is the
+               one that ends it — which is also why there is a whole `gap-4` between them rather
+               than the 8px a button group would normally take. They are not a pair of related
+               actions; one of them throws the run away, and a few pixels is the whole margin for
+               error on a control that does not ask twice about the results below it. */
+            <div data-slot="status-controls" className="flex items-center gap-4">
+              {/* One slot, two labels. `min-w-28` is what makes it one slot: "Pause" and
+                  "Resume" are different lengths, and without a floor on the width Start over
+                  steps sideways every time the state flips, out from under the pointer that is
+                  about to click it. 24 (96px) does not clear "Resume" set in every fallback
+                  sans-serif Tailwind's default stack can land on: DejaVu Sans measures ~57px
+                  against a 42px fixed overhead, for ~99px total; 28 (112px) clears that with
+                  room to spare. */}
+              <Button
+                variant={status.paused ? 'default' : 'outline'}
+                size="sm"
+                className="min-w-28"
+                onClick={onPauseToggle}
+              >
                 {status.paused ? (
                   <>
-                    <Play className="mr-1 size-3" /> Resume
+                    <Play className="size-3" /> Resume
                   </>
                 ) : (
                   <>
-                    <Pause className="mr-1 size-3" /> Pause
+                    <Pause className="size-3" /> Pause
                   </>
                 )}
               </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Both controls hard right, one per row. Pause sits with the counters it acts on; Start
-            over sits a row below with the config it discards, and one step quieter. Side by side
-            they were a pixel apart in position and a whole run apart in consequence. The resume
-            point joins that row rather than the counters above: it belongs with the things you
-            reach for when you are done with this run, not with the figures that tick. */}
-        <div data-slot="status-row" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <ConfigSummary config={config} />
-          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-            {/* Gated on `scanned`, not on the value: the blocks are handed out before any nonce
-                is tried, so `nextStartFrom` already stands a whole block per worker above the
-                configured start when nothing has been reported — "Resume from 4,041,200,000,000"
-                over a run that has mined nothing is a claim about progress that has not
-                happened, and the size of the number makes it a worse one. */}
-            {status.scanned > 0 && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <span>Resume from</span>
-                {/* Grouped for the eye and monospaced so the digits line up between publishes;
-                    `tabular-nums` stops the number jittering as it grows. What goes on the
-                    clipboard is the bare digits — see the CopyButton below. */}
-                <span className="font-mono tabular-nums text-foreground">
-                  {status.nextStart.toLocaleString('en-US')}
-                </span>
-                <CopyButton
-                  // Digits only. This value's destination is `--start`, and the CLI parses that
-                  // with Number: a grouped "4,200,500" would be read as 4 and silently rescan
-                  // the whole run.
-                  value={String(status.nextStart)}
-                  label="Copy resume point"
-                  copiedMessage="Resume point copied"
-                  failedMessage="Could not copy automatically. Select the number and copy it manually."
-                />
-                <HintPopover
-                  label="What the resume point means"
-                  side="top"
-                  align="end"
-                  content={
-                    <p className="max-w-xs text-sm">
-                      Where a follow-up run should pick this search up: the highest end position any
-                      one of this run's {status.workers} worker
-                      {status.workers === 1 ? '' : 's'} reached. Nothing already scanned is
-                      rescanned — but this is not a measure of how far the search got, and it sits
-                      far above the nonce count beside it, because the workers' blocks lie side by
-                      side rather than end to end. Coverage is not complete either: each worker
-                      keeps to a block of its own, so whatever its neighbours had not reached when
-                      the run stopped is skipped rather than picked up later, and resuming with a
-                      different worker count skips a different amount.
-                    </p>
-                  }
-                >
-                  <Info aria-hidden="true" className="size-3.5" />
-                </HintPopover>
-              </div>
-            )}
-            {started && (
-              /* Available while paused too: it is the only route back to the form. */
+              {/* Available while paused too: it is the only route back to the form. Quieter than
+                  its neighbour, because it is the one with consequences. */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -269,8 +225,168 @@ export function MiningStatusBar({
               >
                 <RotateCcw className="mr-1 size-3" /> Start over
               </Button>
+            </div>
+          )}
+
+          {/* Everything the run has to report, as one group hard right, so the figures end at the
+              same edge whatever the state adds or removes from the middle of them. */}
+          <div
+            data-slot="status-stats"
+            className="ml-auto flex flex-wrap items-center justify-end gap-3"
+          >
+            {/* No progress bar, and the percentage is labelled: a filled track next to a bare
+              "90.2%" reads as "the run is 90% done", which is not a number this search can have.
+              The keyspace is 2^256 wide and nothing is being counted down. What the number
+              actually measures is how close the best result found is to a perfect match. */}
+            {hasBest ? (
+              <span className="flex items-center gap-2">
+                <span className="text-muted-foreground">Best result</span>
+                <Badge variant="secondary" className="font-mono">
+                  {formatScore(status.bestScore!, status.bestMaxScore!)}
+                </Badge>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">No candidates yet</span>
+            )}
+
+            {/* Two shapes for one pair of facts. While the search works, the count is a figure
+              that is still moving and the clock is a separate one moving beside it. Once it
+              stops, both are finished totals about the same stopped run, and reading them as one
+              sentence is what a stopped run has to say. The clock is frozen either way: see
+              use-miner, which does not bill time spent paused as mining time. */}
+            {status.paused ? (
+              // The abbreviation and the " checked in <duration>" wording both sit inside the
+              // aria-hidden span, alongside the sr-only exact figure, rather than as an exposed
+              // sibling: a sibling text node is still in the accessibility tree even next to a
+              // hidden one, and "nonces checked" from the sr-only span followed by an exposed
+              // "checked in" would read as "nonces checked checked in" to a screen reader.
+              <span data-slot="stat-scanned" title={scannedTitle} className="text-muted-foreground">
+                <span aria-hidden="true">
+                  <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                  {' checked in '}
+                  <span className="tabular-nums">{formatDuration(status.elapsedMs)}</span>
+                </span>
+                <span className="sr-only">
+                  {scannedTitle} in {formatDuration(status.elapsedMs)}
+                </span>
+              </span>
+            ) : (
+              <>
+                {/* See the paused branch above for why the trailing " checked" is folded into the
+                  aria-hidden span rather than left exposed beside the sr-only copy. */}
+                <span
+                  data-slot="stat-scanned"
+                  title={scannedTitle}
+                  className="text-muted-foreground"
+                >
+                  <span aria-hidden="true">
+                    <span className="font-mono tabular-nums text-foreground">{scannedAbbrev}</span>
+                    {' checked'}
+                  </span>
+                  <span className="sr-only">{scannedTitle}</span>
+                </span>
+                {/* Absent while paused rather than zero. Nothing is being scanned, so a speed is a
+                  claim about work that is not happening, and "0k/s" is that claim with a number
+                  on it: it reads as a search that is running and getting nowhere, sitting next
+                  to a button offering to resume it. The count and the clock are cumulative facts
+                  about the run and stay; this is the one figure on the bar that describes the
+                  current moment, and while paused there is no such moment to describe. */}
+                <span
+                  data-slot="stat-rate"
+                  title={rateTitle}
+                  className="font-mono tabular-nums text-foreground"
+                >
+                  {/* Two decimals, where the count above takes one. The count is abbreviated
+                    to stop it reflowing the row; the rate never ran to eleven digits, and it
+                    is the one figure here that describes the current moment — at one decimal
+                    every speed from 1.00M/s to 1.04M/s reads the same frozen "1.0M/s". */}
+                  <span aria-hidden="true">{abbreviateNumber(status.rate, 2)}/s</span>
+                  <span className="sr-only">{rateTitle}</span>
+                </span>
+              </>
+            )}
+            {/* The first thing to go when the row runs short, and the last thing to be missed: the
+              pool size is the only figure here that cannot change for the length of a run. The
+              clock goes next, at the narrower breakpoint, because it at least keeps moving. */}
+            <span data-slot="stat-workers" className="hidden text-muted-foreground md:inline">
+              {status.workers} workers
+            </span>
+            {/* Gated on `started`, the same condition the controls use, because a clock reading
+              "0s" before anything has been mined claims a run that does not exist. The count and
+              rate can honestly read zero; a duration cannot. While paused the clock is inside
+              the item above instead, so this is the running case only. */}
+            {started && !status.paused && (
+              <span
+                data-slot="stat-elapsed"
+                className="hidden text-muted-foreground tabular-nums sm:inline"
+              >
+                {formatDuration(status.elapsedMs)}
+              </span>
+            )}
+            {/* Last on the row, and never dropped: it is the one item here that reports whether
+              any of the others are still being added to.
+
+              No width reserved for it. The two variants are not the same size — an 18px square
+              while mining, two bars and the word "Paused" once it stops — and a floor at the
+              wider one would hold the figures still across a pause. It is not worth what it
+              costs: the figures change content on a pause anyway (the rate goes, the clock folds
+              into the count), so the floor bought a fraction of a shift that happens regardless,
+              and spent 60px of empty row beside an 18px glyph to do it, in the state the bar
+              spends its life in.
+
+              Nothing at all before a run exists: an animated "mining" glyph over a search that
+              has not begun, or one a worker error has stopped, is this indicator asserting
+              exactly the thing it is for, wrongly. */}
+            {(status.running || status.paused) && (
+              <span data-slot="status-indicator" className="flex items-center">
+                <MiningActivity paused={status.paused} />
+              </span>
             )}
           </div>
+        </div>
+
+        {/* The config being mined at the left edge, and, once the search is stopped, where it
+            stopped at the right one. The checkpoint is the only thing on this line that does
+            something, and pinning it right keeps it out of the dot-separated facts, which are
+            all things to read rather than to click — it also ends at the same edge the stats
+            group above it does, so the bar has one right margin rather than two.
+
+            `min-h-6` holds the line at one height whatever the state puts on it. The bar is
+            sticky, so a row that grows shoves the whole page down under it; the floor is what
+            keeps that guarantee from depending on which items happen to be present, and on the
+            22px owner badge (16px of content, 4px of padding, 2px of border) staying the tallest
+            of them. FaceSection's header holds its title still the same way.
+
+            `flex-wrap` still applies below that: align-items works per flex line, so a summary
+            wrapping to a second line on a narrow viewport is unaffected by the floor.
+
+            `text-sm` sits on the row, not on the summary inside it, the same way the stats row
+            above declares its own. It is load-bearing for the checkpoint trigger: that one is a
+            plain button with no size of its own, and while it lived among the summary's facts it
+            inherited theirs. Pinned to the far side of the row it is a sibling of the summary,
+            and without this it would fall back to the page's 16px and sit a size above every
+            other word on the bar. */}
+        <div
+          data-slot="status-row"
+          className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+        >
+          <ConfigSummary config={config} />
+          {/* Gated on `running`, not on `paused`: a worker error clears `running` and leaves
+              `paused` false (see use-miner), and that is precisely the state whose on-screen
+              advice is "reload the page" — the one moment this number is the only thing that can
+              carry the run across. Gated on `scanned` too, not on the value: `nextStartFrom`
+              hands out a whole block per worker before any nonce is tried, so a checkpoint over a
+              run that has mined nothing is a claim about progress that has not happened, and the
+              size of the number makes it a worse one. */}
+          {!status.running && status.scanned > 0 && (
+            <div className="ml-auto flex items-center">
+              <CheckpointTrigger
+                nextStart={status.nextStart}
+                workers={status.workers}
+                onShowCommand={onShowCommand}
+              />
+            </div>
+          )}
         </div>
       </div>
 

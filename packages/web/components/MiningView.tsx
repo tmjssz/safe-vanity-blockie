@@ -122,6 +122,10 @@ export function MiningView({
   // same way the filters are. The hook applies it: it holds the arrival numbers "Newest" needs,
   // and re-ordering there costs no mining progress.
   const [sort, setSortMode] = useState<ResultSort>('best')
+  // Held here because this is the nearest thing that renders both ends of it: the handoff dialog
+  // below, and the status bar (portaled to the top of the page) whose checkpoint panel links to
+  // the command. Neither of them can hold it for the other.
+  const [commandOpen, setCommandOpen] = useState(false)
   const workers = useWorkerCount()
   const { twoColor, minContrast, minMatch } = filters
   // `paused` arrives already merged: the host's reasons (a deploy in flight, a share link being
@@ -334,6 +338,8 @@ export function MiningView({
           // Offered only once something has been scanned, and both halves together: `nextStart`
           // is only a resume point because a worker reported reaching it.
           resume={state.scanned > 0 ? { start: state.nextStart, workers } : undefined}
+          open={commandOpen}
+          onOpenChange={setCommandOpen}
         />
       </div>
     </div>
@@ -424,6 +430,7 @@ export function MiningView({
       resultCount={state.candidates.length}
       onPauseToggle={onPauseToggle}
       onStartOver={onStartOver}
+      onShowCommand={() => setCommandOpen(true)}
     />
   )
 

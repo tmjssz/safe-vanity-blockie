@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppTitle, StartOverProvider } from '../components/AppTitle'
@@ -280,7 +280,9 @@ describe('MiningView', () => {
     )
 
     expect(resultCards()).toHaveLength(1)
-    expect(screen.getByText(/4,200/)).toBeDefined()
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('4.2K checked')
   })
 
   // The grid shows everything retained and scrolls, so the number handed to the miner is a
@@ -619,7 +621,9 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(screen.getByText(/5,000/)).toBeDefined()
+    expect(
+      document.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent,
+    ).toBe('5.0K checked')
     expect(bloSvgSpy.mock.calls.length).toBe(drawn)
   })
 
@@ -829,7 +833,9 @@ describe('MiningView', () => {
 
     // Everything the user would have lost is still exactly where it was: the status bar with its
     // scanned count, and every card on the leaderboard.
-    expect(slot.textContent).toMatch(/4,200/)
+    expect(slot.querySelector('[data-slot="stat-scanned"] [aria-hidden="true"]')?.textContent).toBe(
+      '4.2K checked',
+    )
     expect(resultCards()).toHaveLength(1)
 
     // …and the failure is reported among them rather than in place of them — saying what stopped,
@@ -864,7 +870,10 @@ describe('MiningView', () => {
     // Nothing else at all: no status bar in the page's slot, no Results section, no grid.
     expect(slot.children).toHaveLength(0)
     expect(screen.queryByRole('heading', { name: /^results$/i })).toBeNull()
-    expect(screen.queryByText(/nonces/i)).toBeNull()
+    // Was `queryByText(/nonces/i)`, which passed either way once the exact figure moved into a
+    // `title` attribute that text queries do not search: a status bar rendered here would not
+    // have failed it. `data-slot` names the element the bar would leave behind directly.
+    expect(document.querySelector('[data-slot="stat-scanned"]')).toBeNull()
   })
 
   it('asks for the constants again when the retry beside a live run is pressed', async () => {
@@ -933,7 +942,8 @@ describe('MiningView', () => {
       />,
     )
 
-    const scanned = screen.getByText(/4,200/)
+    const scanned = document.querySelector('[data-slot="stat-scanned"]')
+    expect(scanned).not.toBeNull()
     expect(slot.contains(scanned)).toBe(true)
     // The bar's own root is a direct child of the slot — nothing of MiningView's own markup is
     // hoisted along with it.
@@ -955,7 +965,7 @@ describe('MiningView', () => {
       />,
     )
 
-    expect(container.contains(screen.getByText(/4,200/))).toBe(true)
+    expect(container.contains(document.querySelector('[data-slot="stat-scanned"]'))).toBe(true)
   })
 
   // What this component still owns after the pause state moved to the page: obeying `paused`, and
@@ -1128,6 +1138,95 @@ describe('MiningView', () => {
     // `--target` the native run searches all five faces whatever this run was narrowed to. The
     // run's own FaceSpec name IS the target (see lib/face-selection), so this is the wiring.
     expect(command.textContent).toContain(`--target ${FACE_SPEC.name}`)
+  })
+
+  // The same number the Checkpoint chip shows, in the command the handoff dialog hands over.
+  // Without this, deleting the `resume` prop typechecks and every other test stays green while
+  // the copied command quietly restarts the search from zero, which is the one thing this
+  // dialog promises not to do.
+  it('injects the checkpoint this run has reached into the handoff command', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = {
+      ...IDLE_STATE,
+      running: true,
+      scanned: 4_200_000,
+      nextStart: 41_200_000_000,
+    }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    // Bare digits, the way the CLI's Number parse needs them, and the way the chip's copy
+    // button puts them on the clipboard.
+    expect(command.textContent).toContain('--start 41200000000')
+    expect(command.textContent).not.toContain('41,200,000,000')
+  })
+
+  // The whole point of the link: the checkpoint panel names the handoff as the thing that writes
+  // out both halves of a resume, and the two live in different parts of the tree. This is the
+  // only test that crosses that gap.
+  it('opens the handoff dialog from the checkpoint panel on the bar', async () => {
+    const user = userEvent.setup()
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: false, scanned: 4_200_000, nextStart: 8_400_000 }
+    mountStatusBarSlot()
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        paused
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    // Scoped to the panel on purpose: the handoff's OWN trigger is further down this same page,
+    // so an unscoped query finds that one and proves nothing about the link.
+    const panel = (await screen.findByText('8,400,000')).closest('[data-slot="popover-content"]')
+    if (!panel) throw new Error('no checkpoint panel on screen')
+    await user.click(
+      within(panel as HTMLElement).getByRole('button', { name: /run on your machine/i }),
+    )
+
+    expect(screen.getByRole('dialog').textContent).toMatch(/npx safe-vanity-blockie/)
+  })
+
+  // Nothing scanned means `nextStartFrom` has only handed out blocks, so there is no checkpoint
+  // to carry over. The chip is hidden in exactly the same case, for the same reason.
+  it('leaves the checkpoint out of the command before anything has been scanned', async () => {
+    constantsState.current = { loading: false, data: STABLE_CONSTANTS_DATA }
+    minerState.current = { ...IDLE_STATE, running: true, scanned: 0, nextStart: 41_200_000_000 }
+
+    render(
+      <MiningView
+        config={CONFIG as never}
+        faceSpec={FACE_SPEC as never}
+        filters={DEFAULT_FACE_FILTERS}
+        onPauseToggle={vi.fn()}
+        onStartOver={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /run on your machine/i }))
+
+    const command = screen.getByText(/npx safe-vanity-blockie/)
+    expect(command.textContent).not.toContain('--start')
   })
 
   it('does not toast when there is no worker error', () => {

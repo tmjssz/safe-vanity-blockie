@@ -39,16 +39,20 @@ it shows up already paused, offering Resume, before a single nonce has been scan
 link's address is being re-derived first. It is fed by the mining state itself, so it keeps
 reporting while you scroll through results far below it.
 
-Once anything has been scanned the bar also carries the run's **resume point** — the nonce a
-follow-up run should begin at — as a copyable number beside "Start over", with the worker count and
-the caveat behind it. The number is the highest end position any one of the run's workers reached,
-which is what makes it safe to resume from: nothing already scanned is rescanned. It is *not* a
-measure of how far the search got, and on a multi-worker machine it sits far above the nonce count
-beside it, because the workers' blocks lie side by side rather than end to end — a five-worker run
-that has scanned a million nonces reports a resume point four trillion above where it began.
-Coverage is not complete either: each worker keeps to a block of its own, so whatever its neighbours
-had not reached when the run stopped is skipped rather than picked up later, and resuming with a
-different worker count skips a different amount.
+Once the search stops — paused, exhausted, or halted by a worker error — **Checkpoint** appears as
+the last item of the bar's config line, alongside the owners and the Safe version, and the panel
+behind it holds the run's **resume point**: the nonce a follow-up run should begin at, with a copy
+button, the worker count that belongs with it and the caveat below. It stays out of the way while
+the search is working, because a running search resumes from its own checkpoint by itself. The
+number is the highest end position any one of the run's workers reached, which is what makes it
+safe to resume from: nothing already scanned is rescanned. It is *not* a measure of how far the
+search got, and on a multi-worker machine it sits far above the nonce count on the row above,
+because the workers' blocks lie side by side rather than end to end — a five-worker run that has
+scanned a million nonces reports a resume point four trillion above where it began. Coverage is not
+complete either: each worker keeps to a block of its own, so whatever its neighbours had not
+reached when the run stopped is skipped rather than picked up later, and resuming with a different
+worker count skips a different amount — which is why the panel hands over `--workers` alongside the
+number rather than the number alone.
 
 The badge on the **Results** heading is the number of cards below it, after the filters. Raise the
 contrast floor past everything and it goes to 0 while the bar keeps reporting the best result
@@ -132,13 +136,16 @@ hours.
 
 Where the search began is deliberately absent from `?config=` share links. A link names an address,
 and an address does not depend on the search that found it. "Run on your machine" does carry it:
-once anything has been scanned — the same condition the bar's resume point appears under, not
-whether any result reached the grid — the generated command grows `--workers` and `--start`, as a
-pair, so the native run continues the browser's search instead of repeating it. Pinning `--workers`
-to the browser's pool has a price worth knowing: it can hold a big machine to a browser tab's worth
-of workers. No-rescan does not require it — any pool starting at the resume point rescans nothing —
-only the symmetry does, so that the tail the native run leaves behind is the same width as the one
-the browser left. Edit the flag out if you would rather have the cores.
+once anything has been scanned — not whether any result reached the grid — the generated command
+grows `--workers` and `--start`, as a pair, so the native run continues the browser's search
+instead of repeating it. That is a looser gate than the bar's Checkpoint trigger, which waits for
+the run to stop: the dialog is worth opening mid-run, and what it writes is where the search had
+got to when you opened it. The Checkpoint panel links straight to it, since the command is where
+both halves of a resume are written out together. Pinning `--workers` to the browser's pool has a
+price worth knowing: it can hold a big machine to a browser tab's worth of workers. No-rescan does
+not require it — any pool starting at the resume point rescans nothing — only the symmetry does, so
+that the tail the native run leaves behind is the same width as the one the browser left. Edit the
+flag out if you would rather have the cores.
 
 ## Wallets
 
