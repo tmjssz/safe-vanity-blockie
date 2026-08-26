@@ -80,6 +80,26 @@ function expectedCells(mouthName: string): string {
 }
 
 describe('FacePicker', () => {
+  // The card is rendered at two very different widths: ~1072px inside the results page's card,
+  // and ~472px inside Configure's Advanced disclosure on the start screen. A VIEWPORT breakpoint
+  // cannot tell those apart — `lg:` fires on a wide desktop regardless of how narrow the box
+  // actually is, which put two columns into 472px and crushed both. So the split is asked of the
+  // CONTAINER instead.
+  //
+  // Asserted as a class contract rather than a measurement, because jsdom computes no layout at
+  // all: there is nothing here that could observe a column actually appearing. What it can hold on
+  // to is that the query is a container query and not a viewport one, which is the whole of the
+  // bug that was fixed.
+  it('splits into columns on its container width, never on the viewport', () => {
+    const { container } = renderPicker()
+    const query = container.querySelector('[data-slot="picker-columns"]') as HTMLElement
+
+    expect(query.className).toMatch(/@[\w]+:grid-cols-/)
+    expect(query.className).not.toMatch(/(^|\s)(sm|md|lg|xl|2xl):grid-cols-/)
+    // The container the query is asked of has to be an ancestor, not the queried element itself:
+    // an element cannot be its own query container.
+    expect(query.closest('.\\@container')).not.toBeNull()
+  })
   it('renders a toggle for every expression', () => {
     renderPicker({ value: ['smile'] })
     expect(
