@@ -78,7 +78,15 @@ export function CheckpointTrigger({
   const { copied, copy } = useCopy({
     value: resumeUrl,
     copiedMessage: 'Resume link copied',
-    failedMessage: 'Could not copy automatically. Copy the link from the address bar instead.',
+    // NOT "copy the link from the address bar" — this URL is never there. The bar holds whatever
+    // the session opened, or a share link `closeSelection` writes on a deploy dialog, and that
+    // writer strips these five params outright (see `shareConfigPath`). Following that advice
+    // would copy a link that silently drops the checkpoint, the target and the filters — exactly
+    // the "resumes a different search" failure this whole panel exists to prevent. Point at what
+    // is actually on screen instead: the checkpoint digits above (with their own fallback a few
+    // lines up) and the "Run on your machine" command, which states the same search in CLI flags.
+    failedMessage:
+      'Could not copy automatically. Copy the checkpoint above and use the "Run on your machine" command for the rest of this search.',
   })
 
   return (
