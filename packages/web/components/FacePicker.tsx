@@ -271,8 +271,8 @@ export function FacePicker({
         </section>
 
         {/* No heading of its own. "Colours" was a label over two controls that already say
-          "Two colours only" and "Minimum contrast", and there is no one word left that covers all
-          three of them now.
+          "Two-color" and "Minimum contrast", and there is no one word left that covers all three of
+          them now.
 
           Both columns start at the same line. This one used to carry an `lg:pt-8` that dropped it
           by the height of the "Face expressions" label row, so its first control sat level with
