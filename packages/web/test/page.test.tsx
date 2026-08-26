@@ -3199,5 +3199,58 @@ describe('Page', () => {
         minMatch: 90,
       })
     })
+
+    // The Filter card is mounted inside `config && …`, so before Start there was nowhere for a
+    // link's expressions and filters to appear. A recipient pressing Start on values they cannot
+    // see is exactly the failure this app spends its comments avoiding — and these ones silently
+    // change what is mined.
+    it('shows the search on the idle screen, before anything is started', () => {
+      searchParamsRef.current = resumeLinkParams()
+
+      render(<Page />)
+
+      // Mounted and open: the picker only renders when the card's panel is open.
+      expect(new Set(facePickerPropsRef.current?.value)).toEqual(new Set(['smile', 'open']))
+      expect(facePickerPropsRef.current?.filters).toEqual({
+        twoColor: true,
+        minContrast: 80,
+        minMatch: 90,
+      })
+      // Still idle. The card is there to be read, not because a run started.
+      expect(screen.queryByTestId('mining-view')).toBeNull()
+    })
+
+    // Editable, not just visible: a value the user can see but not correct is half an answer, and
+    // the card is the same one they will be using a moment later.
+    it('lets the idle card be edited before Start', () => {
+      searchParamsRef.current = resumeLinkParams()
+      render(<Page />)
+
+      act(() => facePickerPropsRef.current?.onChange(['neutral']))
+
+      expect(facePickerPropsRef.current?.value).toEqual(['neutral'])
+    })
+
+    // Nothing carried, nothing to show. A card raised over a link that named only a checkpoint would
+    // be a card stating the app's own defaults back at a user who never asked about them — and the
+    // checkpoint itself is already visible in the form's open Advanced section.
+    it('shows no card for a link that carried only a checkpoint', () => {
+      const params = resumeLinkParams()
+      for (const name of ['target', 'two-color', 'min-contrast', 'min-match']) params.delete(name)
+      searchParamsRef.current = params
+
+      render(<Page />)
+
+      expect(facePickerPropsRef.current).toBeUndefined()
+      expect(seededInitial()?.start).toBe(60_000_016_650_000)
+    })
+
+    it('shows no card on an ordinary visit with no link at all', () => {
+      searchParamsRef.current = new URLSearchParams()
+
+      render(<Page />)
+
+      expect(facePickerPropsRef.current).toBeUndefined()
+    })
   })
 })
