@@ -199,6 +199,8 @@ describe('ConfigSection', () => {
     renderSection()
     expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /stop mining/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^start mining$/i })).toBeDefined()
+    // By identity, not by name: the primary control's label is the validation message while the
+    // form is invalid, and this section renders with no owners.
+    expect(document.querySelector('[data-slot="start-mining"]')).not.toBeNull()
   })
 })
