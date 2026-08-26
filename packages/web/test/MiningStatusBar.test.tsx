@@ -35,8 +35,6 @@ function renderBar(overrides: Record<string, unknown> = {}) {
       config={CONFIG}
       target="smile,open"
       filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
-      resultCount={0}
-      onStartOver={vi.fn()}
       onShowCommand={vi.fn()}
       {...overrides}
     />,
@@ -271,8 +269,6 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         target="smile,open"
         filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
-        resultCount={0}
-        onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
       />,
     )
@@ -294,8 +290,6 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         target="smile,open"
         filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
-        resultCount={0}
-        onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
       />,
     )
@@ -336,8 +330,6 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         config={CONFIG}
         target="smile,open"
         filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
-        resultCount={0}
-        onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
       />,
     )
@@ -355,88 +347,10 @@ describe('MiningStatusBar: the pause and resume controls', () => {
   })
 })
 
-describe('MiningStatusBar: the Start over control', () => {
-  // Nothing to lose yet, so nothing to ask about. A confirmation over an empty leaderboard is
-  // the kind that teaches people to dismiss confirmations.
-  it('discards immediately when there are no results to lose', async () => {
-    const onStartOver = vi.fn()
-    renderBar({ onStartOver })
-
-    await userEvent.click(screen.getByRole('button', { name: /start over/i }))
-
-    expect(onStartOver).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('dialog')).toBeNull()
-  })
-
-  it('asks first once results exist, and says how many are at stake', async () => {
-    const onStartOver = vi.fn()
-    const user = userEvent.setup()
-    renderBar({ onStartOver, resultCount: 80 })
-
-    await user.click(screen.getByRole('button', { name: /start over/i }))
-
-    expect(await screen.findByRole('dialog')).toBeDefined()
-    expect(screen.getByText(/discard 80 results and start over\?/i)).toBeDefined()
-    expect(onStartOver).not.toHaveBeenCalled()
-  })
-
-  // One of the four dialogs that used to get the plain black wash while the deploy dialog and
-  // the About dialog were blurred. The backdrop is the primitive's now, so this is the check
-  // that the shared default actually reaches a dialog nobody styled by hand.
-  it('dims and blurs the page behind its confirmation', async () => {
-    const user = userEvent.setup()
-    renderBar({ resultCount: 80 })
-
-    await user.click(screen.getByRole('button', { name: /start over/i }))
-    await screen.findByRole('dialog')
-
-    const overlay = document.querySelector('[data-slot="dialog-overlay"]')!
-    expect(overlay.className).toMatch(/backdrop-blur/)
-    expect(overlay.className).not.toMatch(/bg-black/)
-  })
-
-  it('discards only once the question is answered', async () => {
-    const onStartOver = vi.fn()
-    const user = userEvent.setup()
-    renderBar({ onStartOver, resultCount: 80 })
-
-    await user.click(screen.getByRole('button', { name: /start over/i }))
-    await user.click(await screen.findByRole('button', { name: /keep mining/i }))
-    expect(onStartOver).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole('button', { name: /start over/i }))
-    await user.click(await screen.findByRole('button', { name: /^discard and start over$/i }))
-    expect(onStartOver).toHaveBeenCalledOnce()
-  })
-
-  it('is available while paused, since that is the only way back to the form', () => {
-    renderBar({ status: { ...status, running: false, paused: true } })
-    expect(screen.getByRole('button', { name: /start over/i })).toBeDefined()
-  })
-
-  // Both controls in one group at the LEFT edge of the row, in both states: the half of the row
-  // a user acts on, at the edge a pointer travels least to reach. Start over used to sit a row
-  // below, which is where the checkpoint lives now.
-  it('sits beside the pause control, at the left edge of the stats row', () => {
-    const { container } = renderBar()
-
-    const pause = screen.getByRole('button', { name: /^pause$/i })
-    const startOver = screen.getByRole('button', { name: /start over/i })
-    expect(pause.parentElement).toBe(startOver.parentElement)
-    expect(pause.parentElement?.dataset.slot).toBe('status-controls')
-    expect(container.querySelector('[data-slot="status-row"]')?.firstElementChild).toBe(
-      pause.parentElement,
-    )
-    // Pause first: it is the one reached for dozens of times a run, and the destructive control
-    // should never be the nearer of the two.
-    expect(pause.compareDocumentPosition(startOver) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('is hidden before a run exists, alongside the pause control', () => {
-    renderBar({ status: { ...status, running: false, paused: false, scanned: 0 } })
-    expect(screen.queryByRole('button', { name: /start over/i })).toBeNull()
-  })
-})
+// The bar no longer carries a Start over control. The app name in the header is the one route back
+// from a run now, and it raises the same confirmation through the same `startOver` — AppTitle's own
+// tests cover it, so the seven tests that lived here were describing a button that does not exist
+// rather than a behaviour that does not happen.
 
 describe('MiningStatusBar: the checkpoint', () => {
   const pausedStatus = { ...status, running: false, paused: true }
@@ -603,8 +517,6 @@ describe('MiningStatusBar: the config summary line', () => {
         config={config}
         target="smile,open"
         filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
-        resultCount={0}
-        onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
         {...overrides}
       />,

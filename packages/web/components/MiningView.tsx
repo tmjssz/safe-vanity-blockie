@@ -432,9 +432,7 @@ export function MiningView({
       filters={filters}
       // The same number the Results badge shows, so the confirmation puts exactly what the user
       // can see at stake rather than a different, larger count they have no way to check.
-      resultCount={state.candidates.length}
       onPauseToggle={onPauseToggle}
-      onStartOver={onStartOver}
       onShowCommand={() => setCommandOpen(true)}
     />
   )

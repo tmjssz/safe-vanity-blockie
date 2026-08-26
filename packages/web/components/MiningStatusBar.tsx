@@ -1,14 +1,13 @@
 'use client'
 
 import { formatScore } from '@safe-vanity-blockie/core'
-import { Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play } from 'lucide-react'
 import { abbreviateNumber } from '../lib/abbreviate-number'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
 import { CheckpointTrigger } from './CheckpointTrigger'
 import { MiningActivity } from './MiningActivity'
-import { useStartOverConfirm } from './StartOverDialog'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { HintPopover } from './ui/hint-popover'
@@ -139,9 +138,7 @@ export function MiningStatusBar({
   config,
   target,
   filters,
-  resultCount,
   onPauseToggle,
-  onStartOver,
   onShowCommand,
 }: {
   status: MiningStatus
@@ -155,10 +152,8 @@ export function MiningStatusBar({
   target: string
   filters: FaceFilters
   /** How many results are on screen — the number the confirmation puts at stake. */
-  resultCount: number
   onPauseToggle: () => void
   /** Throws the run away and brings the Configure card back. */
-  onStartOver: () => void
   /**
    * Raises the "Run on your machine" dialog, which the checkpoint panel links to. The bar owns
    * neither the dialog nor the state that opens it — both belong to MiningView, which renders
@@ -168,7 +163,6 @@ export function MiningStatusBar({
 }) {
   // The question, and the rule about when it is worth asking, are shared with the app title in
   // the header, the other door onto this same reset. See StartOverDialog.
-  const { request, dialog } = useStartOverConfirm(onStartOver)
   const hasBest = status.bestScore !== undefined && status.bestMaxScore !== undefined
   const started = status.running || status.paused || status.scanned > 0
   const scannedTitle = `${status.scanned.toLocaleString('en-US')} nonces checked`
@@ -223,16 +217,6 @@ export function MiningStatusBar({
                     <Pause className="size-3" /> Pause
                   </>
                 )}
-              </Button>
-              {/* Available while paused too: it is the only route back to the form. Quieter than
-                  its neighbour, because it is the one with consequences. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => request(resultCount)}
-              >
-                <RotateCcw className="mr-1 size-3" /> Start over
               </Button>
             </div>
           )}
@@ -401,8 +385,6 @@ export function MiningStatusBar({
           )}
         </div>
       </div>
-
-      {dialog}
     </div>
   )
 }
