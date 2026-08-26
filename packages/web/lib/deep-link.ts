@@ -334,7 +334,7 @@ export function decodeResumeParams(params: URLSearchParams): {
   const twoColor = params.get('two-color')
   if (twoColor !== null) {
     if (twoColor !== '1' && twoColor !== '0') {
-      return { error: 'The two-colour filter in this link is not 1 or 0.' }
+      return { error: 'The two-color filter in this link is not 1 or 0.' }
     }
     filters.twoColor = twoColor === '1'
     sawFilter = true

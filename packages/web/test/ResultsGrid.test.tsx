@@ -110,7 +110,7 @@ describe('ResultsGrid', () => {
         onSelect={vi.fn()}
       />,
     )
-    expect(screen.queryByText(/two colours/i)).toBeNull()
+    expect(screen.queryByText(/two-color/i)).toBeNull()
 
     rerender(
       <ResultsGrid
@@ -121,7 +121,7 @@ describe('ResultsGrid', () => {
         onSelect={vi.fn()}
       />,
     )
-    expect(screen.getAllByText(/two colours/i)).toHaveLength(2)
+    expect(screen.getAllByText(/two-color/i)).toHaveLength(2)
   })
 
   // One tile at most, picked by address rather than by position: the grid re-sorts under the user
@@ -365,7 +365,7 @@ describe('ResultsGrid', () => {
       />,
     )
     const both = noMatches().textContent ?? ''
-    expect(both).toMatch(/two colour/i)
+    expect(both).toMatch(/two-color/i)
     expect(both).toMatch(/300/)
 
     // With two-colour off, saying it is excluding things would send the user to the wrong control.
@@ -380,7 +380,7 @@ describe('ResultsGrid', () => {
     )
     const contrastOnly = noMatches().textContent ?? ''
     expect(contrastOnly).toMatch(/300/)
-    expect(contrastOnly).not.toMatch(/two colour/i)
+    expect(contrastOnly).not.toMatch(/two-color/i)
   })
 
   it('names the match floor among the filters doing the excluding', () => {
@@ -396,7 +396,7 @@ describe('ResultsGrid', () => {
     const matchOnly = noMatches().textContent ?? ''
     expect(matchOnly).toMatch(/match/i)
     expect(matchOnly).toMatch(/92/)
-    expect(matchOnly).not.toMatch(/two colour/i)
+    expect(matchOnly).not.toMatch(/two-color/i)
 
     // At 0 it constrains nothing, so naming it would send the user to the wrong control.
     rerender(

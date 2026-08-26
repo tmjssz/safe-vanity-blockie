@@ -57,7 +57,7 @@ describe('FaceSection', () => {
     const props = renderSection({ mining: true })
     await user.click(trigger())
 
-    await user.click(screen.getByRole('switch', { name: /two colours only/i }))
+    await user.click(screen.getByRole('switch', { name: /^two-color$/i }))
     expect(props.onFiltersChange).toHaveBeenCalled()
 
     await user.click(screen.getByRole('checkbox', { name: /neutral/i }))
@@ -240,7 +240,7 @@ describe('FaceSection', () => {
       const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
       expect(row.contains(summary)).toBe(true)
       expect(summary.textContent).toContain('smile, open')
-      expect(summary.textContent).toContain('two colours')
+      expect(summary.textContent).toContain('Two-color')
       expect(summary.textContent).toContain('80')
       // Permissive, so silent — not "≥ 0%".
       expect(summary.textContent).not.toContain('%')
@@ -420,9 +420,9 @@ describe('FaceSection', () => {
 
     expect(props.onFiltersChange).not.toHaveBeenCalled()
     expect(props.onMouthsChange).not.toHaveBeenCalled()
-    expect(
-      screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
-    ).toBe('true')
+    expect(screen.getByRole('switch', { name: /^two-color$/i }).getAttribute('aria-checked')).toBe(
+      'true',
+    )
     expect(screen.getByTestId('min-contrast-value').textContent).toBe('80')
   })
 
@@ -577,14 +577,14 @@ describe('FaceSection', () => {
     it('shows nothing but the expressions when the colour filters are wide open', () => {
       const summary = collapsed({ filters: { twoColor: false, minContrast: 0, minMatch: 0 } })
       expect(summary.textContent).toContain('expressions')
-      expect(summary.textContent).not.toMatch(/two colours/i)
+      expect(summary.textContent).not.toMatch(/two-color/i)
       expect(summary.textContent).not.toContain('≥')
     })
 
     it('adds a chip for two colours only while that toggle is on', () => {
       expect(
         collapsed({ filters: { twoColor: true, minContrast: 0, minMatch: 0 } }).textContent,
-      ).toMatch(/two colours/i)
+      ).toMatch(/two-color/i)
     })
 
     // The number with the same swatch the result tiles and the slider carry, so one number has one
@@ -661,7 +661,7 @@ describe('FaceSection', () => {
       const summary = document.querySelector('[data-slot="filter-summary"]')
       expect(summary?.textContent).toContain('smile')
       expect(summary?.textContent).toContain('≥ 200')
-      expect(summary?.textContent).not.toMatch(/two colours/i)
+      expect(summary?.textContent).not.toMatch(/two-color/i)
     })
   })
 
@@ -679,7 +679,7 @@ describe('FaceSection', () => {
 
   it('reports a two-colour toggle change', async () => {
     const props = renderSection()
-    await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+    await userEvent.click(screen.getByRole('switch', { name: /^two-color$/i }))
     expect(props.onFiltersChange).toHaveBeenCalledWith({
       ...DEFAULT_FACE_FILTERS,
       twoColor: false,

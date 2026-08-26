@@ -256,7 +256,7 @@ describe('FacePicker', () => {
       const user = userEvent.setup()
       renderPicker({ value: ['smile'] })
 
-      await user.click(screen.getByRole('button', { name: /about two colours only/i }))
+      await user.click(screen.getByRole('button', { name: /about two-color/i }))
       expect(await screen.findByText(/no cell uses the spot colour/i)).toBeDefined()
       await user.keyboard('{Escape}')
 
@@ -583,7 +583,7 @@ describe('FacePicker', () => {
     it('leaves the colour filters applying immediately', async () => {
       const { onFiltersChange } = renderPicker({ value: ['smile', 'frown'] })
 
-      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+      await userEvent.click(screen.getByRole('switch', { name: /^two-color$/i }))
 
       expect(onFiltersChange).toHaveBeenCalled()
       expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
@@ -720,7 +720,7 @@ describe('FacePicker', () => {
     it('shows the defaults it was given', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
-        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /^two-color$/i }).getAttribute('aria-checked'),
       ).toBe('true')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
@@ -732,7 +732,7 @@ describe('FacePicker', () => {
 
     it('calls onFiltersChange with twoColor flipped when the switch is toggled', async () => {
       const { onFiltersChange } = renderPicker({ filters: DEFAULT_FACE_FILTERS })
-      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+      await userEvent.click(screen.getByRole('switch', { name: /^two-color$/i }))
       expect(onFiltersChange).toHaveBeenCalledWith({
         twoColor: false,
         minContrast: DEFAULT_FACE_FILTERS.minContrast,
@@ -791,7 +791,7 @@ describe('FacePicker', () => {
     it('reflects a non-default filters prop', () => {
       renderPicker({ filters: { twoColor: false, minContrast: 150, minMatch: 0 } })
       expect(
-        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /^two-color$/i }).getAttribute('aria-checked'),
       ).toBe('false')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),

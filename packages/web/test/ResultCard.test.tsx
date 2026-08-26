@@ -211,13 +211,13 @@ describe('ResultCard', () => {
 
   it('marks a two-colour result when the filter is not already guaranteeing one', () => {
     renderCard({ filterGuaranteesTwoColour: false })
-    expect(screen.getByText(/two colours/i)).toBeDefined()
+    expect(screen.getByText(/two-color/i)).toBeDefined()
   })
 
   // The chip was on every tile before, which made it furniture rather than information.
   it('says nothing about colours when every result on screen is two-colour anyway', () => {
     renderCard({ filterGuaranteesTwoColour: true })
-    expect(screen.queryByText(/two colours/i)).toBeNull()
+    expect(screen.queryByText(/two-color/i)).toBeNull()
   })
 
   it('does not mark a three-colour result, which is the ordinary case', () => {
@@ -366,7 +366,7 @@ describe('ResultCard', () => {
       .join(' ')
     expect(described).toContain('small')
     expect(described).toContain('157')
-    expect(described).toContain('two colours')
+    expect(described).toContain('Two-color')
   })
 
   it('announces that activating it opens a dialog', () => {

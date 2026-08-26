@@ -189,7 +189,7 @@ export function CliHandoff({
               the whole standard this screen is holding results to. */}
           <p className="text-sm text-muted-foreground">
             Every part of the search on screen carries over exactly, via the flags below: the
-            accepted expressions, and your two-colour, contrast and match filters.
+            accepted expressions, and your two-color, contrast and match filters.
           </p>
           {/* Only when there is something to resume. The dialog's standing promise is that the
               search carries over exactly; this is the second half of it — that the PROGRESS

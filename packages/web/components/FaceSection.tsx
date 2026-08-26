@@ -279,7 +279,7 @@ export function FaceSection({
               </Badge>
               {summary.twoColor && (
                 <Badge variant="secondary" className="rounded-md font-normal">
-                  two colours
+                  Two-color
                 </Badge>
               )}
               {summary.minMatch !== undefined && (

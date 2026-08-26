@@ -406,7 +406,7 @@ describe('decodeResumeParams', () => {
   it('rejects a two-colour value that is not 1 or 0', () => {
     for (const bad of ['true', 'yes', '', 'on', '2']) {
       const { error } = decodeResumeParams(resumeParams({ 'two-color': bad }))
-      expect(error, `two-color=${bad}`).toBe('The two-colour filter in this link is not 1 or 0.')
+      expect(error, `two-color=${bad}`).toBe('The two-color filter in this link is not 1 or 0.')
     }
   })
 

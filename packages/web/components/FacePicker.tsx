@@ -287,11 +287,14 @@ export function FacePicker({
           tiles it labels. At 12px the toggle read as part of the contrast control below it. */}
         <section className="flex flex-col gap-5">
           <div className="flex items-center gap-2">
-            <Label htmlFor="two-color-only">Two colours only</Label>
-            <Explains label="two colours only">
-              A blockie is two-colour only when no cell uses the spot colour. That&rsquo;s the
-              common case to want. Turning it off makes more candidates qualify, but some will show
-              a third colour.
+            {/* "Two-color", matching the `--two-color` flag the CLI handoff writes and the
+                `two-color` param a resume link carries. One name for one filter, wherever a user
+                meets it. */}
+            <Label htmlFor="two-color-only">Two-color</Label>
+            <Explains label="Two-color">
+              A blockie is two-color only when no cell uses the spot colour. That&rsquo;s the common
+              case to want. Turning it off makes more candidates qualify, but some will show a third
+              colour.
             </Explains>
             <Switch
               id="two-color-only"
