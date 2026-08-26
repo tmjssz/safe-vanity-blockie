@@ -15,9 +15,12 @@ import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import { CONTRAST_MAX } from '../lib/contrast-preview'
 import {
   candidateFromSaltNonce,
+  DEFAULT_TARGET,
   decodeConfigParam,
   decodeResumeParams,
+  draftSearchPath,
   encodeConfigParam,
+  hasResumeParams,
   resumeSearchPath,
   shareConfigPath,
 } from '../lib/deep-link'
@@ -319,7 +322,7 @@ describe('decodeResumeParams', () => {
       start: 60_000_016_650_000,
       mouths: ['smile', 'open'],
       filters: { twoColor: true, minContrast: 80, minMatch: 90 },
-      carriesSearch: true,
+      narrowsFilters: true,
     })
   })
 
@@ -337,7 +340,7 @@ describe('decodeResumeParams', () => {
     const { resume, error } = decodeResumeParams(new URLSearchParams({ config: 'whatever' }))
 
     expect(error).toBeUndefined()
-    expect(resume).toEqual({ carriesSearch: false })
+    expect(resume).toEqual({ narrowsFilters: false })
   })
 
   // COMPLETE or absent, never partial. The page reads `filters` straight into the value it renders
@@ -348,23 +351,76 @@ describe('decodeResumeParams', () => {
     const { resume } = decodeResumeParams(params)
 
     expect(resume?.filters).toEqual({ ...DEFAULT_FACE_FILTERS, minMatch: 90 })
-    expect(resume?.carriesSearch).toBe(true)
+    expect(resume?.narrowsFilters).toBe(true)
   })
 
-  // `carriesSearch` is what decides whether the idle screen mounts the Filter card. Answered here
+  // `narrowsFilters` is what decides whether the idle screen mounts the Filter card. Answered here
   // rather than recomputed at that call site, so a link carrying only a checkpoint cannot raise a
   // card with nothing in it to show.
-  it('reports carriesSearch false for a start-only link and true as soon as the search is named', () => {
+  it('reports narrowsFilters false for a start-only link and true once a filter is narrowed', () => {
     expect(decodeResumeParams(new URLSearchParams({ start: '5' })).resume).toEqual({
       start: 5,
-      carriesSearch: false,
+      narrowsFilters: false,
     })
-    expect(decodeResumeParams(new URLSearchParams({ target: 'smile' })).resume?.carriesSearch).toBe(
-      true,
-    )
     expect(
-      decodeResumeParams(new URLSearchParams({ 'two-color': '0' })).resume?.carriesSearch,
+      decodeResumeParams(new URLSearchParams({ 'two-color': '0' })).resume?.narrowsFilters,
     ).toBe(true)
+  })
+
+  // `target` names the expressions, and they are a section of Configure in their own right now,
+  // always visible. A link that narrowed only them has nothing for the Filter disclosure to show,
+  // so it must not open one: a section expanding to reveal three untouched sliders because
+  // something entirely elsewhere was set is worse than it staying shut. Every resume link carries a
+  // target, so this was most of them.
+  it('ignores target entirely, however narrow it is', () => {
+    for (const target of ['smile', 'smile,open', 'faces']) {
+      const { resume } = decodeResumeParams(new URLSearchParams({ target }))
+      expect(resume?.narrowsFilters, target).toBe(false)
+      // Still decoded and still handed over; it simply has no say in this one flag.
+      expect(resume?.mouths, target).toBeDefined()
+    }
+  })
+
+  // Naming a value is not the same as narrowing anything. A link that spells out exactly what the
+  // app would have done anyway has nothing to show, so it must read the same as a link that said
+  // nothing: `resumeSearchPath` always writes all five params, so this is the common case, not an
+  // edge one.
+  it('reports narrowsFilters false when every named value is already the default', () => {
+    const params = new URLSearchParams({
+      target: 'faces',
+      'two-color': String(DEFAULT_FACE_FILTERS.twoColor ? 1 : 0),
+      'min-contrast': String(DEFAULT_FACE_FILTERS.minContrast),
+      'min-match': String(DEFAULT_FACE_FILTERS.minMatch),
+    })
+    const { resume } = decodeResumeParams(params)
+
+    expect(resume?.narrowsFilters).toBe(false)
+    // The values are still decoded and still handed over; only the "worth showing" flag is false.
+    expect(resume?.filters).toEqual(DEFAULT_FACE_FILTERS)
+    expect(resume?.mouths).toHaveLength(5)
+  })
+
+  it('reports narrowsFilters true when any one of the three differs from the default', () => {
+    const base = {
+      target: 'faces',
+      'two-color': String(DEFAULT_FACE_FILTERS.twoColor ? 1 : 0),
+      'min-contrast': String(DEFAULT_FACE_FILTERS.minContrast),
+      'min-match': String(DEFAULT_FACE_FILTERS.minMatch),
+    }
+    const differs = [
+      { ...base, 'two-color': '0' },
+      { ...base, 'min-contrast': String(DEFAULT_FACE_FILTERS.minContrast + 1) },
+      { ...base, 'min-match': String(DEFAULT_FACE_FILTERS.minMatch + 10) },
+    ]
+    for (const params of differs) {
+      const { resume } = decodeResumeParams(new URLSearchParams(params))
+      expect(resume?.narrowsFilters, JSON.stringify(params)).toBe(true)
+    }
+
+    // And a narrowed target alongside untouched filters still does not, which is the case that was
+    // wrong: every resume link carries a target, so this was most of them.
+    const targetOnly = { ...base, target: 'smile,open' }
+    expect(decodeResumeParams(new URLSearchParams(targetOnly)).resume?.narrowsFilters).toBe(false)
   })
 
   it('reads "faces" as every expression', () => {
@@ -443,5 +499,144 @@ describe('decodeResumeParams', () => {
     const { resume, error } = decodeResumeParams(resumeParams({ 'min-match': '101' }))
     expect(error).toBeDefined()
     expect(resume).toBeUndefined()
+  })
+})
+
+// The address bar doubles as where an unsubmitted form is kept, so a reload does not cost the reader
+// their work. Same five params a resume link carries, because they are the same facts.
+describe('draftSearchPath', () => {
+  const DRAFT = { target: 'smile,open', filters: SEARCH.filters, start: 42 }
+
+  it('writes what differs from the defaults, with no config until one validates', () => {
+    const params = new URL(draftSearchPath(DRAFT, '/'), 'http://localhost').searchParams
+
+    expect(params.get('config')).toBeNull()
+    expect(params.get('start')).toBe('42')
+    expect(params.get('target')).toBe('smile,open')
+    expect(params.get('min-contrast')).toBe('80')
+    expect(params.get('min-match')).toBe('90')
+    // `twoColor: true` IS the default, so it is not there at all.
+    expect(params.get('two-color')).toBeNull()
+  })
+
+  // A value equal to the default says nothing the app would not have done anyway, so it is noise in
+  // the address bar. `decodeResumeParams` reads a missing param as the default, so leaving it out
+  // and writing it are the same instruction; only one of them is legible.
+  //
+  // This is the opposite rule to `resumeSearchPath`, deliberately. A resume link is read by builds
+  // whose defaults may not match this one's, so it states the whole search outright; a draft URL is
+  // read only by the build that wrote it, an hour later at most, so omission is safe and tidier.
+  it('writes nothing at all for a pristine form', () => {
+    const path = draftSearchPath(
+      { target: DEFAULT_TARGET, filters: DEFAULT_FACE_FILTERS, start: 0 },
+      '/?start=9&target=smile&two-color=0&min-contrast=1&min-match=2',
+    )
+
+    expect(path).toBe('/')
+  })
+
+  it('drops each param on its own as it returns to its default', () => {
+    const dirty = {
+      target: 'smile',
+      filters: { twoColor: false, minContrast: 111, minMatch: 22 },
+      start: 5,
+    }
+    const base = draftSearchPath(dirty, '/')
+    expect(new URL(base, 'http://localhost').searchParams.get('min-contrast')).toBe('111')
+
+    // Only contrast goes back; the rest stay.
+    const next = draftSearchPath(
+      { ...dirty, filters: { ...dirty.filters, minContrast: DEFAULT_FACE_FILTERS.minContrast } },
+      base,
+    )
+    const params = new URL(next, 'http://localhost').searchParams
+    expect(params.get('min-contrast')).toBeNull()
+    expect(params.get('two-color')).toBe('0')
+    expect(params.get('min-match')).toBe('22')
+    expect(params.get('target')).toBe('smile')
+    expect(params.get('start')).toBe('5')
+  })
+
+  it('puts a param back when the value leaves the default again', () => {
+    const pristine = draftSearchPath(
+      { target: DEFAULT_TARGET, filters: DEFAULT_FACE_FILTERS, start: 0 },
+      '/',
+    )
+    const moved = draftSearchPath(
+      {
+        target: DEFAULT_TARGET,
+        filters: { ...DEFAULT_FACE_FILTERS, minMatch: DEFAULT_FACE_FILTERS.minMatch + 5 },
+        start: 0,
+      },
+      pristine,
+    )
+
+    expect(new URL(moved, 'http://localhost').searchParams.get('min-match')).toBe(
+      String(DEFAULT_FACE_FILTERS.minMatch + 5),
+    )
+  })
+
+  // What it leaves out has to read back as the default, or omitting it would change the search.
+  it('round-trips a pristine form to the defaults', () => {
+    const path = draftSearchPath(
+      { target: DEFAULT_TARGET, filters: DEFAULT_FACE_FILTERS, start: 0 },
+      '/',
+    )
+    const { resume } = decodeResumeParams(new URL(path, 'http://localhost').searchParams)
+
+    // Nothing was written, so nothing is reported, and nothing needs to be: the app's own defaults
+    // are what an absent param means.
+    expect(resume).toEqual({ narrowsFilters: false })
+  })
+
+  it('adds the config once one is given', () => {
+    const params = new URL(
+      draftSearchPath({ ...DRAFT, config: MINE_CONFIG }, '/'),
+      'http://localhost',
+    ).searchParams
+
+    expect(decodeConfigParam(params.get('config') as string).config).toEqual(MINE_CONFIG)
+  })
+
+  // A `config=` describing owners the reader has since edited away is worse than none: a reload
+  // would restore it, putting back a Safe they had removed.
+  it('removes a stale config when the form stops validating', () => {
+    const withConfig = draftSearchPath({ ...DRAFT, config: MINE_CONFIG }, '/')
+    const params = new URL(draftSearchPath(DRAFT, withConfig), 'http://localhost').searchParams
+
+    expect(params.get('config')).toBeNull()
+  })
+
+  it('leaves the basePath, unrelated params and the fragment alone', () => {
+    const url = new URL(
+      draftSearchPath(DRAFT, '/vanity/app?utm=spring#results'),
+      'http://localhost',
+    )
+
+    expect(url.pathname).toBe('/vanity/app')
+    expect(url.searchParams.get('utm')).toBe('spring')
+    expect(url.hash).toBe('#results')
+  })
+
+  // What it writes, it must be able to read back: this is the whole point of writing it.
+  it('round-trips through decodeResumeParams', () => {
+    const params = new URL(draftSearchPath(DRAFT, '/'), 'http://localhost').searchParams
+    const { resume } = decodeResumeParams(params)
+
+    expect(resume?.start).toBe(42)
+    expect(new Set(resume?.mouths)).toEqual(new Set(['smile', 'open']))
+    expect(resume?.filters).toEqual(SEARCH.filters)
+  })
+})
+
+// page.tsx uses it to decide whether a URL is worth latching, without keeping its own copy of the
+// param list.
+describe('hasResumeParams', () => {
+  it('is true for any one of the five and false for anything else', () => {
+    for (const param of ['start', 'target', 'two-color', 'min-contrast', 'min-match']) {
+      expect(hasResumeParams(new URLSearchParams({ [param]: '1' })), param).toBe(true)
+    }
+    expect(hasResumeParams(new URLSearchParams({ config: 'x', utm: 'spring' }))).toBe(false)
+    expect(hasResumeParams(new URLSearchParams())).toBe(false)
   })
 })

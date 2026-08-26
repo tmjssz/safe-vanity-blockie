@@ -11,6 +11,7 @@ import {
   makeScorer,
   mouthNamesForTarget,
   type SafeConstants,
+  targetNameForMouths,
 } from '@safe-vanity-blockie/core'
 import {
   DEFAULT_FACE_FILTERS,
@@ -20,6 +21,7 @@ import {
   validateMineConfig,
 } from './config'
 import { CONTRAST_MAX } from './contrast-preview'
+import { ALL_MOUTH_NAMES } from './face-selection'
 
 export interface SharedConfig {
   owners: string[]
@@ -80,6 +82,15 @@ function writeIntoUrl(base: string | undefined, write: (params: URLSearchParams)
  * decoder, and `shareConfigPath`, which has to DELETE them.
  */
 const RESUME_PARAMS = ['start', 'target', 'two-color', 'min-contrast', 'min-match'] as const
+
+/**
+ * The `target` an untouched form produces: every expression accepted.
+ *
+ * Derived through the same function that names a real selection rather than written out as `faces`,
+ * so it cannot drift from what the form would actually put in the URL — which is the only thing
+ * that makes "equal to the default, so leave it out" safe to act on.
+ */
+export const DEFAULT_TARGET = targetNameForMouths(ALL_MOUTH_NAMES)
 
 /**
  * A search, as a link carries it.
@@ -174,6 +185,95 @@ export function resumeSearchPath(search: SharedSearch, base?: string): string {
   })
 }
 
+/**
+ * Whether a URL carries any of the five resume params.
+ *
+ * Exported so page.tsx can decide whether a URL is worth latching without keeping its own copy of
+ * the list. It matters because the address bar is now also where an unsubmitted form is kept: a
+ * visitor who moved a slider before typing an owner has filters to restore and no `config=` to
+ * carry them, and a latch that insisted on one would drop them.
+ */
+export function hasResumeParams(params: URLSearchParams): boolean {
+  return RESUME_PARAMS.some((param) => params.has(param))
+}
+
+/**
+ * The start screen's own state, written into the address bar as it is edited, so a reload does not
+ * cost the reader their work.
+ *
+ * Same five params a resume link carries, because they are the same facts. `config` is separate and
+ * OPTIONAL, and that is the whole difference: owners, threshold and version are free text that
+ * spends most of its life half-typed, and `config=` is strict by design — one malformed owner and
+ * `decodeConfigParam` rejects the entire link, which is right for something a stranger sent and
+ * wrong for a draft of your own. So the caller passes a config only once it validates, and until
+ * then the URL carries the parts that are always valid. The cost is honest and bounded: reload
+ * mid-address and that address is gone, while everything chosen from a control survives.
+ *
+ * Written with `replaceState` by its caller, never pushed. A history entry per keystroke would make
+ * Back mean "one character ago" instead of "the page before this one".
+ */
+export function draftSearchPath(
+  draft: { config?: MineConfig; target: string; filters: FaceFilters; start: number },
+  base?: string,
+): string {
+  return writeIntoUrl(base, (params) => {
+    /**
+     * Written when it differs from the default, removed when it does not.
+     *
+     * A value equal to the default says nothing the app would not have done anyway, so in the
+     * address bar it is noise: `decodeResumeParams` reads a missing param as the default, which
+     * makes "absent" and "spelled out at its default value" the same instruction, and only one of
+     * them is legible. A pristine start screen therefore leaves the URL alone entirely rather than
+     * stamping `?start=0&target=faces&two-color=1…` over it.
+     *
+     * Removed rather than left behind, so a value returning to its default takes its param with it.
+     * Otherwise the URL would only ever grow, and would keep asserting a constraint the reader had
+     * just undone.
+     *
+     * This is the opposite rule to `resumeSearchPath`, deliberately. That one always writes all
+     * five, because a resume link is read by builds whose defaults may not match this one's, so it
+     * has to state the whole search outright; the comment there says as much. A draft URL is read
+     * only by the build that wrote it, so omission cannot change what it means.
+     */
+    const setUnlessDefault = (name: string, value: string, fallback: string) => {
+      if (value === fallback) params.delete(name)
+      else params.set(name, value)
+    }
+    // Removed rather than left stale when the form stops validating: a `config=` describing owners
+    // the reader has since edited away is worse than none, because a reload would restore it.
+    if (draft.config) {
+      params.set(
+        'config',
+        encodeConfigParam({
+          owners: draft.config.owners,
+          threshold: draft.config.threshold,
+          safeVersion: draft.config.safeVersion,
+          chainId: draft.config.chainId,
+        }),
+      )
+    } else {
+      params.delete('config')
+    }
+    setUnlessDefault('start', String(draft.start), '0')
+    setUnlessDefault('target', draft.target, DEFAULT_TARGET)
+    setUnlessDefault(
+      'two-color',
+      draft.filters.twoColor ? '1' : '0',
+      DEFAULT_FACE_FILTERS.twoColor ? '1' : '0',
+    )
+    setUnlessDefault(
+      'min-contrast',
+      String(draft.filters.minContrast),
+      String(DEFAULT_FACE_FILTERS.minContrast),
+    )
+    setUnlessDefault(
+      'min-match',
+      String(draft.filters.minMatch),
+      String(DEFAULT_FACE_FILTERS.minMatch),
+    )
+  })
+}
+
 /** Decodes and fully re-validates — a link is untrusted input, not a trusted config. */
 export function decodeConfigParam(param: string): { config?: SharedConfig; error?: string } {
   let raw: unknown
@@ -235,12 +335,26 @@ export interface DecodedResume {
    */
   filters?: FaceFilters
   /**
-   * Whether the link said anything about the search ITSELF — expressions or filters, as opposed to
-   * merely where to start. It is what decides whether the idle screen mounts the Filter card, and
-   * it is answered here rather than recomputed at that call site: a link carrying only a
-   * checkpoint would otherwise raise a card with nothing in it to show.
+   * Whether the link narrowed one of the three COLOUR constraints past the app's own default.
+   *
+   * It decides whether the Filter section arrives open, so the question it has to answer is "is
+   * there anything in THERE worth showing?" Two things follow, and the second is what this got
+   * wrong at first.
+   *
+   * Naming a value is not narrowing anything. `resumeSearchPath` always writes all five params, so
+   * a link built from a run left at the defaults spells out `two-color=1`, `min-contrast=80`,
+   * `min-match=0`: exactly what an ordinary visit uses. Opening the section over that would present
+   * the app's own defaults as though the sender had chosen them.
+   *
+   * And `target` is not in that section. The expressions became a section of Configure in their own
+   * right, always visible, so a link that narrowed only them has nothing for this disclosure to
+   * show — it used to open anyway, which is a section expanding to reveal three untouched sliders
+   * because something entirely elsewhere was set.
+   *
+   * Answered here rather than at the call site, so the comparison against the defaults lives beside
+   * the decoding that produced the values, and a second consumer cannot reach a different verdict.
    */
-  carriesSearch: boolean
+  narrowsFilters: boolean
 }
 
 const DIGITS = /^\d+$/
@@ -291,7 +405,7 @@ export function decodeResumeParams(params: URLSearchParams): {
   resume?: DecodedResume
   error?: string
 } {
-  const resume: DecodedResume = { carriesSearch: false }
+  const resume: DecodedResume = { narrowsFilters: false }
 
   const start = params.get('start')
   if (start !== null) {
@@ -323,7 +437,6 @@ export function decodeResumeParams(params: URLSearchParams): {
         }`,
       }
     }
-    resume.carriesSearch = true
   }
 
   // Built over the defaults, so what comes back is a COMPLETE FaceFilters or nothing — see the
@@ -370,7 +483,16 @@ export function decodeResumeParams(params: URLSearchParams): {
 
   if (sawFilter) {
     resume.filters = filters
-    resume.carriesSearch = true
+    // Only when one of these three actually moved. A link spelling them all out at their default
+    // values has narrowed nothing, and the section it would open holds exactly what it already
+    // says. `target` is deliberately not consulted: see `narrowsFilters`.
+    if (
+      filters.twoColor !== DEFAULT_FACE_FILTERS.twoColor ||
+      filters.minContrast !== DEFAULT_FACE_FILTERS.minContrast ||
+      filters.minMatch !== DEFAULT_FACE_FILTERS.minMatch
+    ) {
+      resume.narrowsFilters = true
+    }
   }
 
   return { resume }
