@@ -369,15 +369,55 @@ describe('FacePicker', () => {
     // started again. On the idle screen — where a resume link now mounts this card so the
     // recipient can see what they are about to start — none of that exists, so every sentence in
     // that dialog is false and the press it costs buys nothing.
-    it('applies straight away when there is no run to restart', async () => {
+    // Staging exists to put a warning between a click and a restarted search. With no run there is
+    // nothing to restart, so the click simply takes effect — no Apply to press, and no dialog.
+    it('applies a click straight away when there is no run to restart', async () => {
       const { onChange } = renderPicker({ value: ['smile', 'frown'], live: false })
       const user = userEvent.setup()
 
       await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
-      await user.click(applyButton())
 
       expect(onChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
       expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    // Apply and Reset exist only to govern a staged edit. With nothing ever staged they would be
+    // two controls that can never do anything, on the one screen where the reader has the least
+    // context for working out what they were for.
+    it('offers neither Apply nor Reset when there is no run', async () => {
+      renderPicker({ value: ['smile', 'frown'], live: false })
+      const user = userEvent.setup()
+
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+
+      // And still neither after a click, which is when they would have appeared.
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+    })
+
+    // Select all is not a staging control — it widens the selection — so it stays, and takes effect
+    // on the spot like every other click here.
+    it('applies Select all straight away when there is no run', async () => {
+      const { onChange } = renderPicker({ value: ['smile'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('button', { name: /select all/i }))
+
+      expect(onChange).toHaveBeenCalledWith(ALL_MOUTH_NAMES)
+    })
+
+    // The floor still holds: applying immediately must not make it possible to reject the last one.
+    it('still refuses to remove the last expression when there is no run', async () => {
+      const { onChange } = renderPicker({ value: ['smile'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^smile$/i }))
+
+      expect(onChange).not.toHaveBeenCalled()
+      expect(screen.getByText(/keep at least one expression/i)).toBeDefined()
     })
 
     // The default is the behaviour that already existed. A host that says nothing gets the

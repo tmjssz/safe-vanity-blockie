@@ -706,10 +706,11 @@ describe('FaceSection', () => {
     const { onMouthsChange } = renderSection({ mouths: ['smile', 'frown'] })
 
     await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
-    await user.click(screen.getByRole('button', { name: /^apply$/i }))
 
-    // No `mining`, so no run: applied with no question asked.
+    // No `mining`, so no run: the click applied on the spot, with no question and no Apply to
+    // press — staging exists to put a warning before a restart, and there is nothing to restart.
     expect(onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
     expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
   })
 })

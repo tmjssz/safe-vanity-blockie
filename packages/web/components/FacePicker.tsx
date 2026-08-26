@@ -79,7 +79,31 @@ export function FacePicker({
   // rather than leaving the tiles showing a selection nothing is mining.
   useEffect(() => setDraft(value), [value])
 
-  const pending = !sameSelection(draft, value)
+  // Only a live run can have a staged edit. With no run, `stage` below hands changes straight to
+  // the host and never touches the draft, so this could only ever be false anyway — saying so
+  // outright is what makes Apply and Reset provably unreachable there rather than incidentally so.
+  const pending = live && !sameSelection(draft, value)
+
+  /**
+   * Where a new selection goes: onto the draft, or straight to the host.
+   *
+   * Staging exists for one reason — to put a warning between a click and a restarted search, since
+   * changing the accepted expressions wipes the leaderboard and resets the scanned total. With no
+   * run there is nothing to restart and nothing to discard, so the warning has nothing to warn
+   * about and the click can simply take effect. Apply and Reset then have no staged edit left to
+   * govern, and stop rendering on their own (see `pending`).
+   *
+   * The draft is not written in that case, deliberately: the host owns the value, hands it back,
+   * and the effect above syncs the draft to it. Writing both would be two sources for one fact.
+   */
+  const stage = (next: string[]) => {
+    setError(undefined)
+    if (live) {
+      setDraft(next)
+      return
+    }
+    onChange(next)
+  }
 
   const toggle = (name: string) => {
     if (draft.includes(name)) {
@@ -87,12 +111,10 @@ export function FacePicker({
         setError('Keep at least one expression: a face needs a mouth to score against.')
         return
       }
-      setError(undefined)
-      setDraft(draft.filter((entry) => entry !== name))
+      stage(draft.filter((entry) => entry !== name))
       return
     }
-    setError(undefined)
-    setDraft([...draft, name])
+    stage([...draft, name])
   }
 
   const allAccepted = ALL_MOUTH_NAMES.every((name) => draft.includes(name))
@@ -142,7 +164,13 @@ export function FacePicker({
 
               Each is absent rather than disabled when it would do nothing. Two of the three come
               and go with a staged change in any case, so a permanently present but greyed-out
-              third would be the one dead control in a row that is otherwise never dead. */}
+              third would be the one dead control in a row that is otherwise never dead.
+
+              With no run those two are never here at all: nothing stages, so there is no edit to
+              discard and no restart to announce, and Select all is left as the only control on the
+              row (see `stage`). Two buttons that could never do anything would be worst on exactly
+              that screen, where the reader has the least context for working out what they were
+              for. */}
             <div className="ml-auto flex items-center gap-2">
               {!allAccepted && (
                 // Rejecting is one click per expression; getting back is one click total.
@@ -151,10 +179,10 @@ export function FacePicker({
                   variant="link"
                   size="sm"
                   className="h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
-                  onClick={() => {
-                    setError(undefined)
-                    setDraft([...ALL_MOUTH_NAMES])
-                  }}
+                  // Through `stage` like every other change here, so it stages during a run and
+                  // takes effect on the spot when there is none. It is not a staging control
+                  // itself — it widens the selection — so it stays on screen either way.
+                  onClick={() => stage([...ALL_MOUTH_NAMES])}
                 >
                   Select all
                 </Button>
