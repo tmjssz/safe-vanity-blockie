@@ -155,6 +155,129 @@ describe('FaceSection', () => {
     expect(card.className).toContain('shadow-none')
   })
 
+  // On Configure's start screen this sits a row above the Advanced disclosure, and the two are the
+  // same kind of thing: a quiet line you press to see more. Drawn as a card header it shouted next
+  // to Advanced's muted text — a semibold heading, its own icon, and a chevron pushed to the far
+  // side of the row — so `quiet` renders it in Advanced's voice instead.
+  describe('quiet', () => {
+    it('puts the chevron before the label rather than across the row', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
+      const title = container.querySelector('#filter-card-title') as HTMLElement
+      // `getAttribute`, not `.className`: on an SVG element that property is an
+      // SVGAnimatedString rather than a string, and `toContain` against it passes for anything —
+      // which is a test that cannot fail. The control test below is what caught it.
+      expect(chevron.getAttribute('class')).not.toContain('ml-auto')
+      // DOCUMENT_POSITION_FOLLOWING: the chevron comes first in the row.
+      expect(chevron.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('drops the second icon, so the row carries one glyph as Advanced does', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          defaultOpen={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      // Direct children of the row only. Counting every svg in the tree would also count the
+      // expressions chip's own Smile — which belongs to the value, not to the header chrome, and
+      // stays exactly where it is — and the panel's icons once the card is open. What this pins is
+      // that the row itself carries one glyph, the chevron, as Advanced's trigger does.
+      const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+      const rowGlyphs = [...row.children].filter((child) => child.tagName.toLowerCase() === 'svg')
+      expect(rowGlyphs).toHaveLength(1)
+      expect(rowGlyphs[0].getAttribute('data-slot')).toBe('filter-chevron')
+    })
+
+    // The heading is load-bearing however it is drawn: the trigger takes its accessible name from
+    // it (`aria-labelledby`), and FacePicker's own <h3> hangs off it. Restyling must not cost that.
+    it('keeps the heading a heading, and the trigger named by it', () => {
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const title = screen.getByRole('heading', { name: /^filter$/i })
+      expect(title.id).toBe('filter-card-title')
+      expect(trigger().getAttribute('aria-labelledby')).toBe('filter-card-title')
+    })
+
+    // The values stay in the row with the label — that is the whole point of collapsing to one
+    // line. `summarise` already omits anything sitting at a permissive value, so at the defaults
+    // this is three chips and a `min match` of 0 says nothing at all.
+    it('keeps the collapsed values on the label’s own row', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile', 'open']}
+          filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
+          quiet
+          defaultOpen={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(row.contains(summary)).toBe(true)
+      expect(summary.textContent).toContain('smile, open')
+      expect(summary.textContent).toContain('two colours')
+      expect(summary.textContent).toContain('80')
+      // Permissive, so silent — not "≥ 0%".
+      expect(summary.textContent).not.toContain('%')
+    })
+
+    it('takes the vertical padding off the card so the row sits tight to its neighbours', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const card = container.querySelector('[data-slot="card"]') as HTMLElement
+      expect(card.className).toContain('py-0')
+    })
+
+    // Omitted, the results page is untouched: its own heading, its own icon, chevron across the row.
+    it('leaves the loud header alone when not asked for', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
+      expect(chevron.getAttribute('class')).toContain('ml-auto')
+      expect(container.querySelectorAll('svg').length).toBeGreaterThan(1)
+    })
+  })
+
   // Named "Filter" now, after two earlier names. "Face" described the expression tiles alone and
   // left the colour filters looking like strays; "Pattern filter" then described the tiles as a
   // pattern, which the colour controls are not part of either.

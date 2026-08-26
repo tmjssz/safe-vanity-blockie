@@ -47,6 +47,22 @@ export interface FaceSectionProps {
    */
   defaultOpen?: boolean
   /**
+   * Draw the header in the same voice as Configure's Advanced disclosure: a quiet muted line with
+   * its chevron against the label, rather than a card header with a semibold heading, an icon of
+   * its own, and the chevron thrown to the far side of the row.
+   *
+   * It exists because on the start screen this sits one row above that disclosure, and the two are
+   * the same kind of thing — a line you press to see more. Drawn loud, it announced itself as the
+   * more important of the two, which is backwards: the checkpoint field below it is the advanced
+   * question, and this is half of what the form is for. Two lines that behave alike should look
+   * alike.
+   *
+   * It also takes the card's vertical padding off, so the row sits as tight to its neighbours as
+   * Advanced's does. The results page, where this really is a card among cards, passes nothing and
+   * keeps every bit of its own chrome.
+   */
+  quiet?: boolean
+  /**
    * Classes for the Card itself. Nested on Configure's start screen this sits inside another Card,
    * where its own border and shadow read as clutter rather than structure — so the host that put it
    * there says so, rather than this component guessing where it is from a prop.
@@ -125,6 +141,7 @@ export function FaceSection({
   filters,
   mining = false,
   defaultOpen,
+  quiet = false,
   className,
   revealRequest = 0,
   onOpenChange,
@@ -185,7 +202,7 @@ export function FaceSection({
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
     // the panel has any height: collapsed, it left 24px of empty card under the header. The panel
     // carries its own top padding instead, where it is only paid when there is something to pad.
-    <Card ref={cardRef} className={cn('gap-0', className)}>
+    <Card ref={cardRef} className={cn('gap-0', quiet && 'py-0', className)}>
       <Collapsible
         open={open}
         onOpenChange={(next) => {
@@ -210,9 +227,41 @@ export function FaceSection({
 
             `flex-wrap` still applies below that: align-items works per flex line, so chips wrapping
             to a second line does not drag the title down with them either. */}
-        <CardHeader className="relative flex min-h-8 flex-row flex-wrap items-center gap-x-3 gap-y-2">
-          <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-          <CardTitle as="h2" id="filter-card-title">
+        <CardHeader
+          className={cn(
+            'relative flex flex-row flex-wrap items-center gap-y-2',
+            // Quiet, the row is tighter in both directions: `gap-x-2` because the chevron belongs
+            // against its label rather than a lane away from it, and `min-h-6` because 24px is all
+            // that is needed to clear a 22px chip without the label shifting as the chips come and
+            // go — the jitter `min-h-8` was sized for at the louder text size.
+            quiet ? 'min-h-6 gap-x-2' : 'min-h-8 gap-x-3',
+          )}
+        >
+          {/* Quiet, the chevron IS the leading glyph, exactly as it is on Advanced's trigger — so
+              the filter icon would be a second one, and this row is meant to read as one line of
+              the same kind as the disclosure below it. Loud, the icon names the card and the
+              chevron sits at the far end of the row (see below). */}
+          {quiet ? (
+            <ChevronDown
+              data-slot="filter-chevron"
+              aria-hidden="true"
+              className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+            />
+          ) : (
+            <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          )}
+          <CardTitle
+            as="h2"
+            id="filter-card-title"
+            // Still an <h2> either way — the trigger takes its accessible name from it and
+            // FacePicker's own <h3> hangs off it, so this is only ever a restyle. Quiet, it matches
+            // the Advanced label it sits above: same size, same weight, same colour, and the same
+            // lift on hover, which the whole row triggers because the whole row is the control.
+            className={cn(
+              quiet &&
+                'text-sm font-normal text-muted-foreground transition-colors group-hover/filter:text-foreground',
+            )}
+          >
             Filter
           </CardTitle>
 
@@ -264,19 +313,26 @@ export function FaceSection({
 
           {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
               transition is a turn rather than a cut, and it reads off the Root's data-state
-              because the trigger it belongs to is the invisible sheet above. */}
-          <ChevronDown
-            data-slot="filter-chevron"
-            aria-hidden="true"
-            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
-          />
+              because the trigger it belongs to is the invisible sheet above.
+
+              `ml-auto` throws it to the far edge, which suits a card header and not a quiet line —
+              so when `quiet` this is rendered before the label instead, above. */}
+          {!quiet && (
+            <ChevronDown
+              data-slot="filter-chevron"
+              aria-hidden="true"
+              className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+            />
+          )}
         </CardHeader>
 
         {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash: the
             panel keeps its full layout while the box around it grows. The keyframes are in
             globals.css, animating to Radix's measured `--radix-collapsible-content-height`. */}
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <CardContent className="pt-6">
+          {/* Quiet, half the gap: the row above it is a line rather than a card header, so 24px
+              under it reads as a hole. */}
+          <CardContent className={cn(quiet ? 'pt-3' : 'pt-6')}>
             {/* Unlike Configure, this never locks: none of it is an address concern, so all of it
                 stays reachable while mining and the page never unmounts it — do not "fix" this
                 into locking. Collapsing is not locking either: it hides the controls and changes

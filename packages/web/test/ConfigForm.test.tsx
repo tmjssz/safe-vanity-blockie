@@ -176,6 +176,26 @@ describe('the filter card on the start screen', () => {
     expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
   })
 
+  // It sits one row above the Advanced disclosure, and the two behave alike — a line you press to
+  // see more — so they are drawn alike. Loud, this announced itself as the more important of the
+  // two, which is backwards: the checkpoint below is the advanced question and this is half of what
+  // the form is for.
+  it('is drawn in the same voice as the Advanced disclosure beside it', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+    const glyphs = [...row.children].filter((child) => child.tagName.toLowerCase() === 'svg')
+    // One glyph, and it is the chevron — against the label, as Advanced's is, rather than a filter
+    // icon in front and a chevron thrown to the far edge.
+    expect(glyphs).toHaveLength(1)
+    expect(glyphs[0].getAttribute('data-slot')).toBe('filter-chevron')
+    expect(glyphs[0].getAttribute('class')).not.toContain('ml-auto')
+    // And no 24px of card padding holding it away from its neighbours.
+    expect((container.querySelector('[data-slot="card"]') as HTMLElement).className).toContain(
+      'py-0',
+    )
+  })
+
   // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
   // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
   // everything around it. On a card stripped of its border that reads as a mistake, not as nesting.

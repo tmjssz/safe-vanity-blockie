@@ -636,6 +636,11 @@ export function ConfigForm({
           when nobody wants it (see `defaultOpen`, which is what tells the three arrival states
           apart).
 
+          `quiet` is what makes it read as a peer of the disclosure below rather than as the more
+          important of the two: the same muted label, the same chevron against it, and the card's
+          vertical padding gone so the row sits in the form's own rhythm instead of holding 24px of
+          air above and below itself.
+
           Nested inside Configure's own Card, a second bordered card reads as clutter rather than as
           structure. Stripped of its border and shadow it reads as a section of this card instead of
           a box floating inside one.
@@ -654,6 +659,7 @@ export function ConfigForm({
           mouths={mouths}
           filters={filters}
           defaultOpen={Boolean(linkCarriedFilters)}
+          quiet
           className="border-0 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
           onMouthsChange={onMouthsChange}
           onFiltersChange={onFiltersChange}
