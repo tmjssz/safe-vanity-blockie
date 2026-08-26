@@ -2,7 +2,7 @@
 
 import { ChevronDown, ListFilter } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { FaceFilters } from '../lib/config'
+import { DEFAULT_FACE_FILTERS, type FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
 import { ColorFilters } from './ColorFilters'
@@ -10,8 +10,18 @@ import { ContrastSwatch } from './ContrastSwatch'
 import { ExpressionsGlyph } from './ExpressionsGlyph'
 import { FacePicker } from './FacePicker'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+
+/**
+ * Whether every constraint is already at its default. Compared field by field rather than by
+ * reference: the host holds these in state and hands back a fresh object on every change, so a
+ * reference check would say "changed" forever after the first slider move.
+ */
+function sameFilters(a: FaceFilters, b: FaceFilters): boolean {
+  return a.twoColor === b.twoColor && a.minContrast === b.minContrast && a.minMatch === b.minMatch
+}
 
 export interface FaceSectionProps {
   mouths: string[]
@@ -110,7 +120,7 @@ export interface FaceSectionProps {
 }
 
 /**
- * At most three chips, and each is present only when its constraint actually constrains something.
+ * At most four chips, and each is present only when its constraint actually constrains something.
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
  * collapsed card carrying three of those tells the user the filter is doing work it is not. With
  * every constraint permissive there is nothing to report and the row carries no chips at all.
@@ -119,12 +129,26 @@ export interface FaceSectionProps {
  * chips are a reading of those controls, and a summary that lists them in a different order leaves
  * the reader matching them up by name instead of by position.
  *
- * The expressions are NOT among them any more. They are a section of Configure in their own right
- * now, always visible directly above this card, so a chip counting them restated what the reader
- * can see a few pixels higher.
+ * The expressions chip is shown only by a host that keeps the tiles INSIDE this card, which is the
+ * results page. On Configure they are a section of their own directly above it, so a chip counting
+ * them would restate what the reader can see a few pixels higher — but where the tiles are behind
+ * this card's own collapse, taking the chip away would leave nothing on screen saying which
+ * expressions are accepted, which is exactly what it was for. Unlike the other three it says
+ * nothing at the permissive value: all five accepted is not a constraint.
  */
-function summarise(filters: FaceFilters) {
+function summarise(mouths: string[], filters: FaceFilters) {
+  const accepted = ALL_MOUTH_NAMES.filter((name) => mouths.includes(name))
   return {
+    // Names once the list is short enough to be worth more than a count: at three or fewer,
+    // "smile, open" says which, where "2 expressions" only says how many and sends the reader back
+    // into the card to find out. Above three the names are longer than the row has room for. All
+    // five accepted is the permissive default, so it says nothing at all.
+    expressions:
+      accepted.length === ALL_MOUTH_NAMES.length
+        ? undefined
+        : accepted.length > 0 && accepted.length <= 3
+          ? accepted.join(', ')
+          : `${accepted.length} expressions`,
     twoColor: filters.twoColor,
     minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
     minMatch: filters.minMatch > 0 ? filters.minMatch : undefined,
@@ -203,11 +227,20 @@ export function FaceSection({
     onOpenChange?.(open)
   }, [open, onOpenChange])
 
-  const summary = summarise(filters)
+  const summary = summarise(mouths, filters)
   // Whether anything is constrained at all. Gates the collapsed row, so a card with every filter
   // permissive shows a bare label rather than an empty chip container.
+  // Whether the trailing group has anything in it. An empty one still carries `ml-auto` and would
+  // claim the free space the collapsed summary needs, which is the same two-auto-margins bug in a
+  // different shape: quiet and collapsed, there is no chevron here and no reset either.
+  const canReset = open && !sameFilters(filters, DEFAULT_FACE_FILTERS)
+  const hasTrailing = canReset || !quiet
+
   const anyConstraint =
-    summary.twoColor || summary.minMatch !== undefined || summary.minContrast !== undefined
+    (withExpressions && summary.expressions !== undefined) ||
+    summary.twoColor ||
+    summary.minMatch !== undefined ||
+    summary.minContrast !== undefined
 
   return (
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
@@ -291,6 +324,14 @@ export function FaceSection({
               data-slot="filter-summary"
               className={cn('flex flex-wrap items-center gap-2', quiet && 'ml-auto')}
             >
+              {withExpressions && summary.expressions !== undefined && (
+                <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
+                  {/* No `text-muted-foreground` on the glyph: its bright dots inherit
+                      `currentColor`, so muting the root would flatten it to one tone. */}
+                  <ExpressionsGlyph className="size-3.5" />
+                  {summary.expressions}
+                </Badge>
+              )}
               {summary.twoColor && (
                 <Badge variant="secondary" className="rounded-md font-normal">
                   Two-color
@@ -320,6 +361,70 @@ export function FaceSection({
             </div>
           )}
 
+          {/* The row's trailing group, pushed right as ONE unit.
+              
+              One `ml-auto`, on the group, and that is the whole point. Both the reset and the
+              chevron used to carry their own, and two auto margins on one flex line SHARE the free
+              space between them rather than one of them taking it: the reset floated into the middle
+              of the row and read as a heading of its own. Whatever the group holds, a single auto
+              margin puts it at the end.
+
+              The chevron stays outermost. It is the row's own affordance and has always been at that
+              edge; nothing should get between it and the edge.
+
+              No z-index on the group itself, deliberately. The reset carries its own `relative
+              z-20` and the group is `static`, so it creates no stacking context and the reset still
+              wins against the trigger sheet beneath. Lifting the whole group instead would put the
+              chevron above that sheet too, and pressing the chevron would then stop toggling the
+              section, which is the one thing it is for. */}
+          {hasTrailing && (
+            <div className={cn('ml-auto flex items-center', quiet ? 'gap-2' : 'gap-3')}>
+              {/* One press back to the state a first visit starts in, for the reader who has moved
+                three sliders and wants out. In the title row because it acts on the section as a
+                whole, and the row is where this card already puts everything that does.
+
+                `relative z-20` is not decoration. The trigger below is an `absolute inset-0 z-10`
+                sheet over the whole row, so anything placed here sits UNDER it and a press would
+                fold the section instead of resetting it. This has to be the thing the pointer
+                reaches.
+
+                Only while the section is OPEN. Collapsed, the row is a readout and the chips are
+                what it says; a reset belongs beside controls the reader can actually see, and on
+                472px of card the chips and a button this long would not share a line anyway.
+
+                "Reset to defaults", not "Reset": the expressions have a Reset of their own and it
+                means something else there, discarding a staged edit rather than restoring a value.
+
+                Absent rather than disabled with nothing to restore, which is the rule the
+                expressions' own controls already follow. */}
+              {canReset && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="relative z-20 h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+                  onClick={() => onFiltersChange(DEFAULT_FACE_FILTERS)}
+                >
+                  Reset to defaults
+                </Button>
+              )}
+
+              {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
+                transition is a turn rather than a cut, and it reads off the Root's data-state
+                because the trigger it belongs to is the invisible sheet above.
+
+                Quiet, this is rendered before the label instead (see above), so the group holds only
+                the reset. */}
+              {!quiet && (
+                <ChevronDown
+                  data-slot="filter-chevron"
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+                />
+              )}
+            </div>
+          )}
+
           {/* Named by the title rather than by copy of its own: "Filter, button, collapsed" is
               what a screen reader should say, and a second name here would be a second name for
               the same thing. Radix puts aria-expanded and data-state on it. */}
@@ -330,20 +435,6 @@ export function FaceSection({
               className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
           </CollapsibleTrigger>
-
-          {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
-              transition is a turn rather than a cut, and it reads off the Root's data-state
-              because the trigger it belongs to is the invisible sheet above.
-
-              `ml-auto` throws it to the far edge, which suits a card header and not a quiet line —
-              so when `quiet` this is rendered before the label instead, above. */}
-          {!quiet && (
-            <ChevronDown
-              data-slot="filter-chevron"
-              aria-hidden="true"
-              className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
-            />
-          )}
         </CardHeader>
 
         {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash: the

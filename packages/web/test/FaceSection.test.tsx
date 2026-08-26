@@ -338,8 +338,10 @@ describe('FaceSection', () => {
         />,
       )
 
+      // The auto margin lives on the trailing group now, not on the glyph: two items each carrying
+      // one would share the free space instead of one of them taking it.
       const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
-      expect(chevron.getAttribute('class')).toContain('ml-auto')
+      expect(chevron.parentElement?.className).toContain('ml-auto')
       // And the values are NOT pushed right here: the chevron is what claims that edge, and two
       // `ml-auto` on one row would strand the chips in the middle of it.
       const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
@@ -392,9 +394,14 @@ describe('FaceSection', () => {
   describe('collapsed chips', () => {
     const closed = { defaultOpen: false, onMouthsChange: vi.fn(), onFiltersChange: vi.fn() }
 
-    it('never counts the expressions', () => {
+    it('never counts the expressions when the tiles live outside this card', () => {
       const { container } = render(
-        <FaceSection mouths={['smile', 'frown']} filters={DEFAULT_FACE_FILTERS} {...closed} />,
+        <FaceSection
+          mouths={['smile', 'frown']}
+          filters={DEFAULT_FACE_FILTERS}
+          withExpressions={false}
+          {...closed}
+        />,
       )
 
       const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
@@ -420,13 +427,38 @@ describe('FaceSection', () => {
     it('shows no chips at all when every constraint is permissive', () => {
       const { container } = render(
         <FaceSection
-          mouths={['smile']}
+          mouths={ALL_MOUTH_NAMES}
           filters={{ twoColor: false, minContrast: 0, minMatch: 0 }}
+          withExpressions={false}
           {...closed}
         />,
       )
 
       expect(container.querySelector('[data-slot="filter-summary"]')).toBeNull()
+    })
+
+    // With the tiles behind this card's own collapse, the chip is the only thing on screen that can
+    // say which expressions are accepted. Taking it away there would lose that outright.
+    it('counts the expressions when the tiles live inside this card', () => {
+      const { container } = render(
+        <FaceSection mouths={['smile', 'frown']} filters={DEFAULT_FACE_FILTERS} {...closed} />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.textContent).toContain('smile, frown')
+      // Its own glyph, which is the reason that component exists.
+      expect(summary.querySelector('circle')).not.toBeNull()
+    })
+
+    // All five accepted is not a constraint, so it says nothing — unlike the other three, which
+    // report whenever they are off their permissive value.
+    it('says nothing about the expressions when every one is accepted', () => {
+      const { container } = render(
+        <FaceSection mouths={ALL_MOUTH_NAMES} filters={DEFAULT_FACE_FILTERS} {...closed} />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.textContent).not.toMatch(/expression/i)
     })
 
     it('reports the two-color toggle and the contrast floor when they constrain', () => {
@@ -442,6 +474,152 @@ describe('FaceSection', () => {
       expect(summary.textContent).toContain('Two-color')
       expect(summary.textContent).toContain('80')
       expect(summary.textContent).not.toContain('match')
+    })
+  })
+
+  // In the title row, on the right, rather than at the top of the panel: it acts on the section as a
+  // whole, and the row is where this card already puts everything that does.
+  describe('resetting the filters', () => {
+    const open = { mouths: ['smile'], onMouthsChange: vi.fn(), onFiltersChange: vi.fn() }
+    const reset = () => screen.getByRole('button', { name: /reset to defaults/i })
+
+    // The bug this pins: `ml-auto` on both the reset and the trailing chevron. Two auto margins on
+    // one flex line SHARE the free space rather than one of them taking it, so the reset floated
+    // into the middle of the row instead of sitting at its end. At most one item may claim it.
+    it('leaves exactly one item in the row claiming the free space', () => {
+      for (const props of [
+        { defaultOpen: true },
+        { defaultOpen: false },
+        { defaultOpen: true, quiet: true },
+        { defaultOpen: false, quiet: true },
+      ]) {
+        const { container, unmount } = render(
+          <FaceSection
+            mouths={['smile', 'frown']}
+            filters={{ ...DEFAULT_FACE_FILTERS, minContrast: 200 }}
+            onMouthsChange={vi.fn()}
+            onFiltersChange={vi.fn()}
+            {...props}
+          />,
+        )
+
+        const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+        const claiming = [...row.children].filter((child) =>
+          (child.getAttribute('class') ?? '').split(/\s+/).includes('ml-auto'),
+        )
+        expect(claiming.length, JSON.stringify(props)).toBeLessThanOrEqual(1)
+        unmount()
+      }
+    })
+
+    // Right-aligned, and the chevron stays outermost: it is the row's own affordance, so nothing
+    // should sit between it and the edge it has always been at.
+    it('sits at the end of the row, before the chevron', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ ...DEFAULT_FACE_FILTERS, minContrast: 200 }}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
+      const reset = screen.getByRole('button', { name: /reset to defaults/i })
+      const following = Node.DOCUMENT_POSITION_FOLLOWING
+      expect(reset.compareDocumentPosition(chevron) & following).toBeTruthy()
+      // Both in one trailing group, so a single auto margin pushes the pair right.
+      expect(reset.parentElement).toBe(chevron.parentElement)
+      expect(reset.parentElement?.className).toContain('ml-auto')
+    })
+
+    it('sits in the title row, not in the panel', () => {
+      const { container } = render(
+        <FaceSection {...open} filters={{ ...DEFAULT_FACE_FILTERS, minContrast: 200 }} />,
+      )
+
+      const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+      expect(row.contains(reset())).toBe(true)
+    })
+
+    // The row's collapse trigger is an `absolute inset-0 z-10` sheet over the whole of it, so
+    // anything placed there sits UNDER it and a press would toggle the section instead of resetting
+    // it. jsdom does no hit-testing, so this is asserted as the stacking that prevents it.
+    it('sits above the collapse trigger that covers the row', () => {
+      const { container } = render(
+        <FaceSection {...open} filters={{ ...DEFAULT_FACE_FILTERS, minContrast: 200 }} />,
+      )
+
+      const trigger = container.querySelector('[data-slot="card-header"] button[aria-labelledby]')
+      expect(trigger?.className).toContain('z-10')
+      expect(reset().className).toMatch(/relative/)
+      expect(reset().className).toMatch(/z-2\d/)
+    })
+
+    it('is absent while every value is already the default', () => {
+      render(<FaceSection {...open} filters={DEFAULT_FACE_FILTERS} />)
+
+      expect(screen.queryByRole('button', { name: /reset to defaults/i })).toBeNull()
+    })
+
+    // Collapsed, the row is a readout and the chips are what it says; the reset is an action on
+    // controls the reader can see, so it waits until they are on screen. It also keeps the collapsed
+    // row from carrying chips and a long button on 472px of card.
+    it('is absent while the section is collapsed', () => {
+      render(
+        <FaceSection
+          {...open}
+          filters={{ ...DEFAULT_FACE_FILTERS, minContrast: 200 }}
+          defaultOpen={false}
+        />,
+      )
+
+      expect(screen.queryByRole('button', { name: /reset to defaults/i })).toBeNull()
+    })
+
+    it('puts all three back at once', async () => {
+      const user = userEvent.setup()
+      const onFiltersChange = vi.fn()
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ twoColor: false, minContrast: 300, minMatch: 10 }}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={onFiltersChange}
+        />,
+      )
+
+      await user.click(reset())
+
+      expect(onFiltersChange).toHaveBeenCalledWith(DEFAULT_FACE_FILTERS)
+    })
+
+    it('leaves the expressions alone', async () => {
+      const user = userEvent.setup()
+      const onMouthsChange = vi.fn()
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ ...DEFAULT_FACE_FILTERS, minMatch: 10 }}
+          onMouthsChange={onMouthsChange}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      await user.click(reset())
+
+      expect(onMouthsChange).not.toHaveBeenCalled()
+    })
+
+    // Pressing it must not also fold the section, which is what would happen if the press reached
+    // the trigger sheet underneath.
+    it('does not collapse the section', async () => {
+      const user = userEvent.setup()
+      render(<FaceSection {...open} filters={{ ...DEFAULT_FACE_FILTERS, minMatch: 10 }} />)
+
+      await user.click(reset())
+
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
     })
   })
 
@@ -676,10 +854,9 @@ describe('FaceSection', () => {
     // A chip per constraint that is actually constraining. The expressions are NOT among them any
     // more: they are a section of Configure in their own right, always visible above this card, so
     // a chip counting them restated what the reader can see a few pixels higher.
-    it('says nothing about the expressions', () => {
+    it('names the accepted expressions while the tiles are behind this collapse', () => {
       const summary = collapsed({ mouths: ['smile', 'frown'] })
-      expect(summary.textContent).not.toMatch(/expression/i)
-      expect(summary.textContent).not.toContain('smile')
+      expect(summary.textContent).toContain('smile, frown')
     })
 
     // The permissive defaults earn no chips. Three chips that all say "everything is allowed" tell

@@ -658,12 +658,18 @@ describe('FacePicker', () => {
       expect(screen.getByTestId('min-match-value').textContent).toBe('90%')
     })
 
-    it('is off at zero by default, so a fresh run hides nothing', () => {
+    // A floor from the first render, and the one default with a cost: match quality is a property of
+    // how long the search has run, so 80 leaves the grid empty for the opening stretch of a run. The
+    // grid's own empty state is what makes that readable rather than alarming — it says whether
+    // nothing has been found yet or nothing survived the filters, and offers to relax them.
+    it('starts at the default floor, which is not zero', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
         screen.getByRole('slider', { name: /minimum match/i }).getAttribute('aria-valuenow'),
-      ).toBe('0')
-      expect(screen.getByTestId('min-match-value').textContent).toBe('0%')
+      ).toBe(String(DEFAULT_FACE_FILTERS.minMatch))
+      expect(screen.getByTestId('min-match-value').textContent).toBe(
+        `${DEFAULT_FACE_FILTERS.minMatch}%`,
+      )
     })
 
     it('reports the new floor, and shows it, when the slider is moved', async () => {
