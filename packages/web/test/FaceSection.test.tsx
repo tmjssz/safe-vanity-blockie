@@ -246,6 +246,50 @@ describe('FaceSection', () => {
       expect(summary.textContent).not.toContain('%')
     })
 
+    // Advanced's label is a Button, whose base carries `text-sm font-medium`. Matching the size
+    // and leaving the weight behind is a near-match, which reads as a mistake rather than as a
+    // pair — the two labels sit one row apart.
+    it('matches the Advanced label’s weight, not just its size', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const title = container.querySelector('#filter-card-title') as HTMLElement
+      expect(title.className).toContain('text-sm')
+      expect(title.className).toContain('font-medium')
+      // CardTitle's own `font-semibold` must have lost, not merely been joined.
+      expect(title.className).not.toContain('font-semibold')
+    })
+
+    // Advanced's chevron carries no colour of its own, so it inherits the trigger's and lifts with
+    // the label on hover. This one is coloured explicitly, so it needs to be told.
+    it('lifts its chevron on hover, as Advanced’s does', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
+      const cls = chevron.getAttribute('class') as string
+      expect(cls).toContain('group-hover/filter:text-foreground')
+      // Colour has to be among the transitioned properties, and it cannot simply be
+      // `transition-colors`: this glyph also rotates, so a transition naming only colour would
+      // trade a snap on hover for a snap on open.
+      expect(cls).toMatch(/transition-\[[^\]]*color/)
+      expect(cls).toMatch(/transition-\[[^\]]*transform/)
+    })
+
     it('takes the vertical padding off the card so the row sits tight to its neighbours', () => {
       const { container } = render(
         <FaceSection

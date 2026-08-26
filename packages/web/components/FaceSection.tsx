@@ -245,7 +245,11 @@ export function FaceSection({
             <ChevronDown
               data-slot="filter-chevron"
               aria-hidden="true"
-              className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+              // `group-hover/filter:text-foreground` because Advanced's chevron carries no colour
+              // of its own and simply inherits its trigger's, lifting with the label on hover. This
+              // one is coloured explicitly — the whole row is the control, not a button wrapping
+              // both — so it has to be told, or the label lifts and the glyph beside it does not.
+              className="size-4 shrink-0 text-muted-foreground transition-[transform,color] duration-200 group-hover/filter:text-foreground group-data-[state=open]/filter:rotate-180"
             />
           ) : (
             <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
@@ -259,7 +263,7 @@ export function FaceSection({
             // lift on hover, which the whole row triggers because the whole row is the control.
             className={cn(
               quiet &&
-                'text-sm font-normal text-muted-foreground transition-colors group-hover/filter:text-foreground',
+                'text-sm font-medium text-muted-foreground transition-colors group-hover/filter:text-foreground',
             )}
           >
             Filter

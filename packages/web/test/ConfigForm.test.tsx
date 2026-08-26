@@ -196,6 +196,40 @@ describe('the filter card on the start screen', () => {
     )
   })
 
+  // The same rule the owners list already sits above. What follows is a different kind of question
+  // from the fields above it, and whitespace alone was left stating that boundary at whatever width
+  // the row above happened to be.
+  it('is set off by the same rule the owners list sits above', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const rules = [...container.querySelectorAll('hr')]
+    expect(rules).toHaveLength(2)
+    // Same treatment on both, not a second divider invented for this one.
+    expect(new Set(rules.map((rule) => rule.className))).toHaveLength(1)
+    // And it is above the filter section rather than below it.
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(rules[1].compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // The two labels sit one row apart and must start at the same x. Button's `sm` size carries
+  // `has-[>svg]:px-2.5`, and the trigger's `p-0` cannot cancel it: tailwind-merge treats a
+  // modifier-prefixed class as its own group, so `p-0` never sees it. With a chevron as a direct
+  // child that left 10px of padding on Advanced alone, which is why its label sat right of this
+  // one. Asserted as a class contract because jsdom loads no stylesheet and can compute no offset.
+  it('starts the Advanced label at the same x as the filter label', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const cls = advancedToggle().className
+    expect(cls).toContain('has-[>svg]:px-0')
+    // The point of matching the modifier exactly: tailwind-merge groups by modifier AND utility, so
+    // sharing `has-[>svg]:` is what lets it DROP the losing `px-2.5` rather than leaving both in the
+    // list for CSS source order to settle — which Tailwind orders by value, not by authorship, so
+    // `px-2.5` could well have won.
+    expect(cls).not.toContain('has-[>svg]:px-2.5')
+    // And the same gap between glyph and label on both, or the labels still would not line up.
+    expect(cls).toContain('gap-2')
+  })
+
   // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
   // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
   // everything around it. On a card stripped of its border that reads as a mistake, not as nesting.

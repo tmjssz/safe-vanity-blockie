@@ -623,6 +623,12 @@ export function ConfigForm({
           `open` is not simply `advancedOpen`: while the value is invalid the Start button is
           disabled and its reason lives in here, so collapsing over the complaint would leave a
           dead button with nothing on screen to fix. */}
+      {/* The same rule the owners list sits above, for the same reason and with the same clearance:
+          what follows is a different kind of question from the fields above it, and whitespace on
+          its own was left stating that boundary at whatever width the row above happened to be.
+          See that one for why it is a bare `<hr>` rather than a styled div. */}
+      <hr className="my-2 border-t" />
+
       {/* The search — what to mine for — above the disclosure that holds where to start looking.
 
           Offered on every visit rather than only for a link: the expressions and the colour and
@@ -684,7 +690,17 @@ export function ConfigForm({
             type="button"
             variant="link"
             size="sm"
-            className="group/advanced h-auto gap-1 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+            // `has-[>svg]:px-0` is load-bearing and cannot be left to `p-0`. Button's `sm` size
+            // carries `has-[>svg]:px-2.5`, and tailwind-merge treats a modifier-prefixed class as
+            // its own group — so `p-0` never sees it, and with the chevron as a direct child this
+            // trigger kept 10px of left padding that nothing here appeared to ask for. That is what
+            // sat its label right of the Filter label a row above, which is meant to line up with
+            // it exactly.
+            //
+            // `gap-2`, matching that row's own glyph-to-label gap. Both start at x=0 with a 16px
+            // chevron, so the gap is the only thing left that could put the two labels on different
+            // columns.
+            className="group/advanced h-auto gap-2 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline has-[>svg]:px-0"
           >
             {/* Points down closed, up open. Rotated rather than swapped for a second glyph so the
                 change is a turn rather than a cut.
