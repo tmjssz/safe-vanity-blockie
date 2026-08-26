@@ -49,8 +49,8 @@ describe('AppTitle', () => {
     expect(titleButton()).toBeDefined()
   })
 
-  // The same question the status bar's Start over asks, put by the same words and the same
-  // number — this is a second door onto one action, not a second action.
+  // The only route back from a run, so the question it puts is the last thing standing between a
+  // full leaderboard and an empty one. It names the count rather than asking in the abstract.
   it('asks before discarding a run, naming what is at stake', async () => {
     const onStartOver = vi.fn()
     render(
@@ -63,6 +63,24 @@ describe('AppTitle', () => {
 
     expect(screen.getByText(/discard 80 results and start over\?/i)).toBeDefined()
     expect(onStartOver).not.toHaveBeenCalled()
+  })
+
+  // The copy has to match what Start over does. It once promised the owners, threshold and Safe
+  // version came back in the form, which stopped being true when this became a full reset, and a
+  // confirmation describing the old behaviour is worse than none because it is read and believed.
+  it('says the reset clears everything, not that the config comes back', async () => {
+    render(
+      <App>
+        <Run resultCount={80} onStartOver={vi.fn()} />
+      </App>,
+    )
+
+    await userEvent.click(titleButton())
+    const body = (await screen.findByRole('dialog')).textContent ?? ''
+
+    expect(body).toMatch(/everything goes back to how it started/i)
+    expect(body).toMatch(/owners, the filters and the checkpoint are all cleared/i)
+    expect(body).not.toMatch(/come back in the form/i)
   })
 
   it('discards the run once the question is answered', async () => {
@@ -93,8 +111,8 @@ describe('AppTitle', () => {
     expect(onStartOver).not.toHaveBeenCalled()
   })
 
-  // Nothing to lose yet, so nothing to ask about — the status bar's rule, shared rather than
-  // reimplemented, so the two doors cannot drift apart.
+  // Nothing to lose yet, so nothing to ask about. The rule lives in the dialog hook rather than
+  // here, which is what kept it identical while the status bar still asked the same question.
   it('discards immediately when there are no results to lose', async () => {
     const onStartOver = vi.fn()
     render(

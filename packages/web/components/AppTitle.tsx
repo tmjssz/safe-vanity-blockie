@@ -71,10 +71,11 @@ export function useRegisterStartOver(resultCount: number, startOver: () => void)
 }
 
 /**
- * The app name in the header, and — once there is a run — the second door back to the Configure
- * card. Idle it is exactly what it was: static text, server-rendered, nothing to press. There is
- * no initial page to return to from the initial page, and a control that does nothing when
- * pressed teaches people that this header is scenery.
+ * The app name in the header, and — once there is a run — the way back to the Configure card. It
+ * is the only way back: the status bar's "Start over" was removed, which makes this the whole exit
+ * rather than a convenience beside one. Idle it is exactly what it was: static text,
+ * server-rendered, nothing to press. There is no initial page to return to from the initial page,
+ * and a control that does nothing when pressed teaches people that this header is scenery.
  */
 export function AppTitle() {
   const entry = useContext(StartOverContext)?.entry ?? null

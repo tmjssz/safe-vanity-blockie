@@ -550,7 +550,7 @@ describe('MiningView', () => {
     expect(screen.getByTestId('no-matches').textContent).toMatch(/no result matches/i)
   })
 
-  // The header title is the second door back to the Configure card, and this component is what
+  // The header title is the only door back to the Configure card, and this component is what
   // makes it one: it owns both the count the confirmation names and the reset it calls. Registered
   // for exactly as long as a run is on screen — so the title is a control during a run and plain
   // text either side of it — which is asserted in AppTitle's own suite.
