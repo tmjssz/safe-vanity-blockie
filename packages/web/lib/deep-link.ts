@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_FACE_FILTERS,
   type FaceFilters,
+  MATCH_MAX,
   type MineConfig,
   validateMineConfig,
 } from './config'
@@ -119,8 +120,13 @@ export function shareConfigPath(config: SharedConfig, base?: string): string {
     // so on a page loaded from a resume link (`?config=…&start=…&target=…`) the copied share link
     // would otherwise carry that resume along with it — a link sent to show one address would also
     // hand over someone's search, and the recipient's screen would fill with a run they did not
-    // ask to reproduce. The address bar keeps the params; only what is copied out of here drops
-    // them.
+    // ask to reproduce.
+    //
+    // The address bar keeps the params too, not just what is copied out of here — but only up
+    // until page.tsx pushes THIS function's own output into it, which it does the moment a result
+    // dialog opens. By then a run is on screen and a reload discards it anyway, so a reload taken
+    // before Start still resumes; it is only from the dialog onward that the bar's copy of these
+    // five params is gone for good (dropSelectionUrl, closing the dialog, removes only `config`).
     for (const param of RESUME_PARAMS) params.delete(param)
   })
 }
@@ -215,9 +221,6 @@ export function decodeConfigParam(param: string): { config?: SharedConfig; error
   }
 }
 
-/** A perfect match, and the top of the match slider. The same 100 FacePicker's slider stops at. */
-const MATCH_MAX = 100
-
 /** What a resume link said, once every param it carried has been checked. */
 export interface DecodedResume {
   /** Absent when the link carried no `start=`. */
@@ -249,15 +252,22 @@ const DIGITS = /^\d+$/
  * grouped `1,000`, an exponent, hex, a leading `+` — rather than letting Number silently
  * reinterpret it as some other value. Same reasoning as `parseStartNonce` in lib/config, and
  * deliberately the same strictness: these params are read back from links this app wrote.
+ *
+ * Two messages, not one, for the same reason `start` above keeps its two: "not a decimal integer"
+ * and "out of range" are different faults with different fixes. A single message here used to
+ * report `min-contrast=8.5` as "out of range (0-442)" — but 8.5 IS in that range, and the only fix
+ * that sentence suggests, lowering the number, does not help; the actual fault is the decimal
+ * point.
  */
 function readBounded(
   raw: string,
   max: number,
-  message: string,
+  notIntegerMessage: string,
+  rangeMessage: string,
 ): { value?: number; error?: string } {
-  if (!DIGITS.test(raw)) return { error: message }
+  if (!DIGITS.test(raw)) return { error: notIntegerMessage }
   const value = Number(raw)
-  if (value > max) return { error: message }
+  if (value > max) return { error: rangeMessage }
   return { value }
 }
 
@@ -337,6 +347,7 @@ export function decodeResumeParams(params: URLSearchParams): {
     const read = readBounded(
       minContrast,
       CONTRAST_MAX,
+      'The contrast floor in this link is not a decimal integer.',
       `The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`,
     )
     if (read.error) return { error: read.error }
@@ -349,6 +360,7 @@ export function decodeResumeParams(params: URLSearchParams): {
     const read = readBounded(
       minMatch,
       MATCH_MAX,
+      'The match floor in this link is not a decimal integer.',
       `The match floor in this link is out of range (0-${MATCH_MAX}).`,
     )
     if (read.error) return { error: read.error }

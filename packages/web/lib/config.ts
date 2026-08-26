@@ -123,6 +123,16 @@ export interface FaceFilters {
  */
 export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 80, minMatch: 0 }
 
+/**
+ * A perfect match, and the top of the match slider. Lives here rather than in FacePicker, which is
+ * where it used to be, because a second consumer arrived: `min-match=` in a resume link is
+ * validated against exactly this bound (lib/deep-link). Two copies of it would be two things that
+ * agree until one is edited — the same reason `CONTRAST_MAX` moved out of FacePicker and into
+ * lib/contrast-preview.ts. Here rather than there because `minMatch` is a field of `FaceFilters`,
+ * declared a few lines up, and a bound on that field belongs beside the type it bounds.
+ */
+export const MATCH_MAX = 100
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 /**

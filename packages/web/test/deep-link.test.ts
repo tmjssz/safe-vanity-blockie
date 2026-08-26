@@ -422,7 +422,7 @@ describe('decodeResumeParams', () => {
       decodeResumeParams(resumeParams({ 'min-contrast': String(CONTRAST_MAX + 1) })).error,
     ).toBe(`The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`)
     expect(decodeResumeParams(resumeParams({ 'min-contrast': '8.5' })).error).toBe(
-      `The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`,
+      'The contrast floor in this link is not a decimal integer.',
     )
   })
 

@@ -2,7 +2,7 @@
 
 import { Check, Info } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { FaceFilters } from '../lib/config'
+import { type FaceFilters, MATCH_MAX } from '../lib/config'
 import { CONTRAST_MAX } from '../lib/contrast-preview'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
@@ -42,9 +42,6 @@ export interface FacePickerProps {
    */
   live?: boolean
 }
-
-/** A perfect match, and the top of the match slider. */
-const MATCH_MAX = 100
 
 /**
  * Whether two selections would mine the same thing. Compared as sets: the face spec is built from
