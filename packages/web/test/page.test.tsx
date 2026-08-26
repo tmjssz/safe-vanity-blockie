@@ -3281,5 +3281,53 @@ describe('Page', () => {
 
       expect(facePickerPropsRef.current).toBeUndefined()
     })
+
+    // Spec §9: "A resume link plus a saltNonce inside config= cannot be produced by the builder;
+    // if hand-made, the result-link path takes precedence and the resume params are ignored." Real
+    // recipients only ever get this from a hand-edited URL — `resumeSearchPath` never writes a
+    // saltNonce, and `shareConfigPath` always strips the five resume params — but the guard that
+    // enforces the precedence (`linked?.saltNonce` in `linkedSearch`'s gate) has no test asserting
+    // it, so nothing catches a change that quietly removed it.
+    it('opens the deploy dialog and ignores hand-made resume params when config= names a result', async () => {
+      const { candidateFromSaltNonce } =
+        await vi.importActual<typeof import('../lib/deep-link')>('../lib/deep-link')
+      const { ALL_MOUTH_NAMES, faceSpecFromSelection } = await import('../lib/face-selection')
+      const expected = await candidateFromSaltNonce(
+        SAFE_SETUP.constants,
+        '12345',
+        faceSpecFromSelection(ALL_MOUTH_NAMES),
+      )
+      buildDeploymentPlanMock.mockResolvedValue(PLAN_FOR(expected.address))
+      getSafeAddressFromDeploymentTxMock.mockReturnValue(expected.address)
+
+      // Hand-made: a result link's `config=` (carrying a saltNonce) with a full set of otherwise
+      // valid resume params glued on beside it — the shape `resumeSearchPath` refuses to produce.
+      searchParamsRef.current = new URLSearchParams({
+        config: encodeConfigParam({
+          owners: CONFIG.owners,
+          threshold: CONFIG.threshold,
+          safeVersion: CONFIG.safeVersion,
+          chainId: CONFIG.chainId,
+          saltNonce: '12345',
+        }),
+        start: '60000016650000',
+        target: 'smile,open',
+        'two-color': '1',
+        'min-contrast': '80',
+        'min-match': '90',
+      })
+
+      render(<Page />)
+
+      // The result-link path took precedence: the deploy dialog opens on the candidate the
+      // saltNonce names, exactly as a plain result link would.
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toContain(expected.address)
+      // The resume params were ignored outright, not half-applied: no idle Face/Filters card
+      // (nothing carried by `linkedSearch`, because it is undefined here)…
+      expect(facePickerPropsRef.current).toBeUndefined()
+      // …and no checkpoint seeded into the form either.
+      expect(seededInitial()?.start).toBe(0)
+    })
   })
 })
