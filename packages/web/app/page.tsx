@@ -257,10 +257,6 @@ function HomeContent() {
   // the card is unmounted for the whole run: there is no window in which the two can diverge.
   const [lastSubmitted, setLastSubmitted] = useState<MineConfig | undefined>()
 
-  // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
-  // only an actual change to the accepted expressions should do that.
-  const faceSpec = useMemo(() => faceSpecFromSelection(mouths), [mouths])
-
   // A rejected resume link pre-fills NOTHING, its valid `config=` included. See the alert above:
   // the link is judged as one thing, because half a search is a different search.
   const linked = linkDismissed || resumeResult?.error ? undefined : linkResult?.config
@@ -293,6 +289,25 @@ function HomeContent() {
   // a pick of the chain the link already named, which is indistinguishable and harmless.
   const [picked, setPicked] = useState<number | undefined>()
   const chainId = picked ?? linked?.chainId ?? DEFAULT_CHAIN_ID
+
+  // DERIVED from the link, not seeded from it — the pattern `chainId` above uses, for the reason
+  // spelled out there: a `useState` initialiser only ever sees the FIRST client render, and this
+  // subtree reaches that through a Suspense bailout with a useSearchParams() that can still be
+  // empty. Anything captured there would drop a link that latched a render later, and the failure
+  // is silent: a search mining five expressions where the link named two, with a Filter card
+  // reading back exactly what it is doing and no sign that it is not what was asked for.
+  //
+  // `picked*` is the user's answer, and it outranks the link from the moment there is one —
+  // including an answer identical to the link's, which is indistinguishable and harmless.
+  const [pickedMouths, setPickedMouths] = useState<string[] | undefined>()
+  const mouths = pickedMouths ?? linkedSearch?.mouths ?? ALL_MOUTH_NAMES
+  const [pickedFilters, setPickedFilters] = useState<FaceFilters | undefined>()
+  const filters = pickedFilters ?? linkedSearch?.filters ?? DEFAULT_FACE_FILTERS
+
+  // Memoised so a re-render does not hand MiningView a new FaceSpec object and restart the run —
+  // only an actual change to the accepted expressions should do that.
+  const faceSpec = useMemo(() => faceSpecFromSelection(mouths), [mouths])
+
   // The link wins on arrival; after "Start over" has dismissed it, the discarded run's own config
   // is what the form is seeded from.
   const initial = linked
@@ -683,13 +698,23 @@ function HomeContent() {
     // plain `setPicked(chainId)` would undo the switch the user just confirmed. Queued updates see
     // each other, so `previous` is that `next` and the pick stands.
     setPicked((previous) => previous ?? chainId)
+    // The same guard, for the same reason, over the two other things the link spoke for. This
+    // reset retires the link (`setLinkDismissed`), and a recipient who never opened the Filter card
+    // has answered nothing — so without this their untouched expressions and filters would snap
+    // back to all five and no floors in the same instant as everything else disappearing, silently
+    // widening the search they were about to restart.
+    //
+    // Functional, as `setPicked` is: these read the values derived from the link, and a queued
+    // update sees the one before it.
+    setPickedMouths((previous) => previous ?? mouths)
+    setPickedFilters((previous) => previous ?? filters)
     // Nothing is running to be paused any more, and the next run must not inherit a stop the
     // user asked of the one before it.
     setPausedByUser(false)
     // `startNonce` is deliberately NOT reset. The run is discarded; where the user asked the
     // search to begin is an answer they gave the form, and the form is about to come back asking
     // it again. Re-typing an eleven-digit resume point is the work this feature exists to avoid.
-  }, [chainId, closeSelection])
+  }, [chainId, closeSelection, mouths, filters])
 
   // Starting a search. With a run already on screen this is a RESTART, and the results below
   // belong to the config that produced them — so the old run is discarded exactly as "Start over"
@@ -714,7 +739,7 @@ function HomeContent() {
   // otherwise wipe the board and start nothing: the cost paid, none of the benefit, and a status
   // bar reading Resume over an empty grid with no sign of why.
   const applyMouths = useCallback((next: string[]) => {
-    setMouths(next)
+    setPickedMouths(next)
     setPausedByUser(false)
   }, [])
 
@@ -1056,7 +1081,7 @@ function HomeContent() {
               revealRequest={filterReveals}
               onOpenChange={setFiltersOpen}
               onMouthsChange={applyMouths}
-              onFiltersChange={setFilters}
+              onFiltersChange={setPickedFilters}
             />
 
             {/* Mining and the deploy transaction never run at once: the one screen where a user

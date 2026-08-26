@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 import Page from '../app/page'
+import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import { decodeConfigParam, encodeConfigParam, resumeSearchPath } from '../lib/deep-link'
 
 // Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
@@ -70,7 +71,9 @@ const {
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
   facePickerPropsRef: {
-    current: undefined as { value: string[]; onChange: (names: string[]) => void } | undefined,
+    current: undefined as
+      | { value: string[]; onChange: (names: string[]) => void; filters?: unknown }
+      | undefined,
   },
   // The address bar, as the App Router presents it to useSearchParams(). It is a subscribable
   // store rather than a bare `{ current }` because the page now WRITES the URL as well as
@@ -274,8 +277,14 @@ vi.mock('../components/ConfigForm', () => ({
 
 vi.mock('../components/FacePicker', () => ({
   // `onChange` is captured as well as `value`: the Face section never locks, so a test needs to
-  // be able to change the expression at an arbitrary moment, exactly as a user can.
-  FacePicker: (props: { value: string[]; onChange: (names: string[]) => void }) => {
+  // be able to change the expression at an arbitrary moment, exactly as a user can. `filters` is
+  // captured too, since a resume link now names them and nothing else on screen states them
+  // before Start.
+  FacePicker: (props: {
+    value: string[]
+    onChange: (names: string[]) => void
+    filters?: unknown
+  }) => {
     facePickerPropsRef.current = props
     return null
   },
@@ -3124,6 +3133,71 @@ describe('Page', () => {
       await user.click(screen.getByRole('button', { name: 'start-over' }))
 
       expect(seededInitial()?.start).toBe(41_200_000_000)
+    })
+
+    it('mines the expressions and filters the link named, once Start is pressed', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = resumeLinkParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await openFilterCard(user)
+
+      expect(new Set(facePickerPropsRef.current?.value)).toEqual(new Set(['smile', 'open']))
+      expect(facePickerPropsRef.current?.filters).toEqual({
+        twoColor: true,
+        minContrast: 80,
+        minMatch: 90,
+      })
+    })
+
+    it('falls back to every expression and the default filters without a resume link', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = new URLSearchParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await openFilterCard(user)
+
+      expect(facePickerPropsRef.current?.value).toHaveLength(5)
+      expect(facePickerPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
+    })
+
+    // The rule every other link value on this page keeps: the user's answer outranks the link from
+    // the moment there is one.
+    it('lets an edit outrank the link', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = resumeLinkParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await openFilterCard(user)
+      act(() => facePickerPropsRef.current?.onChange(['frown']))
+
+      expect(facePickerPropsRef.current?.value).toEqual(['frown'])
+    })
+
+    // "Start over" retires the link — and the chain has a guard for exactly this, because dismissing
+    // it would otherwise snap an untouched value back to the app default in the same instant as
+    // everything else disappearing. The expressions and filters need the same guard: a recipient who
+    // never opened the Filter card has "chosen" nothing, and would silently be put back on all five
+    // expressions and no floors.
+    it('keeps the link’s expressions and filters through Start over', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = resumeLinkParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await user.click(screen.getByRole('button', { name: 'start-over' }))
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await openFilterCard(user)
+
+      expect(new Set(facePickerPropsRef.current?.value)).toEqual(new Set(['smile', 'open']))
+      expect(facePickerPropsRef.current?.filters).toEqual({
+        twoColor: true,
+        minContrast: 80,
+        minMatch: 90,
+      })
     })
   })
 })
