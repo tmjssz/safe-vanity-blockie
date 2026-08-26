@@ -194,7 +194,7 @@ describe('FaceSection', () => {
       )
 
       // Direct children of the row only. Counting every svg in the tree would also count the
-      // expressions chip's own Smile — which belongs to the value, not to the header chrome, and
+      // expressions chip's own dot-grid glyph — which belongs to the value, not to the chrome, and
       // stays exactly where it is — and the panel's icons once the card is open. What this pins is
       // that the row itself carries one glyph, the chevron, as Advanced's trigger does.
       const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
@@ -239,6 +239,11 @@ describe('FaceSection', () => {
       const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
       const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
       expect(row.contains(summary)).toBe(true)
+      // The expressions chip leads with the dot-grid glyph, not a smiling face: a face drew ONE
+      // expression to label a chip whose job is to say how many are accepted, so "smile, frown"
+      // carried a picture of only the first.
+      expect(summary.querySelector('circle')).not.toBeNull()
+      expect(summary.innerHTML).not.toContain('lucide-smile')
       expect(summary.textContent).toContain('smile, open')
       expect(summary.textContent).toContain('Two-color')
       expect(summary.textContent).toContain('80')

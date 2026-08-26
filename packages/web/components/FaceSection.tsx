@@ -1,11 +1,12 @@
 'use client'
 
-import { ChevronDown, ListFilter, Smile } from 'lucide-react'
+import { ChevronDown, ListFilter } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
 import { ContrastSwatch } from './ContrastSwatch'
+import { ExpressionsGlyph } from './ExpressionsGlyph'
 import { FacePicker } from './FacePicker'
 import { Badge } from './ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -274,7 +275,10 @@ export function FaceSection({
           {!open && (
             <div data-slot="filter-summary" className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
-                <Smile aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                {/* No `text-muted-foreground` here, unlike the icon this replaced: the glyph's
+                    bright dots inherit `currentColor`, so muting the root would flatten it to one
+                    tone. Its own muted half is a token on the dots that want it. */}
+                <ExpressionsGlyph className="size-3.5" />
                 {summary.expressions}
               </Badge>
               {summary.twoColor && (
