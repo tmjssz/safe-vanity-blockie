@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, Copy, Flag } from 'lucide-react'
+import { Check, ChevronDown, Flag, Link2 } from 'lucide-react'
 import { useState } from 'react'
 import type { FaceFilters, MineConfig } from '../lib/config'
 import { resumeSearchPath } from '../lib/deep-link'
@@ -178,9 +178,13 @@ export function CheckpointTrigger({
           className="mt-2 w-full"
           onClick={copy}
         >
-          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+          {/* `Link2`, not a clipboard glyph: this is the same control the deploy dialog offers for
+              its share link (see DeployDialog's `share`), and what goes on the clipboard is a URL
+              in both cases. A reader who meets one and then the other should recognise the second
+              as the same offer, not read the difference in glyph as a difference in kind. */}
+          {copied ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
           {/* The name changes with the icon because they are one control reporting one state: a
-              clipboard glyph beside "Copied" would name the action that is no longer on offer. */}
+              link glyph beside "Copied" would name the action that is no longer on offer. */}
           {copied ? 'Copied' : 'Copy resume link'}
         </Button>
       </PopoverContent>

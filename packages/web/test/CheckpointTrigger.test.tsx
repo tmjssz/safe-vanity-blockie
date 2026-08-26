@@ -205,6 +205,21 @@ describe('CheckpointTrigger', () => {
 })
 
 describe('CheckpointTrigger: the resume link', () => {
+  // The same glyph the deploy dialog puts on its own share-link control. Both put a URL on the
+  // clipboard, so a reader meeting one after the other should read them as the same offer rather
+  // than take a different glyph for a different kind of thing.
+  it('wears the same icon as the deploy dialog’s share link', async () => {
+    const user = userEvent.setup()
+    render(<CheckpointTrigger {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+    const button = await screen.findByRole('button', { name: /copy resume link/i })
+
+    // lucide names its glyphs in the class, which is the only handle on identity a rendered icon
+    // has — jsdom loads no stylesheet and the paths are opaque.
+    expect(button.querySelector('svg')?.getAttribute('class')).toContain('lucide-link-2')
+  })
+
   it('offers a link that continues the search somewhere else', async () => {
     const user = userEvent.setup()
     render(<CheckpointTrigger {...PROPS} />)
