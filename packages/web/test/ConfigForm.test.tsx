@@ -1041,3 +1041,63 @@ describe('ConfigForm: start from saltNonce', () => {
     expect(startNonceField()).toBe(document.activeElement)
   })
 })
+
+// A resume link's checkpoint comes from whatever machine reached it, and `maxStartNonce` falls as
+// cores rise: a value a 4-core sender could legitimately start from can be over a 16-core
+// recipient's ceiling. The button already refuses it — the gate reads `startNonce.error` directly,
+// not the touched-gated complaint — so the only thing missing was the sentence saying why, at the
+// field the disabled button's caption points to.
+describe('a seeded start nonce this machine cannot take', () => {
+  // Number.MAX_SAFE_INTEGER is over the ceiling on any machine: maxStartNonce is
+  // `MAX_SAFE_INTEGER - workers * WORKER_BLOCK`, and plannedWorkerCount() floors the pool at 1, so
+  // the ceiling is always strictly below it. No worker-count stubbing needed.
+  it('shows the complaint immediately, with Advanced open and Start refused', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: Number.MAX_SAFE_INTEGER }}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    // Queried by its words, not by `role="alert"`. This form renders six alert elements and at
+    // least two of them are ALWAYS in the tree — the start-nonce complaint and each owner row's
+    // are reserved-space live regions, empty when silent, so that a message appearing cannot move
+    // the control below it. `getByRole('alert')` therefore throws on multiple matches and
+    // `queryByRole('alert')` is never null; neither says anything about this complaint.
+    expect(screen.getByText(/enter at most/i)).toBeDefined()
+    expect(startNonceField().value).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect((startButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  // The path this already served: "Start over" hands back a value this machine accepted a moment
+  // ago, and a complaint over it would be an error about nothing.
+  it('says nothing about a seeded value that is in range', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    expect(startNonceField().value).toBe('41200000000')
+    expect(screen.queryByText(/enter at most/i)).toBeNull()
+    expect((startButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  // Same rule, arriving one render late — which is how a link reaches this form (page.tsx latches
+  // `?config=` on first sight, and its subtree's first render comes through a Suspense bailout).
+  it('shows the complaint for a value seeded after mount', () => {
+    const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    rerender(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: Number.MAX_SAFE_INTEGER }}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/enter at most/i)).toBeDefined()
+  })
+})

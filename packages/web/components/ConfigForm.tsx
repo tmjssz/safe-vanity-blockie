@@ -86,8 +86,17 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [startNonceInput, setStartNonceInput] = useState(
     initial?.start ? String(initial.start) : '',
   )
-  // Same schedule as an owner row: complain after the field has been left once, then live.
-  const [startNonceTouched, setStartNonceTouched] = useState(false)
+  // Same schedule as an owner row — complain after the field has been left once, then live —
+  // EXCEPT for a value that was seeded rather than typed, which starts complained-about.
+  //
+  // A seed is not a first draft somebody is halfway through: it is a finished value handed over by
+  // a link or by "Start over", and if this machine cannot take it the submit gate has already
+  // refused it (that gate reads `startNonce.error`, not this touched-gated complaint). Left
+  // untouched, the result was a disabled Start button whose caption points at "the starting
+  // saltNonce under Advanced" and no error at the field it names. `maxStartNonce` falls as cores
+  // rise, so this is not hypothetical: a checkpoint a 4-core machine reached can be over a
+  // 16-core recipient's ceiling.
+  const [startNonceTouched, setStartNonceTouched] = useState(Boolean(initial?.start))
   // Open when there is a seeded value to show. A seeded 0 is the default, so it opens nothing.
   const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.start))
 
@@ -123,6 +132,10 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
       // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
       // one silently moves where the search begins.
       setAdvancedOpen(true)
+      // And complained about if this machine cannot take it — see the initialiser above. A link
+      // reaches this form one render late (page.tsx latches `?config=` on first sight, and this
+      // subtree's first render comes through a Suspense bailout), so the effect has to say it too.
+      setStartNonceTouched(true)
     }
   }, [initial])
 

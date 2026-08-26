@@ -19,11 +19,15 @@ import { useState } from 'react'
  * MiningView, which only ever mounts after a submit, it is on screen for that render — but Node has
  * defined `navigator.hardwareConcurrency` since 21, so on this repo's Node 24 the guard never
  * fires: the server render reads the SERVER's core count. That is harmless here because the number
- * never reaches that render's DOM — the only text carrying it is the field's complaint, which needs
- * the field touched, and touching happens on the client. The guard stays because it costs a
- * `typeof` and a runtime without `navigator` would otherwise take the whole starting screen down
- * with a TypeError. Four is the fallback because it is the commonest core count a browser that
- * declines to answer actually has.
+ * never reaches that render's DOM — the only text carrying it is the field's complaint, and the
+ * field is never complained about on the server. A typed value needs the field left once, which is
+ * a client event; a SEEDED value is complained about from the initialiser (see ConfigForm's
+ * `startNonceTouched`), but a seed comes from a `?config=` link or from a previous submit, and
+ * neither exists on a server render — one needs useSearchParams(), the other is state that starts
+ * undefined. So the two core counts can still never both reach the DOM, and hydration has nothing
+ * to disagree about. The guard stays because it costs a `typeof` and a runtime without `navigator`
+ * would otherwise take the whole starting screen down with a TypeError. Four is the fallback
+ * because it is the commonest core count a browser that declines to answer actually has.
  */
 export function plannedWorkerCount(): number {
   const cores = typeof navigator === 'undefined' ? 0 : navigator.hardwareConcurrency
