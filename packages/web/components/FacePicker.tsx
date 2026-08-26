@@ -1,6 +1,5 @@
 'use client'
 
-import { Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { type FaceFilters, MATCH_MAX } from '../lib/config'
 import { CONTRAST_MAX } from '../lib/contrast-preview'
@@ -247,13 +246,12 @@ export function FacePicker({
                       : 'border-border/40 opacity-45 hover:opacity-70',
                   )}
                 >
-                  {accepted && (
-                    <Check
-                      data-slot="expression-selected-mark"
-                      className="absolute top-1 right-1 size-3 text-primary"
-                      aria-hidden="true"
-                    />
-                  )}
+                  {/* No mark over the pattern. It sat in the tile's top-right corner, which is
+                      the pattern's own corner — a glyph drawn on top of the 8x8 grid at 40px is
+                      covering the thing being chosen. Acceptance is carried by the tile not being
+                      dimmed, which is opacity rather than colour and so survives any colour-vision
+                      difference, and by `aria-checked` on the button, which is what a screen reader
+                      has always read: the glyph was aria-hidden and never spoke to one. */}
                   <TargetPreview mouthName={name} size={40} decorative />
                   <span className={cn('text-xs', !accepted && 'text-muted-foreground')}>
                     {name}

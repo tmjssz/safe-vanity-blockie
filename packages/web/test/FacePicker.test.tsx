@@ -197,20 +197,34 @@ describe('FacePicker', () => {
       expect(checkedNames()).toEqual(['smile', 'frown', 'neutral'])
     })
 
-    // Colour alone would leave the accepted set invisible to anyone who cannot see it, so the
-    // state is carried by a mark as well: a check on the accepted tiles, absent on the rejected.
-    // The emphasis is inverted from what it was — every expression starts accepted, so the
-    // notable state is the rejected one, and it is the rejected tile that is dimmed rather than
-    // the accepted one that is ringed.
-    it('marks an accepted tile with more than colour, and dims a rejected one', () => {
+    // The check mark that used to sit in the corner of an accepted tile is gone: the pattern it
+    // overlapped is the whole content of the tile, and a glyph on top of an 8x8 grid at 40px is
+    // covering the thing being chosen.
+    //
+    // State is still carried on two channels, which is what the mark was there for. For the eye,
+    // rejection dims the tile — opacity, not colour, so it survives any colour-vision difference.
+    // For assistive tech, each tile is a real checkbox reporting `aria-checked`, which is what a
+    // screen reader has always read; the glyph never spoke to one, being aria-hidden.
+    //
+    // The emphasis stays inverted: every expression starts accepted, so the notable state is the
+    // rejected one, and it is the rejected tile that is dimmed rather than the accepted one marked.
+    it('shows acceptance by dimming the rejected, on both channels and with no overlay', () => {
       renderPicker({ value: ['smile'] })
-      const accepted = tile('smile')
-      expect(accepted.querySelector('[data-slot="expression-selected-mark"]')).not.toBeNull()
 
+      const accepted = tile('smile')
       const rejected = tile('frown')
+
+      // Nothing is drawn over either pattern.
+      expect(accepted.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
       expect(rejected.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
+
+      // For the eye: the rejected one is dimmed, the accepted one is simply normal.
       expect(rejected.className).toMatch(/opacity-/)
       expect(accepted.className).not.toMatch(/opacity-/)
+
+      // For assistive tech, which never saw the glyph.
+      expect(accepted.getAttribute('aria-checked')).toBe('true')
+      expect(rejected.getAttribute('aria-checked')).toBe('false')
     })
 
     // Inside a tile that is already named after its expression, the preview's own

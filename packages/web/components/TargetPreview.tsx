@@ -45,7 +45,16 @@ export function TargetPreview({ mouthName, size = 64, decorative = false }: Targ
   }
 
   return (
-    <div className="inline-flex rounded-md border bg-muted/30 p-2 text-foreground">
+    // `bg-background`, and no border: the pattern is what a mined blockie will look like, so the
+    // frame around it should be what a blockie sits on — paper. That token is pure white in light
+    // mode and near-black in dark, and the filled cells are `currentColor`, so they read as ink
+    // either way without this component knowing which mode it is in. `--card` would have been the
+    // near miss: it is a lifted grey in dark mode, which makes the pattern look like a swatch of
+    // something rather than a picture.
+    //
+    // The border it replaces was drawing a box around a picture that is already a solid rectangle,
+    // and at 40px inside a bordered tile that was three concentric rounded outlines deep.
+    <div className="inline-flex rounded-md bg-background p-2 text-foreground">
       <svg
         role={decorative ? undefined : 'img'}
         aria-label={decorative ? undefined : `Target pattern for ${mouthName}`}
