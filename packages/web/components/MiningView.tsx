@@ -425,6 +425,11 @@ export function MiningView({
     <MiningStatusBar
       status={status}
       config={config}
+      // `faceSpec.name` rather than the mouth list: it is the name core gave this selection
+      // (`targetNameForMouths`), which is what the link and the CLI's `--target` both take, so
+      // neither has to be told the expressions twice.
+      target={faceSpec.name}
+      filters={filters}
       // The same number the Results badge shows, so the confirmation puts exactly what the user
       // can see at stake rather than a different, larger count they have no way to check.
       resultCount={state.candidates.length}

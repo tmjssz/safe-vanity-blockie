@@ -3,7 +3,7 @@
 import { formatScore } from '@safe-vanity-blockie/core'
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { abbreviateNumber } from '../lib/abbreviate-number'
-import type { MineConfig } from '../lib/config'
+import type { FaceFilters, MineConfig } from '../lib/config'
 import { formatDuration } from '../lib/format-duration'
 import { DecorativeBlockie } from './Blockie'
 import { CheckpointTrigger } from './CheckpointTrigger'
@@ -137,6 +137,8 @@ function ConfigSummary({ config }: { config: MineConfig }) {
 export function MiningStatusBar({
   status,
   config,
+  target,
+  filters,
   resultCount,
   onPauseToggle,
   onStartOver,
@@ -145,6 +147,13 @@ export function MiningStatusBar({
   status: MiningStatus
   /** The config being mined, summarised on the bar's second line. */
   config: MineConfig
+  /**
+   * The search, for the checkpoint panel's resume link. Props rather than fields on MiningStatus:
+   * that type is the run's telemetry — what is happening — and these two are a statement of what
+   * is being looked for, which is the config's kind of fact, not the rate's.
+   */
+  target: string
+  filters: FaceFilters
   /** How many results are on screen — the number the confirmation puts at stake. */
   resultCount: number
   onPauseToggle: () => void
@@ -383,6 +392,9 @@ export function MiningStatusBar({
               <CheckpointTrigger
                 nextStart={status.nextStart}
                 workers={status.workers}
+                config={config}
+                target={target}
+                filters={filters}
                 onShowCommand={onShowCommand}
               />
             </div>

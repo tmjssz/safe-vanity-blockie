@@ -1,8 +1,12 @@
 'use client'
 
-import { ChevronDown, Flag } from 'lucide-react'
+import { Check, ChevronDown, Copy, Flag } from 'lucide-react'
 import { useState } from 'react'
+import type { FaceFilters, MineConfig } from '../lib/config'
+import { resumeSearchPath } from '../lib/deep-link'
+import { useCopy } from '../lib/use-copy'
 import { CopyButton } from './CopyButton'
+import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 /**
@@ -36,10 +40,26 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 export function CheckpointTrigger({
   nextStart,
   workers,
+  config,
+  target,
+  filters,
   onShowCommand,
 }: {
   nextStart: number
   workers: number
+  /**
+   * The three things beyond the checkpoint that a resumed search needs. They are here rather than
+   * a URL built upstream because this panel is mounted only while the run is stopped (see
+   * MiningStatusBar's gate), and MiningView — the only other place that holds all three —
+   * re-renders several times a second while mining. Building the link where it is read costs
+   * nothing on a live run.
+   *
+   * `target` is `faceSpec.name`: a `targetNameForMouths` value, and the same string CliHandoff
+   * passes as `--target`. So the link and the command name the accepted expressions identically.
+   */
+  config: MineConfig
+  target: string
+  filters: FaceFilters
   /** Raises the "Run on your machine" dialog, which lives elsewhere on the page. */
   onShowCommand: () => void
 }) {
@@ -47,6 +67,19 @@ export function CheckpointTrigger({
   // over to a dialog that covers this panel, and a panel still open behind it is one the reader
   // has to dismiss a second time after reading the command.
   const [open, setOpen] = useState(false)
+
+  // Absolute, and it has to be: this is pasted into another window's address bar, where a path
+  // would resolve against whatever page is open there. Same construction the deploy dialog's
+  // share field uses. `resumeSearchPath` writes into the URL this page is on, so a basePath and
+  // any unrelated params survive into the link.
+  const resumeUrl = `${typeof window === 'undefined' ? '' : window.location.origin}${resumeSearchPath(
+    { config, target, filters, start: nextStart },
+  )}`
+  const { copied, copy } = useCopy({
+    value: resumeUrl,
+    copiedMessage: 'Resume link copied',
+    failedMessage: 'Could not copy automatically. Copy the link from the address bar instead.',
+  })
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -116,6 +149,32 @@ export function CheckpointTrigger({
           </button>{' '}
           command writes out both.
         </p>
+        {/* The third way out of this panel, after the bare digits and the CLI command, and the
+            only one that needs no second step: the number, the config and the filters travel
+            together, so the other tab opens on a Configure card that is already answered.
+
+            A labelled Button rather than the icon-only CopyButton the digits use. An icon on its
+            own says "copy" and nothing about WHAT — which is exactly the question a panel now
+            holding two copyable things raises. */}
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          To continue it in another tab, this link carries the Safe config, the filters and this
+          checkpoint.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          // Full width: it is the one control in the panel with a label, and left to its own
+          // width it would sit as a small box in a column of full-width prose with nothing
+          // aligning it to anything.
+          className="mt-2 w-full"
+          onClick={copy}
+        >
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+          {/* The name changes with the icon because they are one control reporting one state: a
+              clipboard glyph beside "Copied" would name the action that is no longer on offer. */}
+          {copied ? 'Copied' : 'Copy resume link'}
+        </Button>
       </PopoverContent>
     </Popover>
   )

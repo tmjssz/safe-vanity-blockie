@@ -33,6 +33,8 @@ function renderBar(overrides: Record<string, unknown> = {}) {
       status={status}
       onPauseToggle={vi.fn()}
       config={CONFIG}
+      target="smile,open"
+      filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
       resultCount={0}
       onStartOver={vi.fn()}
       onShowCommand={vi.fn()}
@@ -267,6 +269,8 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         status={{ ...status, running: false, paused: true }}
         onPauseToggle={onPauseToggle}
         config={CONFIG}
+        target="smile,open"
+        filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
         resultCount={0}
         onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
@@ -288,6 +292,8 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         status={{ ...status, running: false, paused: true }}
         onPauseToggle={vi.fn()}
         config={CONFIG}
+        target="smile,open"
+        filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
         resultCount={0}
         onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
@@ -328,6 +334,8 @@ describe('MiningStatusBar: the pause and resume controls', () => {
         status={{ ...status, running: false, paused: true }}
         onPauseToggle={vi.fn()}
         config={CONFIG}
+        target="smile,open"
+        filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
         resultCount={0}
         onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
@@ -565,6 +573,22 @@ describe('MiningStatusBar: the checkpoint', () => {
     const pausedRow = paused.container.querySelectorAll('[data-slot="status-row"]')[1]
     expect(pausedRow.className).toMatch(/min-h-6/)
   })
+
+  // The bar is the only thing between MiningView, which knows the search, and the panel, which
+  // builds the link. A prop it accepted and dropped would be a link describing a search nobody is
+  // running, and nothing on the bar would look wrong.
+  it('hands the search on to the checkpoint panel', async () => {
+    const user = userEvent.setup()
+    renderBar({
+      status: { ...status, running: false, paused: true },
+      target: 'frown',
+      filters: { twoColor: false, minContrast: 0, minMatch: 25 },
+    })
+
+    await user.click(screen.getByRole('button', { name: /checkpoint/i }))
+
+    expect(await screen.findByRole('button', { name: /copy resume link/i })).toBeDefined()
+  })
 })
 
 // The Configure card is gone for the whole run, so this line is the only place the config being
@@ -577,6 +601,8 @@ describe('MiningStatusBar: the config summary line', () => {
         status={status}
         onPauseToggle={vi.fn()}
         config={config}
+        target="smile,open"
+        filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
         resultCount={0}
         onStartOver={vi.fn()}
         onShowCommand={vi.fn()}
