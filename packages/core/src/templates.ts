@@ -82,10 +82,11 @@ export function getTemplate(name: string): FaceSpec {
  * Commas because that is the one list separator the CLI already has — `--owners 0x..,0x..` — and a
  * second convention for a second list is one more thing to remember at the prompt for no gain.
  *
- * Lives beside TEMPLATES rather than in the app that needs it, because it is one half of a
- * round-trip whose other half is `faceSpecForTarget` below — the app names a selection with this,
- * hands that name to the CLI, and the CLI resolves it back to the same set of expressions. Split
- * across two packages, the two halves would be free to drift apart with nothing failing.
+ * Lives beside TEMPLATES rather than in the app that needs it, because it is one side of a
+ * round-trip whose other two sides are `faceSpecForTarget` (name → spec) and `mouthNamesForTarget`
+ * below (name → names) — the app names a selection with this, hands that name to the CLI or a URL,
+ * and either resolves it back to the same set of expressions. Split across two packages, the sides
+ * would be free to drift apart with nothing failing.
  *
  * Validates nothing: the caller builds the spec from the same names, and `faceWithMouths` is where
  * an unknown one is caught, with the error that lists the expressions.
