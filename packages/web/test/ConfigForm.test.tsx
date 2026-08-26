@@ -196,21 +196,6 @@ describe('the filter card on the start screen', () => {
     )
   })
 
-  // The same rule the owners list already sits above. What follows is a different kind of question
-  // from the fields above it, and whitespace alone was left stating that boundary at whatever width
-  // the row above happened to be.
-  it('is set off by the same rule the owners list sits above', () => {
-    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
-
-    const rules = [...container.querySelectorAll('hr')]
-    expect(rules).toHaveLength(2)
-    // Same treatment on both, not a second divider invented for this one.
-    expect(new Set(rules.map((rule) => rule.className))).toHaveLength(1)
-    // And it is above the filter section rather than below it.
-    const card = container.querySelector('[data-slot="card"]') as HTMLElement
-    expect(rules[1].compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
   // The two labels sit one row apart and must start at the same x. Button's `sm` size carries
   // `has-[>svg]:px-2.5`, and the trigger's `p-0` cannot cancel it: tailwind-merge treats a
   // modifier-prefixed class as its own group, so `p-0` never sees it. With a chevron as a direct
@@ -243,6 +228,117 @@ describe('the filter card on the start screen', () => {
     const card = container.querySelector('[data-slot="card"]') as HTMLElement
     expect(card.className).toContain('[&_[data-slot=card-header]]:px-0')
     expect(card.className).toContain('[&_[data-slot=card-content]]:px-0')
+  })
+})
+
+describe('the face expressions section', () => {
+  // Always visible, and above the disclosures. What it asks is the other half of what this card is
+  // for: which patterns count as a hit. It used to be reachable only by opening the Filter card,
+  // which put the most consequential choice on the screen behind the same door as three constraints
+  // that cost nothing to change.
+  it('is visible with nothing pressed', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(screen.getByRole('heading', { name: /face expressions/i })).toBeDefined()
+    expect(screen.getAllByRole('checkbox').length).toBe(5)
+  })
+
+  // Order matters: it reads as the last of the questions about what to mine, before the two
+  // disclosures that hold refinements.
+  it('sits after the Safe version row and before the Filter disclosure', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const version = screen.getByText(/safe version/i)
+    const expressions = screen.getByRole('heading', { name: /face expressions/i })
+    const filter = filterToggle()
+
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(version.compareDocumentPosition(expressions) & following).toBeTruthy()
+    expect(expressions.compareDocumentPosition(filter) & following).toBeTruthy()
+    expect(container).toBeDefined()
+  })
+
+  // And out of the Filter card, which now holds only the three colour constraints. Two copies of
+  // the tiles on one screen would be two controls for one value.
+  it('is not inside the Filter disclosure any more', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    await user.click(filterToggle())
+
+    // Five tiles on the card, not ten: the disclosure contributed none.
+    expect(screen.getAllByRole('checkbox').length).toBe(5)
+    expect(screen.getByRole('switch', { name: /^two-color$/i })).toBeDefined()
+    expect(screen.getAllByRole('slider')).toHaveLength(2)
+  })
+})
+
+// The card states its boundaries with whitespace and section labels. Two rules had crept in: one
+// below the owners list and one above the filter section.
+it('draws no dividers between its sections', () => {
+  const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+  expect(container.querySelectorAll('hr')).toHaveLength(0)
+})
+
+describe('the Advanced disclosure', () => {
+  // A plain chevron-and-label row: nothing summarised beside it. The one value it holds is the
+  // saltNonce, and a chip previewing an eleven-digit number is the number, not a summary of it.
+  it('carries no summary beside its label', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const advanced = advancedToggle()
+    expect(advanced.textContent?.replace(/\s+/g, ' ').trim()).toBe('Advanced')
+  })
+
+  it('opens itself when the saltNonce field has a non-default value', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('stays shut for the default value, which 0 is', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 0 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  // A link can land a render after this form mounts, and the rule above would then open the
+  // disclosure. If the reader has already shut it by hand in the meantime, it stays shut: an
+  // auto-open that fights a deliberate collapse is a control that does not hold.
+  it('respects a manual collapse against a value that arrives afterwards', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    // Opened and shut again by hand, before anything is seeded.
+    await user.click(advancedToggle())
+    await user.click(advancedToggle())
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
+
+    rerender(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
   })
 })
 

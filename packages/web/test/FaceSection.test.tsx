@@ -239,16 +239,10 @@ describe('FaceSection', () => {
       const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
       const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
       expect(row.contains(summary)).toBe(true)
-      // The expressions chip leads with the dot-grid glyph, not a smiling face: a face drew ONE
-      // expression to label a chip whose job is to say how many are accepted, so "smile, frown"
-      // carried a picture of only the first.
-      expect(summary.querySelector('circle')).not.toBeNull()
-      expect(summary.innerHTML).not.toContain('lucide-smile')
-      expect(summary.textContent).toContain('smile, open')
       expect(summary.textContent).toContain('Two-color')
       expect(summary.textContent).toContain('80')
-      // Permissive, so silent — not "≥ 0%".
-      expect(summary.textContent).not.toContain('%')
+      // Permissive, so silent: no match chip at all rather than "match ≥ 0%".
+      expect(summary.textContent).not.toContain('match')
     })
 
     // Advanced's label is a Button, whose base carries `text-sm font-medium`. Matching the size
@@ -352,6 +346,102 @@ describe('FaceSection', () => {
       expect(summary).not.toBeNull()
       expect(summary.className).not.toContain('ml-auto')
       expect(container.querySelectorAll('svg').length).toBeGreaterThan(1)
+    })
+  })
+
+  // The expressions became a section of Configure in their own right, always visible, so on the
+  // start screen this card holds only the three colour constraints. The results page still shows
+  // both halves side by side: mid-run they are equally reachable, and losing the ability to change
+  // an expression during a search would be a real loss nobody asked for.
+  describe('withExpressions', () => {
+    it('drops the expression tiles but keeps the colour controls when told to', () => {
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          withExpressions={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.queryByRole('checkbox')).toBeNull()
+      expect(screen.queryByText(/face expressions/i)).toBeNull()
+      // The three that stay.
+      expect(screen.getByRole('switch', { name: /^two-color$/i })).toBeDefined()
+      expect(screen.getAllByRole('slider')).toHaveLength(2)
+    })
+
+    it('shows both halves when nothing says otherwise', () => {
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
+      expect(screen.getByRole('switch', { name: /^two-color$/i })).toBeDefined()
+    })
+  })
+
+  // The tiles above the card already show which expressions are accepted, so a chip counting them
+  // was restating what the reader can see a few pixels higher.
+  describe('collapsed chips', () => {
+    const closed = { defaultOpen: false, onMouthsChange: vi.fn(), onFiltersChange: vi.fn() }
+
+    it('never counts the expressions', () => {
+      const { container } = render(
+        <FaceSection mouths={['smile', 'frown']} filters={DEFAULT_FACE_FILTERS} {...closed} />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.textContent).not.toMatch(/expression/i)
+      expect(summary.textContent).not.toContain('smile')
+    })
+
+    it('names the match floor as a match, not a bare number', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ twoColor: false, minContrast: 0, minMatch: 90 }}
+          {...closed}
+        />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.textContent).toContain('match ≥ 90%')
+    })
+
+    // Nothing is constraining anything, so there is nothing to report. A row of chips that all say
+    // "everything is allowed" has to be read to learn nothing.
+    it('shows no chips at all when every constraint is permissive', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ twoColor: false, minContrast: 0, minMatch: 0 }}
+          {...closed}
+        />,
+      )
+
+      expect(container.querySelector('[data-slot="filter-summary"]')).toBeNull()
+    })
+
+    it('reports the two-color toggle and the contrast floor when they constrain', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={{ twoColor: true, minContrast: 80, minMatch: 0 }}
+          {...closed}
+        />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.textContent).toContain('Two-color')
+      expect(summary.textContent).toContain('80')
+      expect(summary.textContent).not.toContain('match')
     })
   })
 
@@ -583,35 +673,31 @@ describe('FaceSection', () => {
       return summary
     }
 
-    // A chip per constraint that is actually constraining. Read off the applied selection, not
-    // FacePicker's draft: a staged edit is not what is being mined, and this row's job is to say
-    // what is.
-    it('counts the expressions while every one is accepted', () => {
-      expect(collapsed().textContent).toContain(`${ALL_MOUTH_NAMES.length} expressions`)
-    })
-
-    // Names beat a count once the list is short: "smile, open" says which, where "2 expressions"
-    // only says how many and sends the reader back into the card to find out.
-    it('names the expressions once three or fewer are left', () => {
-      expect(collapsed({ mouths: ['smile', 'open'] }).textContent).toContain('smile, open')
-    })
-
-    // Above three the names are longer than the row has room for, so it counts again. Not the same
-    // branch as all-accepted, and worth its own case: four of five is a real constraint that must
-    // not be reported as five.
-    it('falls back to a count above three, without claiming all are accepted', () => {
-      const text = collapsed({ mouths: ALL_MOUTH_NAMES.slice(0, 4) }).textContent ?? ''
-      expect(text).toContain('4 expressions')
-      expect(text).not.toContain(`${ALL_MOUTH_NAMES.length} expressions`)
+    // A chip per constraint that is actually constraining. The expressions are NOT among them any
+    // more: they are a section of Configure in their own right, always visible above this card, so
+    // a chip counting them restated what the reader can see a few pixels higher.
+    it('says nothing about the expressions', () => {
+      const summary = collapsed({ mouths: ['smile', 'frown'] })
+      expect(summary.textContent).not.toMatch(/expression/i)
+      expect(summary.textContent).not.toContain('smile')
     })
 
     // The permissive defaults earn no chips. Three chips that all say "everything is allowed" tell
     // the user the filter is doing work it is not.
-    it('shows nothing but the expressions when the colour filters are wide open', () => {
-      const summary = collapsed({ filters: { twoColor: false, minContrast: 0, minMatch: 0 } })
-      expect(summary.textContent).toContain('expressions')
-      expect(summary.textContent).not.toMatch(/two-color/i)
-      expect(summary.textContent).not.toContain('≥')
+    // Nothing constrains anything, so there is nothing to report and the row carries no chips at
+    // all — where it used to keep an expressions count alive to fill it.
+    it('renders no chip row when the filters are wide open', () => {
+      render(
+        <FaceSection
+          mouths={ALL_MOUTH_NAMES}
+          filters={{ twoColor: false, minContrast: 0, minMatch: 0 }}
+          mining
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      expect(document.querySelector('[data-slot="filter-summary"]')).toBeNull()
     })
 
     it('adds a chip for two colours only while that toggle is on', () => {
@@ -627,12 +713,14 @@ describe('FaceSection', () => {
       const summary = collapsed({ filters: { twoColor: false, minContrast: 80, minMatch: 0 } })
       expect(summary.textContent).toContain('≥ 80')
       expect(summary.textContent).toContain('minimum contrast 80')
-      expect(summary.querySelector('svg')).not.toBeNull()
+      // By `data-slot`, not by `svg`: ContrastSwatch is a pair of divs, and this assertion used to
+      // pass on the expressions chip's own glyph — an svg that was never the swatch and is now gone.
+      expect(summary.querySelector('[data-slot="contrast-swatch"]')).not.toBeNull()
     })
 
     it('adds a chip for a match floor, with a spoken name', () => {
       const summary = collapsed({ filters: { twoColor: false, minContrast: 0, minMatch: 92 } })
-      expect(summary.textContent).toContain('≥ 92%')
+      expect(summary.textContent).toContain('match ≥ 92%')
       expect(summary.textContent).toContain('minimum match 92 percent')
     })
 
@@ -641,7 +729,7 @@ describe('FaceSection', () => {
     it('orders the chips the way the open card orders the controls', () => {
       const summary = collapsed({ filters: { twoColor: true, minContrast: 80, minMatch: 92 } })
       const text = summary.textContent ?? ''
-      expect(text.indexOf('≥ 92%')).toBeGreaterThan(-1)
+      expect(text.indexOf('match ≥ 92%')).toBeGreaterThan(-1)
       expect(text.indexOf('≥ 92%')).toBeLessThan(text.indexOf('≥ 80'))
     })
 
@@ -692,7 +780,6 @@ describe('FaceSection', () => {
       )
 
       const summary = document.querySelector('[data-slot="filter-summary"]')
-      expect(summary?.textContent).toContain('smile')
       expect(summary?.textContent).toContain('≥ 200')
       expect(summary?.textContent).not.toMatch(/two-color/i)
     })

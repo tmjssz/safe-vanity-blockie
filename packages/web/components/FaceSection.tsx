@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
 import { cn } from '../lib/utils'
+import { ColorFilters } from './ColorFilters'
 import { ContrastSwatch } from './ContrastSwatch'
 import { ExpressionsGlyph } from './ExpressionsGlyph'
 import { FacePicker } from './FacePicker'
@@ -47,6 +48,19 @@ export interface FaceSectionProps {
    * `mouths` in app/page.tsx.
    */
   defaultOpen?: boolean
+  /**
+   * Whether the expression tiles are part of this card.
+   *
+   * False on Configure's start screen, where they are a section of their own directly above: what
+   * they ask is not the same KIND of question as the three constraints left here. These re-filter
+   * candidates already mined, so each applies the moment it moves; an expression change is what the
+   * miner is looking FOR, and applying one during a run discards the board.
+   *
+   * True everywhere else, which means the results page, and it has to stay that way: mid-run both
+   * halves are equally reachable, and taking the expressions out of the only card that page has
+   * would remove the ability to change them during a search.
+   */
+  withExpressions?: boolean
   /**
    * Draw the header in the same voice as Configure's Advanced disclosure: a quiet muted line with
    * its chevron against the label, rather than a card header with a semibold heading, an icon of
@@ -96,30 +110,21 @@ export interface FaceSectionProps {
 }
 
 /**
- * At most four chips, and each is present only when its constraint actually constrains something.
+ * At most three chips, and each is present only when its constraint actually constrains something.
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
- * collapsed card carrying four of those tells the user the filter is doing work it is not.
+ * collapsed card carrying three of those tells the user the filter is doing work it is not. With
+ * every constraint permissive there is nothing to report and the row carries no chips at all.
  *
  * They are rendered in the order the open card lays the controls out, and must stay that way: the
  * chips are a reading of those controls, and a summary that lists them in a different order leaves
  * the reader matching them up by name instead of by position.
  *
- * Expressions are the exception: they always constrain what the miner credits, so that chip is
- * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
- * is not what is being mined, and the collapsed card's job is to say what is.
+ * The expressions are NOT among them any more. They are a section of Configure in their own right
+ * now, always visible directly above this card, so a chip counting them restated what the reader
+ * can see a few pixels higher.
  */
-function summarise(mouths: string[], filters: FaceFilters) {
-  const accepted = ALL_MOUTH_NAMES.filter((name) => mouths.includes(name))
+function summarise(filters: FaceFilters) {
   return {
-    // Names once the list is short enough to be worth more than a count: at three or fewer, "smile,
-    // open" says which, where "2 expressions" only says how many and sends the reader back into the
-    // card to find out. Above three the names are longer than the row has room for, and a count is
-    // the honest summary. All five accepted is the permissive default, so it counts rather than
-    // listing every name the app has.
-    expressions:
-      accepted.length > 0 && accepted.length <= 3 && accepted.length < ALL_MOUTH_NAMES.length
-        ? accepted.join(', ')
-        : `${accepted.length} expressions`,
     twoColor: filters.twoColor,
     minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
     minMatch: filters.minMatch > 0 ? filters.minMatch : undefined,
@@ -141,6 +146,7 @@ export function FaceSection({
   mouths,
   filters,
   mining = false,
+  withExpressions = true,
   defaultOpen,
   quiet = false,
   className,
@@ -197,7 +203,11 @@ export function FaceSection({
     onOpenChange?.(open)
   }, [open, onOpenChange])
 
-  const summary = summarise(mouths, filters)
+  const summary = summarise(filters)
+  // Whether anything is constrained at all. Gates the collapsed row, so a card with every filter
+  // permissive shows a bare label rather than an empty chip container.
+  const anyConstraint =
+    summary.twoColor || summary.minMatch !== undefined || summary.minContrast !== undefined
 
   return (
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
@@ -272,25 +282,15 @@ export function FaceSection({
 
           {/* Only while closed. Open, every chip is restating a control the reader can already
               see, a few pixels below where the chip sits. */}
-          {!open && (
-            // `ml-auto` only on the quiet header, where nothing else claims the right edge — the
-            // loud one ends in its chevron, and a second `ml-auto` on that row would strand the
-            // chips in the middle of it rather than at either end.
-            //
-            // Against the edge rather than against the label because left of it they read as a
-            // continuation of the title — "Filter smile, frown" — instead of as the row's readout.
-            // The gap between the two is what says which is which.
+          {/* Only while closed. Open, every chip is restating a control the reader can already
+              see, a few pixels below where the chip sits. And only when something is actually
+              constrained: with every filter permissive the row carries no chips rather than an
+              empty box where chips would go. */}
+          {!open && anyConstraint && (
             <div
               data-slot="filter-summary"
               className={cn('flex flex-wrap items-center gap-2', quiet && 'ml-auto')}
             >
-              <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
-                {/* No `text-muted-foreground` here, unlike the icon this replaced: the glyph's
-                    bright dots inherit `currentColor`, so muting the root would flatten it to one
-                    tone. Its own muted half is a token on the dots that want it. */}
-                <ExpressionsGlyph className="size-3.5" />
-                {summary.expressions}
-              </Badge>
               {summary.twoColor && (
                 <Badge variant="secondary" className="rounded-md font-normal">
                   Two-color
@@ -298,9 +298,11 @@ export function FaceSection({
               )}
               {summary.minMatch !== undefined && (
                 <Badge variant="secondary" className="rounded-md font-normal">
-                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
-                      it, which is otherwise the same shape of number behind the same glyph. */}
-                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
+                  {/* Named, unlike the contrast chip beside it, which carries a swatch to say what
+                      its number is about. This one has no picture available, and a bare "≥ 90%"
+                      next to "≥ 80" leaves two numbers of the same shape with nothing to tell them
+                      apart. */}
+                  <span aria-hidden="true">match ≥ {summary.minMatch}%</span>
                   <span className="sr-only">minimum match {summary.minMatch} percent</span>
                 </Badge>
               )}
@@ -360,23 +362,30 @@ export function FaceSection({
                 colour filters re-filter candidates already mined, so they apply on the spot. The
                 expressions are part of the run's identity, so applying one restarts the search and
                 discards the board: those stage behind an Apply button and a warning. */}
-            <FacePicker
-              value={mouths}
-              onChange={onMouthsChange}
-              filters={filters}
-              onFiltersChange={onFiltersChange}
-              // The card already knows whether a run exists — `mining` is what decides whether it
-              // starts collapsed. The picker needs the same fact for its restart question, and
-              // reading it from here rather than from a prop of its own is what keeps the two from
-              // disagreeing about a page that is idle.
-              //
-              // Boolean, not `mining` raw: the prop is optional, and an omitted one means "no run"
-              // here (it is the idle screen's case, see this component's own doc) while `undefined`
-              // reaching FacePicker would fall to ITS default, which is "there is a run". Two
-              // optionals with opposite defaults meeting in the middle is exactly the seam to nail
-              // shut.
-              live={Boolean(mining)}
-            />
+            {withExpressions ? (
+              <FacePicker
+                value={mouths}
+                onChange={onMouthsChange}
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                // The card already knows whether a run exists — `mining` is what decides whether
+                // it starts collapsed. The picker needs the same fact for its restart question,
+                // and reading it from here rather than from a prop of its own is what keeps the
+                // two from disagreeing about a page that is idle.
+                //
+                // Boolean, not `mining` raw: the prop is optional, and an omitted one means "no
+                // run" here (it is the idle screen's case, see this component's own doc) while
+                // `undefined` reaching FacePicker would fall to ITS default, which is "there is a
+                // run". Two optionals with opposite defaults meeting in the middle is exactly the
+                // seam to nail shut.
+                live={Boolean(mining)}
+              />
+            ) : (
+              // Colours only. The expressions are a section of Configure in their own right on the
+              // start screen, always visible above this card, so there is no two-column layout left
+              // to compose here — just the three constraints, stacked.
+              <ColorFilters filters={filters} onFiltersChange={onFiltersChange} />
+            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

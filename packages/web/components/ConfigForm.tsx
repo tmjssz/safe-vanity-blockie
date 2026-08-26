@@ -17,6 +17,7 @@ import {
 import { useWorkerCount } from '../lib/worker-count'
 import { DecorativeBlockie } from './Blockie'
 import { Explains } from './Explains'
+import { ExpressionPicker } from './ExpressionPicker'
 import { FaceSection } from './FaceSection'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
@@ -129,6 +130,13 @@ export function ConfigForm({
   const [startNonceInput, setStartNonceInput] = useState(
     initial?.start ? String(initial.start) : '',
   )
+  // Whether the reader has said what they want the Advanced disclosure to be. Once they have, no
+  // rule here may say otherwise: the seed below opens it for a non-default start nonce, and a link
+  // can land a render after this form mounts, so without this a deliberate collapse in between
+  // would be reopened underneath them. Same reasoning as FaceSection's `userChose`, and a ref
+  // rather than state because nothing renders differently for it.
+  const advancedChosen = useRef(false)
+
   // Same schedule as an owner row — complain after the field has been left once, then live —
   // EXCEPT for a value that was seeded rather than typed, which starts complained-about.
   //
@@ -178,8 +186,9 @@ export function ConfigForm({
     if (initial.start) {
       setStartNonceInput(String(initial.start))
       // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
-      // one silently moves where the search begins.
-      setAdvancedOpen(true)
+      // one silently moves where the search begins. Unless the reader has already said otherwise —
+      // see `advancedChosen`.
+      if (!advancedChosen.current) setAdvancedOpen(true)
       // And complained about if this machine cannot take it — see the initialiser above. A link
       // reaches this form one render late (page.tsx latches `?config=` on first sight, and this
       // subtree's first render comes through a Suspense bailout), so the effect has to say it too.
@@ -519,18 +528,6 @@ export function ConfigForm({
         )}
       </div>
 
-      {/* Whitespace alone was carrying the boundary between the list you build and the two
-          questions that are already answered, and it could not carry it: the owners list grows,
-          so the gap above these two is the one piece of spacing on the card that never looks the
-          same twice. A rule states the split at a fixed weight instead. A bare `<hr>` rather than
-          a styled div: its implicit `separator` role says the same thing to a screen reader that
-          the line says on screen, and there is nothing here to hide from one.
-
-          `my-2` on top of the form's `gap-4` gives the rule 24px of clearance on both sides. A
-          rule needs more room than the gap it replaces: pressed to the form's plain spacing it
-          reads as an underline on the block above it rather than as a divider between two. */}
-      <hr className="my-2 border-t" />
-
       {/* Side by side: two narrow controls that each answer one short question, on a card only
           520px wide. Stacked they read as two more steps than they are.
 
@@ -623,13 +620,22 @@ export function ConfigForm({
           `open` is not simply `advancedOpen`: while the value is invalid the Start button is
           disabled and its reason lives in here, so collapsing over the complaint would leave a
           dead button with nothing on screen to fix. */}
-      {/* The same rule the owners list sits above, for the same reason and with the same clearance:
-          what follows is a different kind of question from the fields above it, and whitespace on
-          its own was left stating that boundary at whatever width the row above happened to be.
-          See that one for why it is a bare `<hr>` rather than a styled div. */}
-      <hr className="my-2 border-t" />
 
-      {/* The search — what to mine for — above the disclosure that holds where to start looking.
+      {/* Which patterns count as a hit, always visible, and above both disclosures.
+          
+          It is the other half of what this card is for. Reachable only by opening the Filter card,
+          the most consequential choice on the screen sat behind the same door as three constraints
+          that cost nothing to change — and a resume link's recipient could press Start without ever
+          seeing it. Out here it is simply one of the questions the card asks, in the order they are
+          asked: owners, threshold, version, what a hit looks like.
+          
+          `live={false}`: there is no run on this screen, so a click applies on the spot rather than
+          staging behind an Apply that would have nothing to restart. */}
+      {mouths && onMouthsChange && (
+        <ExpressionPicker value={mouths} onChange={onMouthsChange} live={false} />
+      )}
+
+      {/* The colour constraints — what to mine for is settled above; these refine it.
 
           Offered on every visit rather than only for a link: the expressions and the colour and
           match floors decide what the miner credits and what the results grid shows, and until they
@@ -665,6 +671,9 @@ export function ConfigForm({
           mouths={mouths}
           filters={filters}
           defaultOpen={Boolean(linkCarriedFilters)}
+          // Colours only: the expressions are their own section above, and two copies of the tiles
+          // on one screen would be two controls for one value.
+          withExpressions={false}
           quiet
           className="border-0 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
           onMouthsChange={onMouthsChange}
@@ -680,6 +689,9 @@ export function ConfigForm({
         // instant the complaint later clears on its own — unmounting the panel with focus still
         // inside the input it had just been corrected in, and dropping a keyboard user to <body>.
         onOpenChange={(next) => {
+          // A press is an answer, even the one refused below: the reader has said what they want
+          // the disclosure to be, and the seed must not overrule it later.
+          advancedChosen.current = true
           if (next || !startNonceComplaint) setAdvancedOpen(next)
         }}
       >
