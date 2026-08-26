@@ -4,6 +4,7 @@ import { ChevronDown, ListFilter, Smile } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
+import { cn } from '../lib/utils'
 import { ContrastSwatch } from './ContrastSwatch'
 import { FacePicker } from './FacePicker'
 import { Badge } from './ui/badge'
@@ -14,14 +15,43 @@ export interface FaceSectionProps {
   mouths: string[]
   filters: FaceFilters
   /**
-   * Whether a run exists. It decides one thing only: whether the card starts collapsed.
+   * Whether a run exists.
+   *
+   * Two things read it, and they are separate questions that happened to share an answer while
+   * this card was only ever mounted on the results page. It supplies the DEFAULT for whether the
+   * card starts collapsed — `defaultOpen` overrides that outright — and it decides whether
+   * FacePicker asks about restarting a search, since on a screen with no run there is no
+   * leaderboard and no scanned nonces for that question to be about.
    *
    * Not read after the first render unless it changes, and the user's own choice outranks it from
-   * the moment they make one (see `userChose` below). The page passes this as true because it only
-   * renders this card once a config has been submitted; the false case is the idle screen, where
-   * the filter should be open because nobody has seen it yet.
+   * the moment they make one (see `userChose` below).
    */
   mining?: boolean
+  /**
+   * Whether the card starts open, when the host knows better than `mining` does.
+   *
+   * Three arrival states have to be told apart now that this card lives inside Configure's
+   * Advanced disclosure as well as on the results page: a resume link that named filters wants it
+   * open, because those filters decide what gets mined and nobody has seen them yet; a link that
+   * named only a checkpoint wants Advanced open but this shut, because nothing was carried to look
+   * at; and an ordinary visit wants both shut. One bit about whether a run exists cannot say which
+   * of those it is.
+   *
+   * Where the card STARTS, and nothing more — `userChose` still outranks it the moment the reader
+   * presses the header, because a starting point that kept reasserting itself would be a control
+   * that does not hold.
+   *
+   * `??` rather than a competing flag: omitted, `mining` decides exactly as it always did, which
+   * is what leaves the results page's call site untouched. Same precedence shape as `chainId` and
+   * `mouths` in app/page.tsx.
+   */
+  defaultOpen?: boolean
+  /**
+   * Classes for the Card itself. Nested inside Configure's Advanced disclosure this sits inside
+   * another Card, where its own border and shadow read as clutter rather than structure — so the
+   * host that put it there says so, rather than this component guessing where it is from a prop.
+   */
+  className?: string
   /**
    * A request from elsewhere on the page to show these controls — the results grid's empty state,
    * whose whole advice is "relax a filter" while this card sits collapsed and scrolled off the top
@@ -94,6 +124,8 @@ export function FaceSection({
   mouths,
   filters,
   mining = false,
+  defaultOpen,
+  className,
   revealRequest = 0,
   onOpenChange,
   onMouthsChange,
@@ -102,7 +134,11 @@ export function FaceSection({
   // Open when there is no run to get on with. A submitted config means the user has already said
   // what they want and is waiting for results, so the filter steps out of the way; an idle screen
   // means nobody has seen it yet, so it shows itself.
-  const [open, setOpen] = useState(!mining)
+  //
+  // `defaultOpen` overrides that when the host knows which of the three arrival states this is —
+  // see the prop. Read once, as an initial value: it is where the card starts, not a rule it has
+  // to keep obeying.
+  const [open, setOpen] = useState(defaultOpen ?? !mining)
   // Set by the header, and never by anything else. Once the user has said what they want the card
   // to be, no rule here may say otherwise for the rest of the session: an auto-collapse that
   // fights a deliberate expand is a control that does not hold, which is worse than one that does
@@ -149,7 +185,7 @@ export function FaceSection({
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
     // the panel has any height: collapsed, it left 24px of empty card under the header. The panel
     // carries its own top padding instead, where it is only paid when there is something to pad.
-    <Card ref={cardRef} className="gap-0">
+    <Card ref={cardRef} className={cn('gap-0', className)}>
       <Collapsible
         open={open}
         onOpenChange={(next) => {

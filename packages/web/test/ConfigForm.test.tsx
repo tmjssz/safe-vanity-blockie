@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfigForm } from '../components/ConfigForm'
-import { maxStartNonce } from '../lib/config'
+import { DEFAULT_FACE_FILTERS, maxStartNonce } from '../lib/config'
 
 // Hoisted so each test can drive its own connection state — a module-scoped factory can only ever
 // return one fixed state, and the prefill below is defined entirely by how that state CHANGES.
@@ -45,6 +45,138 @@ async function chooseThreshold(
   await user.click(thresholdTrigger())
   await user.click(await screen.findByRole('option', { name: String(value) }))
 }
+
+const HELP = /first saltNonce to try; leave empty to start at 0/i
+/** The props that mount the Filter card inside Advanced. Omitted, the disclosure holds the field alone. */
+const filterProps = () => ({
+  mouths: ['smile', 'open'],
+  filters: DEFAULT_FACE_FILTERS,
+  onMouthsChange: vi.fn(),
+  onFiltersChange: vi.fn(),
+})
+const filterToggle = () => screen.getByRole('button', { name: /^filter$/i })
+
+describe('the starting saltNonce explanation', () => {
+  // The sentence used to sit under the field on every visit for the rest of the session, read once
+  // and then never again. Behind the same info control the filter labels use, it costs one press
+  // the first time and nothing after that.
+  it('lives behind an info control rather than in standing prose', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} initial={{ owners: [OWNER], start: 42 }} onSubmit={vi.fn()} />)
+
+    // Closed, the sentence is in the tree exactly once, and that copy is the sr-only description —
+    // nothing is on screen for a sighted reader to have to scroll past. Counted rather than queried
+    // with `queryByText`, which would throw on the two matches the open state deliberately has.
+    const before = screen.getAllByText(HELP)
+    expect(before).toHaveLength(1)
+    expect(before[0].className).toContain('sr-only')
+
+    await user.click(screen.getByRole('button', { name: /about the starting saltnonce/i }))
+
+    // Open, a second copy exists that is NOT sr-only: the one the press was for.
+    const visible = (await screen.findAllByText(HELP)).filter(
+      (node) => !node.className.includes('sr-only'),
+    )
+    expect(visible).toHaveLength(1)
+  })
+
+  // Moving a field's description into a hover popover would otherwise LOSE it: Radix unmounts the
+  // content when closed, so `aria-describedby` cannot point at it without dangling. The sentence
+  // stays a real description for anyone who never opens the popover at all.
+  it('keeps the sentence as the field’s description for assistive tech', () => {
+    render(<ConfigForm chainId={1} initial={{ owners: [OWNER], start: 42 }} onSubmit={vi.fn()} />)
+
+    const described = startNonceField().getAttribute('aria-describedby') as string
+    const description = document.getElementById(described) as HTMLElement
+    expect(description.textContent).toMatch(HELP)
+    // Visually it is the popover's job; this copy exists only for the accessibility tree.
+    expect(description.className).toContain('sr-only')
+  })
+})
+
+describe('the filter card under Advanced', () => {
+  // The expressions and the colour filters decide what the miner credits and what the grid shows.
+  // Before this they were unreachable until a run existed, so a resume link's recipient pressed
+  // Start on a search they could not see.
+  it('is offered inside the disclosure when the host passes the filters', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    await user.click(advancedToggle())
+
+    expect(filterToggle()).toBeDefined()
+  })
+
+  // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
+  // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
+  // the field above it. On a card stripped of its border that reads as a mistake, not as nesting.
+  it('sits flush with the field above it rather than indented', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    await user.click(advancedToggle())
+
+    // A class contract, not a measurement: jsdom loads no stylesheet, so `getComputedStyle` here
+    // knows nothing about what any Tailwind class means and would report an empty padding whether
+    // the rule were present or absent. What can be held on to is that the neutralising rules reach
+    // the card at all — a bare `px-0` would not, which is the mistake being guarded against.
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toContain('[&_[data-slot=card-header]]:px-0')
+    expect(card.className).toContain('[&_[data-slot=card-content]]:px-0')
+  })
+
+  it('is absent when the host passes no filters', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+    await user.click(advancedToggle())
+
+    expect(screen.queryByRole('button', { name: /^filter$/i })).toBeNull()
+  })
+
+  // Three arrival states, told apart. A link that named filters has something to show, so both
+  // open; a link that named only a checkpoint has the field to show and nothing else; an ordinary
+  // visit has neither and stays out of the way.
+  it('opens itself and the disclosure when a link carried filters', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 42 }}
+        linkCarriedFilters
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('true')
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opens the disclosure but not itself when a link carried only a checkpoint', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 42 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('true')
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('leaves both shut on an ordinary visit, and still shut when the disclosure is opened', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
+
+    await user.click(advancedToggle())
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+})
 
 describe('ConfigForm', () => {
   // Start is disabled for a malformed address, so the complaint cannot wait for a press any more —

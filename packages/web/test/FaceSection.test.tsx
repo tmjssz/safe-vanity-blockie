@@ -68,6 +68,93 @@ describe('FaceSection', () => {
     expect(props.onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
   })
 
+  // Three arrival states have to be told apart now that this card lives inside Configure's
+  // Advanced disclosure as well as on the results page: a resume link that named filters wants it
+  // open (they decide what gets mined and nobody has seen them), a link that named only a
+  // checkpoint wants Advanced open but this shut (there is nothing carried to look at), and an
+  // ordinary visit wants both shut. `mining` cannot express that — it is one bit about whether a
+  // run exists — so the initial state is the caller's to state outright when it knows.
+  describe('defaultOpen', () => {
+    it('starts open or shut as the caller says, whatever `mining` would have defaulted to', () => {
+      const { unmount } = render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          defaultOpen={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      // No `mining`, so `!mining` would have opened it. The caller said otherwise.
+      expect(trigger().getAttribute('aria-expanded')).toBe('false')
+      expect(screen.queryByRole('checkbox')).toBeNull()
+      unmount()
+
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          mining
+          defaultOpen
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+    })
+
+    // Omitted, nothing changes: `mining` still supplies the default, which is what keeps the
+    // results page's call site exactly as it was.
+    it('falls back to `mining` when the caller does not say', () => {
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+    })
+
+    // The header still wins. `defaultOpen` names where the card STARTS; it is not a standing
+    // instruction that re-closes a card the reader has deliberately opened.
+    it('is only a starting point, not something the header has to fight', async () => {
+      const user = userEvent.setup()
+      render(
+        <FaceSection
+          mouths={['smile']}
+          filters={DEFAULT_FACE_FILTERS}
+          defaultOpen={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      await user.click(trigger())
+      expect(trigger().getAttribute('aria-expanded')).toBe('true')
+      expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
+    })
+  })
+
+  // Nested inside Configure's Advanced disclosure it sits inside another Card, where its own
+  // border and shadow read as clutter rather than structure. The host says so, rather than this
+  // component guessing from a prop about where it is.
+  it('lets the host restyle the card it draws', () => {
+    const { container } = render(
+      <FaceSection
+        mouths={['smile']}
+        filters={DEFAULT_FACE_FILTERS}
+        className="border-0 shadow-none"
+        onMouthsChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+      />,
+    )
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toContain('border-0')
+    expect(card.className).toContain('shadow-none')
+  })
+
   // Named "Filter" now, after two earlier names. "Face" described the expression tiles alone and
   // left the colour filters looking like strays; "Pattern filter" then described the tiles as a
   // pattern, which the colour controls are not part of either.

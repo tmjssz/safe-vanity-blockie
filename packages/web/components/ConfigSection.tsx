@@ -15,6 +15,11 @@ export function ConfigSection({
   initial,
   chainId,
   onSubmit,
+  mouths,
+  filters,
+  onMouthsChange,
+  onFiltersChange,
+  linkCarriedFilters,
 }: {
   /**
    * Prefill for the form: a `?config=…` share link's decoded owners, or the config of the run
@@ -24,6 +29,16 @@ export function ConfigSection({
   /** The chain chosen in the header, which the form submits as part of the config. */
   chainId: number
   onSubmit: (config: MineConfig, run: RunOptions) => void
+  /**
+   * The search — expressions and filters — which the form renders as the Filter card inside its
+   * Advanced disclosure, together with the flag deciding whether that arrives open. Passed straight
+   * through; see ConfigForm, which owns every decision about them.
+   */
+  mouths?: ConfigFormProps['mouths']
+  filters?: ConfigFormProps['filters']
+  onMouthsChange?: ConfigFormProps['onMouthsChange']
+  onFiltersChange?: ConfigFormProps['onFiltersChange']
+  linkCarriedFilters?: boolean
 }) {
   return (
     // Narrow and centred, rather than the full content width the results grid uses. The card is a
@@ -43,7 +58,16 @@ export function ConfigSection({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ConfigForm initial={initial} chainId={chainId} onSubmit={onSubmit} />
+        <ConfigForm
+          initial={initial}
+          chainId={chainId}
+          onSubmit={onSubmit}
+          mouths={mouths}
+          filters={filters}
+          onMouthsChange={onMouthsChange}
+          onFiltersChange={onFiltersChange}
+          linkCarriedFilters={linkCarriedFilters}
+        />
       </CardContent>
     </Card>
   )

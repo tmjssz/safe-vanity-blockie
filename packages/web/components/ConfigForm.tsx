@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
 import {
   type ConfigErrors,
+  type FaceFilters,
   isOwnerAddress,
   type MineConfig,
   ownerAddressError,
@@ -15,6 +16,8 @@ import {
 } from '../lib/config'
 import { useWorkerCount } from '../lib/worker-count'
 import { DecorativeBlockie } from './Blockie'
+import { Explains } from './Explains'
+import { FaceSection } from './FaceSection'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Input } from './ui/input'
@@ -44,6 +47,35 @@ export interface ConfigFormProps {
    * and where a search began is not part of the address it found. See RunOptions.
    */
   onSubmit: (config: MineConfig, run: RunOptions) => void
+  /**
+   * The search itself — which expressions are accepted, and the colour and match floors — rendered
+   * as the Filter card inside the Advanced disclosure below.
+   *
+   * It lives here because the expressions and the floors decide what the miner credits and what the
+   * results grid shows, and until now they were unreachable until a run existed: a resume link's
+   * recipient pressed Start on a search they could not see. Under Advanced they are answerable
+   * before the first nonce is tried, by anyone, link or no link.
+   *
+   * All four together or none: without a value AND a handler the card would be a control that
+   * cannot be used, so `undefined` means "do not offer it" rather than "offer a dead one". Held
+   * by the page, not by this form, because a run keeps them after this card is unmounted.
+   */
+  mouths?: string[]
+  filters?: FaceFilters
+  onMouthsChange?: (mouthNames: string[]) => void
+  onFiltersChange?: (filters: FaceFilters) => void
+  /**
+   * Whether the link this form was seeded from named any part of the search.
+   *
+   * It decides only where two disclosures START. A link that named filters has something to show,
+   * so Advanced and the Filter card both open; a link that named only a checkpoint has the field to
+   * show and nothing else, so Advanced opens and the card stays shut; an ordinary visit has neither
+   * and both stay out of the way.
+   *
+   * Named for its provenance rather than folded into `initial`, because it is not a value to
+   * prefill — it is a fact about where the prefill came from.
+   */
+  linkCarriedFilters?: boolean
 }
 
 /**
@@ -63,7 +95,16 @@ function makeRows(values: string[], nextId: { current: number }): OwnerRow[] {
   return values.map((value) => ({ id: `row-${nextId.current++}`, value, touched: false }))
 }
 
-export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
+export function ConfigForm({
+  initial,
+  chainId,
+  onSubmit,
+  mouths,
+  filters,
+  onMouthsChange,
+  onFiltersChange,
+  linkCarriedFilters,
+}: ConfigFormProps) {
   const nextRowId = useRef(0)
   // Seeded once, from the link's decoded owners — one field per entry, in order. There is always
   // at least one row: `validateMineConfig` requires at least one owner, and a form with no field
@@ -98,7 +139,15 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   // 16-core recipient's ceiling.
   const [startNonceTouched, setStartNonceTouched] = useState(Boolean(initial?.start))
   // Open when there is a seeded value to show. A seeded 0 is the default, so it opens nothing.
-  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.start))
+  //
+  // Carried filters open it too, and have to: they change what gets mined, and a disclosure the
+  // reader never opens is exactly as good as not having been sent them. A link always writes all
+  // five resume params, so in practice a carried search arrives with a checkpoint beside it — but a
+  // truncated link can name a target with no `start`, and filters nobody can see are the failure
+  // this whole arrangement exists to prevent.
+  const [advancedOpen, setAdvancedOpen] = useState(
+    Boolean(initial?.start) || Boolean(linkCarriedFilters),
+  )
 
   // `initial` does not necessarily exist when this form first renders, and the initialisers above
   // only ever see that first render. page.tsx latches the `?config=` link on FIRST SIGHT rather
@@ -127,6 +176,8 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
     setOwners(makeRows(initial.owners?.length ? initial.owners : [''], nextRowId))
     if (initial.threshold !== undefined) setThreshold(initial.threshold)
     if (initial.safeVersion !== undefined) setSafeVersion(initial.safeVersion)
+    // Same reasoning as the initialiser above, for a link that lands one render late.
+    if (linkCarriedFilters) setAdvancedOpen(true)
     if (initial.start) {
       setStartNonceInput(String(initial.start))
       // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
@@ -137,7 +188,7 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
       // subtree's first render comes through a Suspense bailout), so the effect has to say it too.
       setStartNonceTouched(true)
     }
-  }, [initial])
+  }, [initial, linkCarriedFilters])
 
   // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
   // for, and the one they would otherwise paste from the header they just clicked.
@@ -616,7 +667,16 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
             same treatment as FaceSection's panel, whose keyframes these are (app/globals.css). */}
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
           <div className="flex flex-col gap-2 pt-3">
-            <Label htmlFor={startNonceFieldId}>Start from saltNonce</Label>
+            {/* The label and its explanation on one line, the same pairing the filter labels use
+                (see Explains) — so a reader meeting both cards in one visit finds one affordance
+                for "tell me more", not two. */}
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor={startNonceFieldId}>Start from saltNonce</Label>
+              <Explains label="the starting saltNonce">
+                first saltNonce to try; leave empty to start at 0, or paste the resume point from a
+                previous run.
+              </Explains>
+            </div>
             <Input
               id={startNonceFieldId}
               value={startNonceInput}
@@ -639,7 +699,13 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
               // both at once reads the rule and the objection to it in one breath.
               aria-describedby={startNonceComplaint ? startNonceErrorId : startNonceHelpId}
             />
-            <p id={startNonceHelpId} className="text-sm text-muted-foreground">
+            {/* The same sentence, for the accessibility tree only. It cannot simply move into the
+                popover and be done with: Radix unmounts that content while closed, so an
+                `aria-describedby` pointing at it would dangle most of the time — and this is a form
+                field, where losing the description is a real downgrade rather than a cosmetic one.
+                So the popover carries it for the eye and this carries it for assistive tech, and
+                `aria-describedby` below still resolves. */}
+            <p id={startNonceHelpId} className="sr-only">
               first saltNonce to try; leave empty to start at 0, or paste the resume point from a
               previous run.
             </p>
@@ -651,6 +717,34 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
             <p id={startNonceErrorId} role="alert" className="min-h-5 text-sm text-destructive">
               {startNonceComplaint}
             </p>
+            {/* The search itself, under the same disclosure as the checkpoint, because the two are
+                one question — what to mine for, and where to start looking.
+
+                Nested inside Configure's own Card, a second bordered card reads as clutter rather
+                than as structure. Stripped of its border and shadow it keeps its collapsing header
+                and reads as a section of this card instead of a box floating inside one.
+
+                The two descendant rules are doing the real work, and `px-0` on the Card would not:
+                Card carries no horizontal padding itself — its header and content each carry their
+                own `px-6` (see ui/card) — so left alone this section's text would sit indented 24px
+                from the field above it, which on a borderless card reads as a mistake rather than
+                as nesting. Reached by `data-slot` because that is the hook those parts already
+                expose for exactly this.
+
+                No `mining` passed, and that is load-bearing twice over: it leaves the card's
+                FacePicker applying an expression change immediately rather than asking about
+                restarting a search that does not exist, and it is what `defaultOpen` overrides to
+                tell the three arrival states apart (see `linkCarriedFilters`). */}
+            {mouths && filters && onMouthsChange && onFiltersChange && (
+              <FaceSection
+                mouths={mouths}
+                filters={filters}
+                defaultOpen={Boolean(linkCarriedFilters)}
+                className="border-0 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
+                onMouthsChange={onMouthsChange}
+                onFiltersChange={onFiltersChange}
+              />
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

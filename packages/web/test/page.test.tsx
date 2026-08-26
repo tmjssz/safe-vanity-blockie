@@ -53,6 +53,7 @@ const {
   sendTransactionMock,
   waitForTransactionReceiptMock,
   getSafeAddressFromDeploymentTxMock,
+  configFormPropsRef,
   facePickerPropsRef,
   searchParamsRef,
   historySync,
@@ -70,6 +71,21 @@ const {
   sendTransactionMock: vi.fn(),
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
+  // What the page hands the Configure form. The Filter card now lives INSIDE that form's Advanced
+  // disclosure (see ConfigForm), and this file mocks the form — so the page's job is no longer to
+  // mount the card but to pass the search down, and this is where that is observed. What the form
+  // then DOES with these is ConfigForm.test.tsx's business.
+  configFormPropsRef: {
+    current: undefined as
+      | {
+          mouths?: string[]
+          filters?: unknown
+          linkCarriedFilters?: boolean
+          onMouthsChange?: (names: string[]) => void
+          onFiltersChange?: (filters: unknown) => void
+        }
+      | undefined,
+  },
   facePickerPropsRef: {
     current: undefined as
       | { value: string[]; onChange: (names: string[]) => void; filters?: unknown }
@@ -240,39 +256,44 @@ vi.mock('../lib/deep-link', async (importOriginal) => {
 // into the config it submits, so the mock does too: a test that switches the chain before
 // submitting must get a config for the chain it chose, exactly as the app does.
 vi.mock('../components/ConfigForm', () => ({
-  ConfigForm: ({
-    initial,
-    chainId,
-    onSubmit,
-  }: {
+  ConfigForm: (props: {
     initial?: { owners?: string[]; threshold?: number; safeVersion?: string; start?: number }
     chainId: number
     onSubmit: (config: unknown, run: { start: number }) => void
-  }) => (
-    <>
-      <button
-        type="button"
-        data-initial={initial ? JSON.stringify(initial) : ''}
-        // The real form always hands back a `run` alongside the config (see RunOptions); this
-        // mock is not exercising the start-nonce field itself, so it submits the untouched
-        // default rather than the seed it was handed — a real form does the same for a field
-        // nobody opened.
-        onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 0 })}
-      >
-        submit-config
-      </button>
-      {/* Stands in for a submit made after typing into the "Start from saltNonce" field under
+    mouths?: string[]
+    filters?: unknown
+    linkCarriedFilters?: boolean
+    onMouthsChange?: (names: string[]) => void
+    onFiltersChange?: (filters: unknown) => void
+  }) => {
+    configFormPropsRef.current = props
+    const { initial, chainId, onSubmit } = props
+    return (
+      <>
+        <button
+          type="button"
+          data-initial={initial ? JSON.stringify(initial) : ''}
+          // The real form always hands back a `run` alongside the config (see RunOptions); this
+          // mock is not exercising the start-nonce field itself, so it submits the untouched
+          // default rather than the seed it was handed — a real form does the same for a field
+          // nobody opened.
+          onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 0 })}
+        >
+          submit-config
+        </button>
+        {/* Stands in for a submit made after typing into the "Start from saltNonce" field under
           Advanced — a second button rather than a real field, since this mock does not render
           one. Exists so a test can put a resume point into the page's `startNonce` state without
           reaching through the real form, which is exercised separately in ConfigForm.test.tsx. */}
-      <button
-        type="button"
-        onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 41_200_000_000 })}
-      >
-        submit-config-with-start
-      </button>
-    </>
-  ),
+        <button
+          type="button"
+          onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 41_200_000_000 })}
+        >
+          submit-config-with-start
+        </button>
+      </>
+    )
+  },
 }))
 
 vi.mock('../components/FacePicker', () => ({
@@ -391,6 +412,7 @@ beforeEach(() => {
   // and Radix unmounts a closed panel, so a test that forgets to open it would otherwise be
   // handed the PREVIOUS test's picker callbacks and pass against them.
   facePickerPropsRef.current = undefined
+  configFormPropsRef.current = undefined
   linkCandidateOverride.current = undefined
   loadSafeConstantsMock.mockReset().mockResolvedValue(SAFE_SETUP)
   buildDeploymentPlanMock.mockReset()
@@ -3229,57 +3251,60 @@ describe('Page', () => {
       })
     })
 
-    // The Filter card is mounted inside `config && …`, so before Start there was nowhere for a
-    // link's expressions and filters to appear. A recipient pressing Start on values they cannot
-    // see is exactly the failure this app spends its comments avoiding — and these ones silently
-    // change what is mined.
-    it('shows the search on the idle screen, before anything is started', () => {
+    // The Filter card lives inside Configure's Advanced disclosure now, so the page's job here is
+    // to hand the search DOWN rather than to mount a card of its own. A recipient pressing Start on
+    // expressions and floors they cannot see is the failure being prevented; where those values are
+    // rendered is ConfigForm's business, and ConfigForm.test.tsx asserts it.
+    it('hands the link’s search to the form, before anything is started', () => {
       searchParamsRef.current = resumeLinkParams()
 
       render(<Page />)
 
-      // Mounted and open: the picker only renders when the card's panel is open.
-      expect(new Set(facePickerPropsRef.current?.value)).toEqual(new Set(['smile', 'open']))
-      expect(facePickerPropsRef.current?.filters).toEqual({
+      expect(new Set(configFormPropsRef.current?.mouths)).toEqual(new Set(['smile', 'open']))
+      expect(configFormPropsRef.current?.filters).toEqual({
         twoColor: true,
         minContrast: 80,
         minMatch: 90,
       })
-      // Still idle. The card is there to be read, not because a run started.
+      // The flag that opens both disclosures on arrival, because the link named part of the search.
+      expect(configFormPropsRef.current?.linkCarriedFilters).toBe(true)
+      // Still idle. The values are there to be read, not because a run started.
       expect(screen.queryByTestId('mining-view')).toBeNull()
     })
 
     // Editable, not just visible: a value the user can see but not correct is half an answer, and
-    // the card is the same one they will be using a moment later.
-    it('lets the idle card be edited before Start', () => {
+    // these are the same values they will be mining with a moment later.
+    it('lets the search be edited before Start', () => {
       searchParamsRef.current = resumeLinkParams()
       render(<Page />)
 
-      act(() => facePickerPropsRef.current?.onChange(['neutral']))
+      act(() => configFormPropsRef.current?.onMouthsChange?.(['neutral']))
 
-      expect(facePickerPropsRef.current?.value).toEqual(['neutral'])
+      expect(configFormPropsRef.current?.mouths).toEqual(['neutral'])
     })
 
-    // Nothing carried, nothing to show. A card raised over a link that named only a checkpoint would
-    // be a card stating the app's own defaults back at a user who never asked about them — and the
-    // checkpoint itself is already visible in the form's open Advanced section.
-    it('shows no card for a link that carried only a checkpoint', () => {
+    // Nothing carried, nothing to open. The card is still offered — anyone may narrow the target
+    // before starting — but a link that named only a checkpoint must not open it onto the app's own
+    // defaults, which would state them back at someone who never asked about them.
+    it('does not flag carried filters for a link that carried only a checkpoint', () => {
       const params = resumeLinkParams()
       for (const name of ['target', 'two-color', 'min-contrast', 'min-match']) params.delete(name)
       searchParamsRef.current = params
 
       render(<Page />)
 
-      expect(facePickerPropsRef.current).toBeUndefined()
+      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
       expect(seededInitial()?.start).toBe(60_000_016_650_000)
     })
 
-    it('shows no card on an ordinary visit with no link at all', () => {
+    it('does not flag carried filters on an ordinary visit, and derives the defaults', () => {
       searchParamsRef.current = new URLSearchParams()
 
       render(<Page />)
 
-      expect(facePickerPropsRef.current).toBeUndefined()
+      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
+      expect(configFormPropsRef.current?.mouths).toHaveLength(5)
+      expect(configFormPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
     })
 
     // Spec §9: "A resume link plus a saltNonce inside config= cannot be produced by the builder;
@@ -3323,9 +3348,10 @@ describe('Page', () => {
       // saltNonce names, exactly as a plain result link would.
       const dialog = await screen.findByRole('dialog')
       expect(dialog.textContent).toContain(expected.address)
-      // The resume params were ignored outright, not half-applied: no idle Face/Filters card
-      // (nothing carried by `linkedSearch`, because it is undefined here)…
-      expect(facePickerPropsRef.current).toBeUndefined()
+      // The resume params were ignored outright, not half-applied: nothing flagged as carried, so
+      // neither disclosure opens onto a search this link's recipient never asked for (`linkedSearch`
+      // is undefined here, which is the guard under test)…
+      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
       // …and no checkpoint seeded into the form either.
       expect(seededInitial()?.start).toBe(0)
     })

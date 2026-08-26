@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
-import { CARD_WIDTH, ConfigSection } from '../components/ConfigSection'
+import { ConfigSection } from '../components/ConfigSection'
 import { type DeployAttempt, DeployDialog } from '../components/DeployDialog'
 import { DeployInProgressDialog } from '../components/DeployInProgressDialog'
 import type { DeployPhase } from '../components/DeployStatusPill'
@@ -1040,39 +1040,21 @@ function HomeContent() {
             instead of centring it off the top of the page where it cannot be scrolled to. */}
         {!config && (
           <div className="my-auto w-full">
-            <ConfigSection initial={initial} chainId={chainId} onSubmit={submitConfig} />
-          </div>
-        )}
-
-        {/* The search itself, on the idle screen, when a resume link named it.
-
-            Without this a recipient presses Start on expressions and filters they cannot see, and
-            those decide what the run credits and what the grid shows — so a link whose floors were
-            truncated in transit, or whose expressions the recipient would have wanted to change,
-            reaches them as a search that simply behaves differently from the one they were sent.
-            This is FaceSection's own documented other case: `mining` decides one thing, whether the
-            card starts collapsed, and its false branch is described there as "the idle screen,
-            where the filter should be open because nobody has seen it yet."
-
-            Only when the link carried something to show — see `carriesSearch`. A link naming just a
-            checkpoint would otherwise raise a card stating the app's own defaults back at someone
-            who never asked about them, and the checkpoint itself is already on screen in the form's
-            open Advanced section.
-
-            `CARD_WIDTH` is Configure's own measure. The Filter card sizes itself to the content
-            column when a run is on screen, which beside a 520px card would be one card at twice the
-            width of the other; its controls stack below that width exactly as they do on a narrow
-            viewport.
-
-            `mining` is deliberately not passed, and `revealRequest`/`onOpenChange` are not either:
-            both exist for the results grid's empty state, which no idle page has. */}
-        {!config && linkedSearch?.carriesSearch && (
-          <div className={CARD_WIDTH}>
-            <FaceSection
+            {/* The search travels with the config now: the Filter card lives inside this form's
+                Advanced disclosure (see ConfigForm), which is what puts the expressions and the
+                floors in front of a link's recipient BEFORE they press Start. It is offered on
+                every visit, not only for a link — anyone may narrow the target before the first
+                nonce is tried — and `linkCarriedFilters` decides only whether the disclosures
+                arrive open, which is the one thing a link has an opinion about. */}
+            <ConfigSection
+              initial={initial}
+              chainId={chainId}
+              onSubmit={submitConfig}
               mouths={mouths}
               filters={filters}
               onMouthsChange={applyMouths}
               onFiltersChange={setPickedFilters}
+              linkCarriedFilters={linkedSearch?.carriesSearch}
             />
           </div>
         )}
