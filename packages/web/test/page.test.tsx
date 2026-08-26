@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 import Page from '../app/page'
+import { AppTitle, StartOverProvider } from '../components/AppTitle'
 import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import { decodeConfigParam, encodeConfigParam, resumeSearchPath } from '../lib/deep-link'
 
@@ -53,6 +55,7 @@ const {
   sendTransactionMock,
   waitForTransactionReceiptMock,
   getSafeAddressFromDeploymentTxMock,
+  configFormMounts,
   configFormPropsRef,
   facePickerPropsRef,
   searchParamsRef,
@@ -75,6 +78,11 @@ const {
   // ConfigForm), and this file mocks the form — so the page's job is no longer to mount the card but
   // to pass the search down, and this is where that is observed. What the form then DOES with these
   // is ConfigForm.test.tsx's business.
+  // How many times the form has been MOUNTED, as opposed to re-rendered. "Start over" on the idle
+  // screen empties the fields by throwing the instance away and building a new one (see the page's
+  // `formGeneration`), and a props assertion cannot tell that apart from a form that kept its old
+  // state — so this counts instances.
+  configFormMounts: { current: 0 },
   configFormPropsRef: {
     current: undefined as
       | {
@@ -270,6 +278,11 @@ vi.mock('../components/ConfigForm', () => ({
     onFiltersChange?: (filters: unknown) => void
   }) => {
     configFormPropsRef.current = props
+    // Mount only, never on re-render: the empty dependency list is what makes this a count of
+    // instances. See `configFormMounts`.
+    useEffect(() => {
+      configFormMounts.current += 1
+    }, [])
     const { initial, chainId, onSubmit } = props
     return (
       <>
@@ -416,6 +429,7 @@ beforeEach(() => {
   // handed the PREVIOUS test's picker callbacks and pass against them.
   facePickerPropsRef.current = undefined
   configFormPropsRef.current = undefined
+  configFormMounts.current = 0
   linkCandidateOverride.current = undefined
   loadSafeConstantsMock.mockReset().mockResolvedValue(SAFE_SETUP)
   buildDeploymentPlanMock.mockReset()
@@ -558,6 +572,107 @@ describe('Page', () => {
     expect(header.contains(chain)).toBe(true)
     // Visible from the start, with the default chain already named on it.
     expect(chain.textContent).toContain('Ethereum')
+  })
+
+  describe('the app title as a reset on the idle screen', () => {
+    const titleButton = () => screen.queryByRole('button', { name: /^safe vanity blockie$/i })
+
+    /**
+     * The header and the page under one provider, which is how app/layout.tsx arranges them and
+     * how MiningView's suite renders them.
+     *
+     * Not through RootLayout, even though the chain-selector test above does exactly that: that
+     * test only ever QUERIES. RootLayout renders `<html>` and `<body>`, and React mounting those
+     * into a container div leaves an event system that does not dispatch — every click inside it
+     * hangs, whatever it is aimed at. Wrapping just the two components that have to see each other
+     * keeps this about the registration and away from that.
+     */
+    const renderWithHeader = () =>
+      render(
+        <StartOverProvider>
+          <AppTitle />
+          <Page />
+        </StartOverProvider>,
+      )
+
+    // It used to be plain text here, on the grounds that there is nowhere to go back to from the
+    // starting screen. There is: a screen holding a link's prefill, narrowed floors and half-typed
+    // owners, and the title is where a user looks for "start again".
+    it('is a control before anything has been submitted', async () => {
+      renderWithHeader()
+
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+    })
+
+    // Nothing has been mined, so there is nothing a confirmation would protect. The count the page
+    // registers is zero and the dialog's own rule turns that into an immediate reset.
+    it('resets without asking, since there are no results to lose', async () => {
+      const user = userEvent.setup()
+      renderWithHeader()
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+
+      await user.click(titleButton() as HTMLElement)
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    // The reset a user can see: the fields go back to empty. The page cannot talk the form's own
+    // state back down (ConfigForm seeds once, on purpose, so a link cannot overwrite what has since
+    // been typed), so it replaces the instance — and this counts instances rather than asserting on
+    // props, because a form that kept every value would pass a props assertion unchanged.
+    it('empties the form by rebuilding it, with no seed left to refill it', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = new URLSearchParams({ config: encodeConfigParam(CONFIG) })
+      renderWithHeader()
+
+      await waitFor(() => expect(configFormPropsRef.current).toBeDefined())
+      const mountsBefore = configFormMounts.current
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+
+      await user.click(titleButton() as HTMLElement)
+
+      await waitFor(() => expect(configFormMounts.current).toBe(mountsBefore + 1))
+      // And the new instance is handed nothing to seed itself from, so it comes up empty rather
+      // than rebuilding straight back into the link's owners.
+      expect(screen.getByText('submit-config').getAttribute('data-initial')).toBe('')
+    })
+
+    // The other half of a reset that has to be true immediately: a URL still describing the
+    // discarded state is one reload away from putting it all back.
+    it('clears the query it was loaded with', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = new URLSearchParams({ config: encodeConfigParam(CONFIG) })
+      renderWithHeader()
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+
+      await user.click(titleButton() as HTMLElement)
+
+      await waitFor(() => expect(window.location.search).toBe(''))
+    })
+
+    // The gate, which is the safety half of registering at all: the idle entry names a count of
+    // zero and therefore resets without asking, and a live run must never be reachable through it.
+    // The page releases it for the whole run and takes it back on reset.
+    //
+    // The real MiningView registers the run's own entry in the same instant, with the count that
+    // gets confirmed — this file mocks MiningView away, which is why the title goes to plain text
+    // here rather than staying a control. That handover is AppTitle.test.tsx's business; what this
+    // pins is that the page lets go.
+    it('releases the title for the length of a run, and takes it back on reset', async () => {
+      const user = userEvent.setup()
+      renderWithHeader()
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await waitFor(() => expect(titleButton()).toBeNull())
+
+      await user.click(screen.getByRole('button', { name: 'start-over' }))
+
+      await waitFor(() => expect(titleButton()).not.toBeNull())
+      // And asking nothing again, on a screen with nothing left to lose.
+      await user.click(titleButton() as HTMLElement)
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
   })
 
   it('opens the deploy dialog on a result click, in one step, with everything in it', async () => {

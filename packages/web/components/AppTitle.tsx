@@ -28,7 +28,8 @@ interface StartOverEntry {
 
 const StartOverContext = createContext<{
   entry: StartOverEntry | null
-  register: (entry: StartOverEntry | null) => void
+  /** Returns the unregister for exactly this entry. See StartOverProvider. */
+  register: (entry: StartOverEntry) => () => void
 } | null>(null)
 
 /**
@@ -40,20 +41,44 @@ const StartOverContext = createContext<{
  */
 export function StartOverProvider({ children }: { children: ReactNode }) {
   const [entry, setEntry] = useState<StartOverEntry | null>(null)
-  const register = useCallback((next: StartOverEntry | null) => setEntry(next), [])
+
+  /**
+   * Registers an entry and hands back the undo for that one entry.
+   *
+   * Two callers hand this back and forth now — the page while the Configure card is up, MiningView
+   * while a run is — so the unregister compares before it clears: it releases its OWN entry and
+   * leaves anyone else's alone. Returning it, rather than exposing a `register(null)` anybody can
+   * call, is what makes that possible at all.
+   *
+   * Defence in depth rather than a bug being fixed: React runs every teardown in a commit before
+   * every setup, so the handover as the app performs it cannot deliver a stale clear after the new
+   * registration (measured, when this was written, by logging both sides through a submit and a
+   * reset). The compare costs one identity check and means a future arrangement that does not have
+   * that guarantee — a third caller, a registration moved behind a transition — degrades to "last
+   * registration wins" instead of to a dead title.
+   */
+  const register = useCallback((next: StartOverEntry) => {
+    setEntry(next)
+    return () => setEntry((current) => (current === next ? null : current))
+  }, [])
+
   return (
     <StartOverContext.Provider value={{ entry, register }}>{children}</StartOverContext.Provider>
   )
 }
 
 /**
- * Tells the header there is a run to go back from, for exactly as long as the caller is mounted.
- * Unmounting is the deregistration, so nothing has to remember to undo this — the title returns
- * to being a plain heading the moment the run it acted on is gone.
+ * Tells the header what pressing the app name should throw away, for exactly as long as the caller
+ * is mounted. Unmounting is the deregistration, so nothing has to remember to undo this.
+ *
+ * `enabled` is for a caller that outlives the screen it speaks for. MiningView does not need it —
+ * it exists only during a run, so mounting and unmounting say everything — but the page is mounted
+ * throughout and registers the idle reset only while the Configure card is the thing on screen.
+ * Passing `false` is the same as not registering, and releases the entry if this had it.
  *
  * Outside a provider (a bare component in a unit test) it does nothing at all.
  */
-export function useRegisterStartOver(resultCount: number, startOver: () => void) {
+export function useRegisterStartOver(resultCount: number, startOver: () => void, enabled = true) {
   // Written on every render, read only when the user clicks, so a per-tick count never reaches
   // the effect's dependencies — and therefore never re-registers, and never re-renders the header.
   const latest = useRef({ resultCount, startOver })
@@ -61,21 +86,27 @@ export function useRegisterStartOver(resultCount: number, startOver: () => void)
 
   const register = useContext(StartOverContext)?.register
   useEffect(() => {
-    if (!register) return
-    register({
+    if (!register || !enabled) return
+    return register({
       resultCount: () => latest.current.resultCount,
       startOver: () => latest.current.startOver(),
     })
-    return () => register(null)
-  }, [register])
+  }, [register, enabled])
 }
 
 /**
- * The app name in the header, and — once there is a run — the way back to the Configure card. It
- * is the only way back: the status bar's "Start over" was removed, which makes this the whole exit
- * rather than a convenience beside one. Idle it is exactly what it was: static text,
- * server-rendered, nothing to press. There is no initial page to return to from the initial page,
- * and a control that does nothing when pressed teaches people that this header is scenery.
+ * The app name in the header, and the way back to a clean start. During a run that is the only way
+ * back at all: the status bar's "Start over" was removed, which makes this the whole exit rather
+ * than a convenience beside one.
+ *
+ * It is a control on the idle screen too. It used to be plain text there, on the reasoning that
+ * there is no initial page to return to from the initial page and a control that does nothing when
+ * pressed teaches people the header is scenery — but "start again" is not nothing on a screen
+ * holding half-typed owners, narrowed floors and a link's prefill, and a title that is a control
+ * on one screen and dead text on another is a worse lesson than either. It resets the form.
+ *
+ * Still plain text when nobody has registered anything to reset, which is what a bare unit test
+ * and a server render both are.
  */
 export function AppTitle() {
   const entry = useContext(StartOverContext)?.entry ?? null

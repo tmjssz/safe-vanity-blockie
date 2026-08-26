@@ -19,6 +19,15 @@ function Run({ resultCount, onStartOver }: { resultCount: number; onStartOver: (
   return <p>mining</p>
 }
 
+/**
+ * Stands in for the page's own registration: mounted throughout, and speaking for the idle screen
+ * only while `enabled` says it is the screen on show.
+ */
+function Idle({ enabled, onStartOver }: { enabled: boolean; onStartOver: () => void }) {
+  useRegisterStartOver(0, onStartOver, enabled)
+  return <p>configure</p>
+}
+
 /** The header and the page under one provider, as app/layout.tsx arranges them. */
 function App({ children }: { children?: ReactNode }) {
   return (
@@ -30,9 +39,10 @@ function App({ children }: { children?: ReactNode }) {
 }
 
 describe('AppTitle', () => {
-  // Nothing has been mined, so there is nothing to go back to: a control that does nothing when
-  // pressed is worse than the text it replaced.
-  it('is a plain heading before a run exists', () => {
+  // Nothing registered at all, which is a server render and a bare unit test rather than any screen
+  // of the app: the page registers an idle reset the moment it mounts (see its own suite), so a real
+  // visitor meets a control. With nothing to act on there is nothing for a control to do.
+  it('is a plain heading while nothing is registered', () => {
     render(<App />)
 
     expect(title()).toBeDefined()
@@ -109,6 +119,27 @@ describe('AppTitle', () => {
     await userEvent.click(await screen.findByRole('button', { name: /keep mining/i }))
 
     expect(onStartOver).not.toHaveBeenCalled()
+  })
+
+  // How the page steps aside for a run without unmounting: it is mounted the whole time, so it
+  // cannot use mounting to say which screen is on show.
+  it('releases the entry when a registrant is disabled', async () => {
+    const resetForm = vi.fn()
+    const { rerender } = render(
+      <App>
+        <Idle enabled onStartOver={resetForm} />
+      </App>,
+    )
+    expect(titleButton()).toBeDefined()
+
+    rerender(
+      <App>
+        <Idle enabled={false} onStartOver={resetForm} />
+      </App>,
+    )
+
+    expect(noTitleButton()).toBeNull()
+    expect(resetForm).not.toHaveBeenCalled()
   })
 
   // Nothing to lose yet, so nothing to ask about. The rule lives in the dialog hook rather than

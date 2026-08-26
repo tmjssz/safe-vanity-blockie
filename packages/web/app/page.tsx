@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useRegisterStartOver } from '../components/AppTitle'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
 import { type DeployAttempt, DeployDialog } from '../components/DeployDialog'
@@ -750,6 +751,9 @@ function HomeContent() {
     // So the writer has nothing left to put back, and its next write comes from a form that has
     // just been rebuilt empty.
     setFormDraft(undefined)
+    // And this is what rebuilds it, for the reset that arrives while it is already on screen. See
+    // `formGeneration`. A no-op during a run, where the form is unmounted and mounts empty anyway.
+    setFormGeneration((generation) => generation + 1)
     // And the address bar itself, immediately rather than on the writer's next tick: a URL still
     // describing the discarded run is one reload away from restoring it, and the reset has to be
     // true the instant it is asked for. Path and fragment are kept, which is the same rule every
@@ -758,6 +762,22 @@ function HomeContent() {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
     }
   }, [chainId, closeSelection])
+
+  /**
+   * Makes the app title a control on the idle screen too, standing for the same reset MiningView
+   * registers during a run.
+   *
+   * Gated on there being no run, because MiningView registers the run's own entry with the count
+   * that has to be confirmed, and only one entry is live at a time. The two swap over on submit and
+   * on reset; whichever registers last wins, and neither can blank the other on its way out (see
+   * StartOverProvider).
+   *
+   * A count of zero, which is the honest number: nothing has been mined on this screen, so there is
+   * nothing to lose that a confirmation could protect. The dialog's own rule turns that into an
+   * immediate reset with no question asked, the same as pressing it during a run that has not found
+   * anything yet.
+   */
+  useRegisterStartOver(0, startOver, !config)
 
   // Starting a search. With a run already on screen this is a RESTART, and the results below
   // belong to the config that produced them — so the old run is discarded exactly as "Start over"
@@ -773,6 +793,23 @@ function HomeContent() {
    * bar would each drop the other's params.
    */
   const [formDraft, setFormDraft] = useState<{ config?: MineConfig; start: number } | undefined>()
+
+  /**
+   * Bumped by `startOver`, and used as the Configure card's `key` — which is to say: the reset
+   * remounts the form.
+   *
+   * Clearing the state above is not enough on its own. ConfigForm seeds from `initial` exactly once
+   * and then guards that with its own `seeded`/`edited` refs, deliberately, so that a link's
+   * prefill cannot come back and overwrite what the user has since typed. The consequence is that
+   * handing it `initial === undefined` later does nothing at all: the owner rows, the threshold and
+   * the checkpoint field are the form's own state by then, and nothing outside it can put them back.
+   *
+   * A reset from a run never needed this, which is why it was never here: the form was unmounted for
+   * the whole run and a fresh mount is empty for free. Resetting from the idle screen is the case
+   * where the form is already on screen and has to be emptied while the user watches, so the reset
+   * throws the instance away instead of trying to talk it back to its defaults field by field.
+   */
+  const [formGeneration, setFormGeneration] = useState(0)
 
   /**
    * Keeps the address bar in step with the start screen, so a reload does not cost the reader their
@@ -1154,6 +1191,9 @@ function HomeContent() {
                 nonce is tried — and `linkNarrowedFilters` decides only whether that card arrives
                 open, which is the one thing a link has an opinion about. */}
             <ConfigSection
+              // Throwing the instance away is how "Start over" empties a form that is already on
+              // screen; see `formGeneration`.
+              key={formGeneration}
               initial={initial}
               chainId={chainId}
               onSubmit={submitConfig}
