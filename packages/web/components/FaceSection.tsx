@@ -30,8 +30,8 @@ export interface FaceSectionProps {
   /**
    * Whether the card starts open, when the host knows better than `mining` does.
    *
-   * Three arrival states have to be told apart now that this card lives inside Configure's
-   * Advanced disclosure as well as on the results page: a resume link that named filters wants it
+   * Three arrival states have to be told apart now that this card lives on Configure's start
+   * screen as well as on the results page: a resume link that named filters wants it
    * open, because those filters decide what gets mined and nobody has seen them yet; a link that
    * named only a checkpoint wants Advanced open but this shut, because nothing was carried to look
    * at; and an ordinary visit wants both shut. One bit about whether a run exists cannot say which
@@ -47,9 +47,9 @@ export interface FaceSectionProps {
    */
   defaultOpen?: boolean
   /**
-   * Classes for the Card itself. Nested inside Configure's Advanced disclosure this sits inside
-   * another Card, where its own border and shadow read as clutter rather than structure — so the
-   * host that put it there says so, rather than this component guessing where it is from a prop.
+   * Classes for the Card itself. Nested on Configure's start screen this sits inside another Card,
+   * where its own border and shadow read as clutter rather than structure — so the host that put it
+   * there says so, rather than this component guessing where it is from a prop.
    */
   className?: string
   /**

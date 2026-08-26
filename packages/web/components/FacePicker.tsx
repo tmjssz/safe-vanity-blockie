@@ -110,7 +110,7 @@ export function FacePicker({
           `@4xl` (896px) rather than the `lg:` this used to be, and the change from a viewport
           breakpoint to a container one is the point. This card is rendered at two very different
           widths — about 1072px inside the results page's card, and about 472px inside Configure's
-          Advanced disclosure on the start screen — and `lg:` cannot tell them apart: it fires on a
+          card on the start screen — and `lg:` cannot tell them apart: it fires on a
           wide desktop whatever the box around it is doing, which put two columns into 472px and
           left both of them too narrow to read. A container query asks the only question that
           actually decides the answer.

@@ -1040,12 +1040,12 @@ function HomeContent() {
             instead of centring it off the top of the page where it cannot be scrolled to. */}
         {!config && (
           <div className="my-auto w-full">
-            {/* The search travels with the config now: the Filter card lives inside this form's
+            {/* The search travels with the config now: the Filter card sits above this form's
                 Advanced disclosure (see ConfigForm), which is what puts the expressions and the
                 floors in front of a link's recipient BEFORE they press Start. It is offered on
                 every visit, not only for a link — anyone may narrow the target before the first
-                nonce is tried — and `linkCarriedFilters` decides only whether the disclosures
-                arrive open, which is the one thing a link has an opinion about. */}
+                nonce is tried — and `linkCarriedFilters` decides only whether that card arrives
+                open, which is the one thing a link has an opinion about. */}
             <ConfigSection
               initial={initial}
               chainId={chainId}

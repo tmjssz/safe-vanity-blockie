@@ -94,50 +94,33 @@ describe('the starting saltNonce explanation', () => {
   })
 })
 
-describe('the filter card under Advanced', () => {
+describe('the filter card on the start screen', () => {
   // The expressions and the colour filters decide what the miner credits and what the grid shows.
   // Before this they were unreachable until a run existed, so a resume link's recipient pressed
   // Start on a search they could not see.
-  it('is offered inside the disclosure when the host passes the filters', async () => {
-    const user = userEvent.setup()
+  //
+  // Above the Advanced disclosure, not inside it: this is not an advanced question, and a
+  // disclosure would hide the very values a link was sent to communicate. So it is reachable with
+  // nothing pressed.
+  it('is offered without anything having to be opened first', () => {
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
 
-    await user.click(advancedToggle())
-
     expect(filterToggle()).toBeDefined()
+    // And genuinely outside the disclosure, rather than merely rendered before it: Radix unmounts
+    // a closed panel, so a card still inside a shut Advanced would not be here at all.
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
   })
 
-  // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
-  // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
-  // the field above it. On a card stripped of its border that reads as a mistake, not as nesting.
-  it('sits flush with the field above it rather than indented', async () => {
-    const user = userEvent.setup()
-    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
-
-    await user.click(advancedToggle())
-
-    // A class contract, not a measurement: jsdom loads no stylesheet, so `getComputedStyle` here
-    // knows nothing about what any Tailwind class means and would report an empty padding whether
-    // the rule were present or absent. What can be held on to is that the neutralising rules reach
-    // the card at all — a bare `px-0` would not, which is the mistake being guarded against.
-    const card = container.querySelector('[data-slot="card"]') as HTMLElement
-    expect(card.className).toContain('[&_[data-slot=card-header]]:px-0')
-    expect(card.className).toContain('[&_[data-slot=card-content]]:px-0')
-  })
-
-  it('is absent when the host passes no filters', async () => {
-    const user = userEvent.setup()
+  it('is absent when the host passes no filters', () => {
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-    await user.click(advancedToggle())
 
     expect(screen.queryByRole('button', { name: /^filter$/i })).toBeNull()
   })
 
-  // Three arrival states, told apart. A link that named filters has something to show, so both
-  // open; a link that named only a checkpoint has the field to show and nothing else; an ordinary
-  // visit has neither and stays out of the way.
-  it('opens itself and the disclosure when a link carried filters', () => {
+  // Three arrival states, told apart. A link that named filters has something to show, so the card
+  // opens; a link that named only a checkpoint has the field to show and nothing else; an ordinary
+  // visit has neither and both stay out of the way.
+  it('opens itself when a link carried filters', () => {
     render(
       <ConfigForm
         chainId={1}
@@ -148,11 +131,31 @@ describe('the filter card under Advanced', () => {
       />,
     )
 
-    expect(advancedToggle().getAttribute('aria-expanded')).toBe('true')
     expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+    // Advanced is open here because of the checkpoint, which is now the only thing in it.
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('opens the disclosure but not itself when a link carried only a checkpoint', () => {
+  // The two disclosures are independent now that they hold different things. A link that names a
+  // target but no checkpoint is only reachable by hand-editing — `resumeSearchPath` always writes
+  // all five params — but it pins the rule: opening Advanced for it would present an empty field as
+  // though it had something to say.
+  it('opens itself without opening the disclosure when no checkpoint was carried', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        linkCarriedFilters
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+    expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('stays shut when a link carried only a checkpoint', () => {
     render(
       <ConfigForm
         chainId={1}
@@ -166,15 +169,26 @@ describe('the filter card under Advanced', () => {
     expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('leaves both shut on an ordinary visit, and still shut when the disclosure is opened', async () => {
-    const user = userEvent.setup()
+  it('leaves both shut on an ordinary visit', () => {
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
 
     expect(advancedToggle().getAttribute('aria-expanded')).toBe('false')
-
-    await user.click(advancedToggle())
-
     expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
+  // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
+  // everything around it. On a card stripped of its border that reads as a mistake, not as nesting.
+  it('sits flush with the fields around it rather than indented', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    // A class contract, not a measurement: jsdom loads no stylesheet, so `getComputedStyle` here
+    // knows nothing about what any Tailwind class means and would report an empty padding whether
+    // the rule were present or absent. What can be held on to is that the neutralising rules reach
+    // the card at all — a bare `px-0` would not, which is the mistake being guarded against.
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toContain('[&_[data-slot=card-header]]:px-0')
+    expect(card.className).toContain('[&_[data-slot=card-content]]:px-0')
   })
 })
 

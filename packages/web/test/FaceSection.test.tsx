@@ -137,9 +137,9 @@ describe('FaceSection', () => {
     })
   })
 
-  // Nested inside Configure's Advanced disclosure it sits inside another Card, where its own
-  // border and shadow read as clutter rather than structure. The host says so, rather than this
-  // component guessing from a prop about where it is.
+  // Nested on Configure's start screen it sits inside another Card, where its own border and
+  // shadow read as clutter rather than structure. The host says so, rather than this component
+  // guessing from a prop about where it is.
   it('lets the host restyle the card it draws', () => {
     const { container } = render(
       <FaceSection

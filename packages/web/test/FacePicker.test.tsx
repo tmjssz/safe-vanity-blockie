@@ -81,7 +81,7 @@ function expectedCells(mouthName: string): string {
 
 describe('FacePicker', () => {
   // The card is rendered at two very different widths: ~1072px inside the results page's card,
-  // and ~472px inside Configure's Advanced disclosure on the start screen. A VIEWPORT breakpoint
+  // and ~472px inside Configure's card on the start screen. A VIEWPORT breakpoint
   // cannot tell those apart — `lg:` fires on a wide desktop regardless of how narrow the box
   // actually is, which put two columns into 472px and crushed both. So the split is asked of the
   // CONTAINER instead.

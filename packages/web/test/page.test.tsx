@@ -71,10 +71,10 @@ const {
   sendTransactionMock: vi.fn(),
   waitForTransactionReceiptMock: vi.fn(),
   getSafeAddressFromDeploymentTxMock: vi.fn(),
-  // What the page hands the Configure form. The Filter card now lives INSIDE that form's Advanced
-  // disclosure (see ConfigForm), and this file mocks the form — so the page's job is no longer to
-  // mount the card but to pass the search down, and this is where that is observed. What the form
-  // then DOES with these is ConfigForm.test.tsx's business.
+  // What the page hands the Configure form. The Filter card now lives INSIDE that form (see
+  // ConfigForm), and this file mocks the form — so the page's job is no longer to mount the card but
+  // to pass the search down, and this is where that is observed. What the form then DOES with these
+  // is ConfigForm.test.tsx's business.
   configFormPropsRef: {
     current: undefined as
       | {
@@ -3251,8 +3251,8 @@ describe('Page', () => {
       })
     })
 
-    // The Filter card lives inside Configure's Advanced disclosure now, so the page's job here is
-    // to hand the search DOWN rather than to mount a card of its own. A recipient pressing Start on
+    // The Filter card lives on Configure's start screen now, so the page's job here is to hand the
+    // search DOWN rather than to mount a card of its own. A recipient pressing Start on
     // expressions and floors they cannot see is the failure being prevented; where those values are
     // rendered is ConfigForm's business, and ConfigForm.test.tsx asserts it.
     it('hands the link’s search to the form, before anything is started', () => {

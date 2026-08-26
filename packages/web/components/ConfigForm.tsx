@@ -67,10 +67,12 @@ export interface ConfigFormProps {
   /**
    * Whether the link this form was seeded from named any part of the search.
    *
-   * It decides only where two disclosures START. A link that named filters has something to show,
-   * so Advanced and the Filter card both open; a link that named only a checkpoint has the field to
-   * show and nothing else, so Advanced opens and the card stays shut; an ordinary visit has neither
-   * and both stay out of the way.
+   * It decides one thing: whether the Filter card above arrives open. A link that named filters has
+   * something to show; a link that named only a checkpoint has nothing to show in there, and an
+   * ordinary visit has neither — both leave it shut, one row of header and no more.
+   *
+   * It says nothing about the Advanced disclosure, which now holds only the checkpoint and opens on
+   * `initial.start` alone. It used to open for carried filters too, back when they lived inside it.
    *
    * Named for its provenance rather than folded into `initial`, because it is not a value to
    * prefill — it is a fact about where the prefill came from.
@@ -140,14 +142,11 @@ export function ConfigForm({
   const [startNonceTouched, setStartNonceTouched] = useState(Boolean(initial?.start))
   // Open when there is a seeded value to show. A seeded 0 is the default, so it opens nothing.
   //
-  // Carried filters open it too, and have to: they change what gets mined, and a disclosure the
-  // reader never opens is exactly as good as not having been sent them. A link always writes all
-  // five resume params, so in practice a carried search arrives with a checkpoint beside it — but a
-  // truncated link can name a target with no `start`, and filters nobody can see are the failure
-  // this whole arrangement exists to prevent.
-  const [advancedOpen, setAdvancedOpen] = useState(
-    Boolean(initial?.start) || Boolean(linkCarriedFilters),
-  )
+  // Carried filters do NOT open it, and used to: they were inside this disclosure, so hiding them
+  // would have defeated the point of sending them. They sit above it now, behind a header of their
+  // own, so the only thing left in here is the checkpoint — and opening it for a link that named no
+  // checkpoint would present an empty field as though it had something to say.
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.start))
 
   // `initial` does not necessarily exist when this form first renders, and the initialisers above
   // only ever see that first render. page.tsx latches the `?config=` link on FIRST SIGHT rather
@@ -176,8 +175,6 @@ export function ConfigForm({
     setOwners(makeRows(initial.owners?.length ? initial.owners : [''], nextRowId))
     if (initial.threshold !== undefined) setThreshold(initial.threshold)
     if (initial.safeVersion !== undefined) setSafeVersion(initial.safeVersion)
-    // Same reasoning as the initialiser above, for a link that lands one render late.
-    if (linkCarriedFilters) setAdvancedOpen(true)
     if (initial.start) {
       setStartNonceInput(String(initial.start))
       // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
@@ -188,7 +185,7 @@ export function ConfigForm({
       // subtree's first render comes through a Suspense bailout), so the effect has to say it too.
       setStartNonceTouched(true)
     }
-  }, [initial, linkCarriedFilters])
+  }, [initial])
 
   // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
   // for, and the one they would otherwise paste from the header they just clicked.
@@ -626,6 +623,43 @@ export function ConfigForm({
           `open` is not simply `advancedOpen`: while the value is invalid the Start button is
           disabled and its reason lives in here, so collapsing over the complaint would leave a
           dead button with nothing on screen to fix. */}
+      {/* The search — what to mine for — above the disclosure that holds where to start looking.
+
+          Offered on every visit rather than only for a link: the expressions and the colour and
+          match floors decide what the miner credits and what the results grid shows, and until they
+          were reachable from here nobody could answer them until a run already existed. A resume
+          link's recipient in particular pressed Start on a search they could not see.
+
+          Out in the open rather than behind Advanced, because it is not an advanced question — it
+          is the other half of what the form is for, and a disclosure would hide the very values a
+          link was sent to communicate. It brings its own collapsing header, so it costs one row
+          when nobody wants it (see `defaultOpen`, which is what tells the three arrival states
+          apart).
+
+          Nested inside Configure's own Card, a second bordered card reads as clutter rather than as
+          structure. Stripped of its border and shadow it reads as a section of this card instead of
+          a box floating inside one.
+
+          The two descendant rules are doing the real work, and `px-0` on the Card would not: Card
+          carries no horizontal padding itself — its header and content each carry their own `px-6`
+          (see ui/card) — so left alone this section's text would sit indented 24px from everything
+          around it, which on a borderless card reads as a mistake rather than as nesting. Reached
+          by `data-slot` because that is the hook those parts already expose for exactly this.
+
+          No `mining` passed, and that is load-bearing: it leaves this card's FacePicker applying an
+          expression change immediately rather than asking about restarting a search that does not
+          exist. */}
+      {mouths && filters && onMouthsChange && onFiltersChange && (
+        <FaceSection
+          mouths={mouths}
+          filters={filters}
+          defaultOpen={Boolean(linkCarriedFilters)}
+          className="border-0 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
+          onMouthsChange={onMouthsChange}
+          onFiltersChange={onFiltersChange}
+        />
+      )}
+
       <Collapsible
         open={advancedOpen || Boolean(startNonceComplaint)}
         // A press while a complaint is showing is REFUSED, not deferred: Radix still fires this
@@ -717,34 +751,6 @@ export function ConfigForm({
             <p id={startNonceErrorId} role="alert" className="min-h-5 text-sm text-destructive">
               {startNonceComplaint}
             </p>
-            {/* The search itself, under the same disclosure as the checkpoint, because the two are
-                one question — what to mine for, and where to start looking.
-
-                Nested inside Configure's own Card, a second bordered card reads as clutter rather
-                than as structure. Stripped of its border and shadow it keeps its collapsing header
-                and reads as a section of this card instead of a box floating inside one.
-
-                The two descendant rules are doing the real work, and `px-0` on the Card would not:
-                Card carries no horizontal padding itself — its header and content each carry their
-                own `px-6` (see ui/card) — so left alone this section's text would sit indented 24px
-                from the field above it, which on a borderless card reads as a mistake rather than
-                as nesting. Reached by `data-slot` because that is the hook those parts already
-                expose for exactly this.
-
-                No `mining` passed, and that is load-bearing twice over: it leaves the card's
-                FacePicker applying an expression change immediately rather than asking about
-                restarting a search that does not exist, and it is what `defaultOpen` overrides to
-                tell the three arrival states apart (see `linkCarriedFilters`). */}
-            {mouths && filters && onMouthsChange && onFiltersChange && (
-              <FaceSection
-                mouths={mouths}
-                filters={filters}
-                defaultOpen={Boolean(linkCarriedFilters)}
-                className="border-0 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
-                onMouthsChange={onMouthsChange}
-                onFiltersChange={onFiltersChange}
-              />
-            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

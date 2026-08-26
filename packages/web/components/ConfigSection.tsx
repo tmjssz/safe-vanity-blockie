@@ -30,9 +30,9 @@ export function ConfigSection({
   chainId: number
   onSubmit: (config: MineConfig, run: RunOptions) => void
   /**
-   * The search — expressions and filters — which the form renders as the Filter card inside its
-   * Advanced disclosure, together with the flag deciding whether that arrives open. Passed straight
-   * through; see ConfigForm, which owns every decision about them.
+   * The search — expressions and filters — which the form renders as the Filter card above its
+   * Advanced disclosure, together with the flag deciding whether that card arrives open. Passed
+   * straight through; see ConfigForm, which owns every decision about them.
    */
   mouths?: ConfigFormProps['mouths']
   filters?: ConfigFormProps['filters']
