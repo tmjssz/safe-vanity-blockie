@@ -257,17 +257,24 @@ function HomeContent() {
   // the card is unmounted for the whole run: there is no window in which the two can diverge.
   const [lastSubmitted, setLastSubmitted] = useState<MineConfig | undefined>()
 
-  // A rejected resume link pre-fills NOTHING, its valid `config=` included. See the alert above:
-  // the link is judged as one thing, because half a search is a different search.
+  // A rejected resume link pre-fills NOTHING, its valid half included — in BOTH directions. See
+  // the alert above: the link is judged as one thing, because half a search is a different search.
+  // `linked` here is undefined when the RESUME half errors, even though `config=` decoded fine;
+  // `linkedSearch` two lines down is undefined when the CONFIG half errors, even though the resume
+  // params decoded fine. Losing either half of that symmetry mines a search the link did not
+  // describe while the alert says the link could not be used.
   const linked = linkDismissed || resumeResult?.error ? undefined : linkResult?.config
-  // Gated on dismissal the same way `linked` is: "Start over" throws the link away, and what it
-  // carried with it.
+  // Gated on dismissal and on the CONFIG half's error the same way `linked` above is gated on
+  // dismissal and the RESUME half's error: "Start over" throws the link away, and what it carried
+  // with it, and a `config=` this app could not decode must not leave the resume params still
+  // seeding the form underneath the rejection.
   //
   // A link carrying BOTH kinds is a result link. `resumeSearchPath` cannot produce one (it writes
   // no saltNonce), so this only arises hand-made — and then the resume params are ignored outright
   // rather than half-applied, because a page reconstructing someone's mined address while quietly
   // pre-filling a different search underneath it is worse than either alone.
-  const linkedSearch = linkDismissed || linked?.saltNonce ? undefined : resumeResult?.resume
+  const linkedSearch =
+    linkDismissed || linkResult?.error || linked?.saltNonce ? undefined : resumeResult?.resume
   // The chain no longer travels with the other three: those are Configure's fields, this is the
   // header's control, so it is answered here instead of in the form. A share link puts the whole
   // config on screen, chain included, or none of it. (A recipient meets the sender's chain, which
@@ -1010,10 +1017,14 @@ function HomeContent() {
         {!config && !linkDismissed && (linkResult?.error || resumeResult?.error) && (
           <Alert variant="destructive">
             <AlertDescription>
-              {/* One alert for both halves of one link. Two would be two things to read about a
-                  single paste, and only ever one of them is populated: a malformed param rejects
-                  the whole link, config included. */}
-              This share link could not be used: {linkResult?.error ?? resumeResult?.error}
+              {/* One alert for both halves of one link, but not one message: a hand-made or
+                  mangled link can have an invalid `config=` AND an invalid resume param at once
+                  (an email client wrapping a long `config=` mid-blob is enough, since the five
+                  resume params sit after it), and showing only one would have the reader fix that
+                  fault and meet the other on the next load. Both errors render, joined, when both
+                  are populated. */}
+              This share link could not be used:{' '}
+              {[linkResult?.error, resumeResult?.error].filter(Boolean).join(' ')}
             </AlertDescription>
           </Alert>
         )}

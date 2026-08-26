@@ -3111,6 +3111,35 @@ describe('Page', () => {
       expect(seededInitial()).toBeUndefined()
     })
 
+    // The mirror of the test above: this time it is the CONFIG half that is broken and the resume
+    // half that decodes cleanly. The rejection has to be symmetric — a bad `config=` must drop the
+    // resume half too, not leave it half-applying a search to a form the link's own config never
+    // reached. Before the fix, `linkedSearch` was gated only on `linked?.saltNonce`, which is
+    // undefined whenever `linked` itself is (as it is here), so the resume half slipped through:
+    // the idle Face/Filters card mounted pre-set to the link's expressions and floors while the
+    // alert simultaneously said the link could not be used.
+    it('pre-fills nothing at all when the config half is rejected, even with valid resume params', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = resumeLinkParams({ config: 'not-base64' })
+
+      render(<Page />)
+
+      const alert = screen.getByText(/this share link could not be used/i)
+      expect(alert.textContent).toMatch(/could not decode the shared config/i)
+      // No idle Face/Filters card raised from the still-valid resume params.
+      expect(facePickerPropsRef.current).toBeUndefined()
+      // No checkpoint seeded into the form either.
+      expect(seededInitial()).toBeUndefined()
+
+      // And once the recipient submits their own config, what mines is the app's defaults — not
+      // the rejected link's expressions and filters.
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await openFilterCard(user)
+
+      expect(facePickerPropsRef.current?.value).toHaveLength(5)
+      expect(facePickerPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
+    })
+
     it('reports an unknown expression the same way', () => {
       searchParamsRef.current = resumeLinkParams({ target: 'grin' })
 
