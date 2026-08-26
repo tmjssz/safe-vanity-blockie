@@ -9,9 +9,16 @@ import {
   type FaceSpec,
   isTwoColor,
   makeScorer,
+  mouthNamesForTarget,
   type SafeConstants,
 } from '@safe-vanity-blockie/core'
-import { type FaceFilters, type MineConfig, validateMineConfig } from './config'
+import {
+  DEFAULT_FACE_FILTERS,
+  type FaceFilters,
+  type MineConfig,
+  validateMineConfig,
+} from './config'
+import { CONTRAST_MAX } from './contrast-preview'
 
 export interface SharedConfig {
   owners: string[]
@@ -206,6 +213,155 @@ export function decodeConfigParam(param: string): { config?: SharedConfig; error
       ...(candidate.saltNonce === undefined ? {} : { saltNonce: candidate.saltNonce as string }),
     },
   }
+}
+
+/** A perfect match, and the top of the match slider. The same 100 FacePicker's slider stops at. */
+const MATCH_MAX = 100
+
+/** What a resume link said, once every param it carried has been checked. */
+export interface DecodedResume {
+  /** Absent when the link carried no `start=`. */
+  start?: number
+  /** Absent when the link carried no `target=`. */
+  mouths?: string[]
+  /**
+   * COMPLETE, or absent. Any filter param that was present is applied over DEFAULT_FACE_FILTERS
+   * here, so the page never merges a partial and never holds two notions of what an unstated
+   * filter means — and the notion that lost would be the silent one, mining to a standard nobody
+   * chose.
+   */
+  filters?: FaceFilters
+  /**
+   * Whether the link said anything about the search ITSELF — expressions or filters, as opposed to
+   * merely where to start. It is what decides whether the idle screen mounts the Filter card, and
+   * it is answered here rather than recomputed at that call site: a link carrying only a
+   * checkpoint would otherwise raise a card with nothing in it to show.
+   */
+  carriesSearch: boolean
+}
+
+const DIGITS = /^\d+$/
+
+/**
+ * Reads a whole number param, or says why it could not.
+ *
+ * Digits only, which turns away every format a number is legitimately written in elsewhere — a
+ * grouped `1,000`, an exponent, hex, a leading `+` — rather than letting Number silently
+ * reinterpret it as some other value. Same reasoning as `parseStartNonce` in lib/config, and
+ * deliberately the same strictness: these params are read back from links this app wrote.
+ */
+function readBounded(
+  raw: string,
+  max: number,
+  message: string,
+): { value?: number; error?: string } {
+  if (!DIGITS.test(raw)) return { error: message }
+  const value = Number(raw)
+  if (value > max) return { error: message }
+  return { value }
+}
+
+/**
+ * The five resume params, validated.
+ *
+ * A link is untrusted input, so nothing here is coerced or clamped: a value out of range is
+ * reported, never quietly moved to the nearest legal one. And ONE bad param rejects the whole
+ * link, `config=` included — the rule `decodeConfigParam` already applies to a bad owner entry.
+ * Keeping the valid half of a malformed link would mean starting a search the link did not
+ * describe, which is the failure this whole path exists to prevent; a recipient of a rejected link
+ * still has an empty form in front of them, and one sentence saying what was wrong.
+ *
+ * Each param is independently OPTIONAL, though — present means validated, absent means the app's
+ * own default. `resumeSearchPath` always writes all five, so a subset only arises from a truncated
+ * or hand-edited URL, and the answer to that is the Filter card the idle screen now shows (which
+ * states the resulting search before anything is mined) rather than a strictness that would reject
+ * a link for being shortened.
+ */
+export function decodeResumeParams(params: URLSearchParams): {
+  resume?: DecodedResume
+  error?: string
+} {
+  const resume: DecodedResume = { carriesSearch: false }
+
+  const start = params.get('start')
+  if (start !== null) {
+    if (!DIGITS.test(start)) {
+      return { error: 'The start nonce in this link is not a decimal integer.' }
+    }
+    // BigInt, for the reason parseStartNonce gives: the bound is a claim about exact integers, and
+    // comparing it as one leaves no float reasoning for the next reader to redo.
+    if (BigInt(start) > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return { error: 'The start nonce in this link is out of range.' }
+    }
+    resume.start = Number(start)
+  }
+
+  const target = params.get('target')
+  if (target !== null) {
+    try {
+      // core's parser, not a second one here. It is the other half of the round trip
+      // `targetNameForMouths` opened, and a `--target` at the prompt and a `target=` in a URL have
+      // to mean the same thing — which two parsers guarantee only until one of them is edited.
+      resume.mouths = mouthNamesForTarget(target)
+    } catch (cause) {
+      // core's own message, which names both alphabets (the templates and the expressions) and so
+      // explains a wrong separator as well as an unknown name. Prefixed rather than replaced: the
+      // reader is looking at a link, and "unknown target" alone does not say where it came from.
+      return {
+        error: `This link names an unknown expression: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+      }
+    }
+    resume.carriesSearch = true
+  }
+
+  // Built over the defaults, so what comes back is a COMPLETE FaceFilters or nothing — see the
+  // field's own comment. `filters` is only attached if one of the three actually appeared.
+  const filters: FaceFilters = { ...DEFAULT_FACE_FILTERS }
+  let sawFilter = false
+
+  const twoColor = params.get('two-color')
+  if (twoColor !== null) {
+    if (twoColor !== '1' && twoColor !== '0') {
+      return { error: 'The two-colour filter in this link is not 1 or 0.' }
+    }
+    filters.twoColor = twoColor === '1'
+    sawFilter = true
+  }
+
+  const minContrast = params.get('min-contrast')
+  if (minContrast !== null) {
+    // The bound is CONTRAST_MAX itself, interpolated into the message, so the sentence a user reads
+    // and the limit that rejected them cannot come apart. It is the slider's own ceiling.
+    const read = readBounded(
+      minContrast,
+      CONTRAST_MAX,
+      `The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`,
+    )
+    if (read.error) return { error: read.error }
+    filters.minContrast = read.value as number
+    sawFilter = true
+  }
+
+  const minMatch = params.get('min-match')
+  if (minMatch !== null) {
+    const read = readBounded(
+      minMatch,
+      MATCH_MAX,
+      `The match floor in this link is out of range (0-${MATCH_MAX}).`,
+    )
+    if (read.error) return { error: read.error }
+    filters.minMatch = read.value as number
+    sawFilter = true
+  }
+
+  if (sawFilter) {
+    resume.filters = filters
+    resume.carriesSearch = true
+  }
+
+  return { resume }
 }
 
 /**

@@ -11,9 +11,12 @@ import {
   makeScorer,
 } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_FACE_FILTERS } from '../lib/config'
+import { CONTRAST_MAX } from '../lib/contrast-preview'
 import {
   candidateFromSaltNonce,
   decodeConfigParam,
+  decodeResumeParams,
   encodeConfigParam,
   resumeSearchPath,
   shareConfigPath,
@@ -292,5 +295,153 @@ describe('candidateFromSaltNonce', () => {
     expect(candidate.score).toBe(makeScorer(face)(data))
     expect(candidate.maxScore).toBe(face.maxScore)
     expect(candidate.regions).toEqual(describeMatch(face, data).regions)
+  })
+})
+
+/** The five params as a link writes them, so a test can knock out one field at a time. */
+function resumeParams(overrides: Record<string, string> = {}): URLSearchParams {
+  return new URLSearchParams({
+    start: '60000016650000',
+    target: 'smile,open',
+    'two-color': '1',
+    'min-contrast': '80',
+    'min-match': '90',
+    ...overrides,
+  })
+}
+
+describe('decodeResumeParams', () => {
+  it('reads a full set of params', () => {
+    const { resume, error } = decodeResumeParams(resumeParams())
+
+    expect(error).toBeUndefined()
+    expect(resume).toEqual({
+      start: 60_000_016_650_000,
+      mouths: ['smile', 'open'],
+      filters: { twoColor: true, minContrast: 80, minMatch: 90 },
+      carriesSearch: true,
+    })
+  })
+
+  // The round trip is the property that matters: whatever the writer emits, the reader reads back.
+  it('round-trips whatever resumeSearchPath wrote', () => {
+    const params = new URL(resumeSearchPath(SEARCH), 'http://localhost').searchParams
+    const { resume } = decodeResumeParams(params)
+
+    expect(resume?.start).toBe(SEARCH.start)
+    expect(new Set(resume?.mouths)).toEqual(new Set(['smile', 'open']))
+    expect(resume?.filters).toEqual(SEARCH.filters)
+  })
+
+  it('returns nothing at all for a URL with no resume params', () => {
+    const { resume, error } = decodeResumeParams(new URLSearchParams({ config: 'whatever' }))
+
+    expect(error).toBeUndefined()
+    expect(resume).toEqual({ carriesSearch: false })
+  })
+
+  // COMPLETE or absent, never partial. The page reads `filters` straight into the value it renders
+  // and mines with, so a partial would make it hold two notions of what an unstated filter means —
+  // and the one that lost would be silent.
+  it('completes a lone filter param from the app defaults', () => {
+    const params = new URLSearchParams({ 'min-match': '90' })
+    const { resume } = decodeResumeParams(params)
+
+    expect(resume?.filters).toEqual({ ...DEFAULT_FACE_FILTERS, minMatch: 90 })
+    expect(resume?.carriesSearch).toBe(true)
+  })
+
+  // `carriesSearch` is what decides whether the idle screen mounts the Filter card. Answered here
+  // rather than recomputed at that call site, so a link carrying only a checkpoint cannot raise a
+  // card with nothing in it to show.
+  it('reports carriesSearch false for a start-only link and true as soon as the search is named', () => {
+    expect(decodeResumeParams(new URLSearchParams({ start: '5' })).resume).toEqual({
+      start: 5,
+      carriesSearch: false,
+    })
+    expect(decodeResumeParams(new URLSearchParams({ target: 'smile' })).resume?.carriesSearch).toBe(
+      true,
+    )
+    expect(
+      decodeResumeParams(new URLSearchParams({ 'two-color': '0' })).resume?.carriesSearch,
+    ).toBe(true)
+  })
+
+  it('reads "faces" as every expression', () => {
+    const { resume } = decodeResumeParams(resumeParams({ target: 'faces' }))
+    expect(resume?.mouths).toHaveLength(5)
+  })
+
+  it('rejects a start nonce that is not decimal digits', () => {
+    for (const bad of ['0x10', '4.12e10', '60,000', '-1', ' ', 'abc']) {
+      const { resume, error } = decodeResumeParams(resumeParams({ start: bad }))
+      expect(error, `start=${bad}`).toBe('The start nonce in this link is not a decimal integer.')
+      expect(resume).toBeUndefined()
+    }
+  })
+
+  // Exactly the safe-integer limit is fine; one above it is not. Compared in BigInt for the reason
+  // parseStartNonce gives: the bound is a claim about exact integers, and comparing it as one
+  // leaves no float reasoning for the next reader to redo.
+  it('accepts a start nonce at the safe-integer limit and rejects the one above it', () => {
+    const atLimit = String(Number.MAX_SAFE_INTEGER)
+    expect(decodeResumeParams(resumeParams({ start: atLimit })).resume?.start).toBe(
+      Number.MAX_SAFE_INTEGER,
+    )
+
+    const over = (BigInt(Number.MAX_SAFE_INTEGER) + 1n).toString()
+    expect(decodeResumeParams(resumeParams({ start: over })).error).toBe(
+      'The start nonce in this link is out of range.',
+    )
+  })
+
+  it('rejects an unknown expression, reporting what core said', () => {
+    const { resume, error } = decodeResumeParams(resumeParams({ target: 'grin' }))
+
+    expect(error).toMatch(/^This link names an unknown expression: /)
+    expect(error).toMatch(/unknown target "grin"/)
+    expect(resume).toBeUndefined()
+  })
+
+  it('rejects a two-colour value that is not 1 or 0', () => {
+    for (const bad of ['true', 'yes', '', 'on', '2']) {
+      const { error } = decodeResumeParams(resumeParams({ 'two-color': bad }))
+      expect(error, `two-color=${bad}`).toBe('The two-colour filter in this link is not 1 or 0.')
+    }
+  })
+
+  it('accepts both ends of the contrast scale and rejects one past it', () => {
+    expect(
+      decodeResumeParams(resumeParams({ 'min-contrast': '0' })).resume?.filters?.minContrast,
+    ).toBe(0)
+    expect(
+      decodeResumeParams(resumeParams({ 'min-contrast': String(CONTRAST_MAX) })).resume?.filters
+        ?.minContrast,
+    ).toBe(CONTRAST_MAX)
+    expect(
+      decodeResumeParams(resumeParams({ 'min-contrast': String(CONTRAST_MAX + 1) })).error,
+    ).toBe(`The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`)
+    expect(decodeResumeParams(resumeParams({ 'min-contrast': '8.5' })).error).toBe(
+      `The contrast floor in this link is out of range (0-${CONTRAST_MAX}).`,
+    )
+  })
+
+  it('accepts both ends of the match scale and rejects one past it', () => {
+    expect(decodeResumeParams(resumeParams({ 'min-match': '0' })).resume?.filters?.minMatch).toBe(0)
+    expect(decodeResumeParams(resumeParams({ 'min-match': '100' })).resume?.filters?.minMatch).toBe(
+      100,
+    )
+    expect(decodeResumeParams(resumeParams({ 'min-match': '101' })).error).toBe(
+      'The match floor in this link is out of range (0-100).',
+    )
+  })
+
+  // The rule decodeConfigParam already applies to a bad owner. Rejecting a perfectly good
+  // `config=` over a bad sibling param is the cost of never mining a search the link did not
+  // describe — and the recipient still has an empty form in front of them.
+  it('rejects the whole link on one bad param, returning nothing usable', () => {
+    const { resume, error } = decodeResumeParams(resumeParams({ 'min-match': '101' }))
+    expect(error).toBeDefined()
+    expect(resume).toBeUndefined()
   })
 })
