@@ -15,6 +15,7 @@ import {
   candidateFromSaltNonce,
   decodeConfigParam,
   encodeConfigParam,
+  resumeSearchPath,
   shareConfigPath,
 } from '../lib/deep-link'
 
@@ -24,6 +25,20 @@ const CONFIG = {
   safeVersion: '1.4.1',
   chainId: 1,
   saltNonce: '1885506',
+}
+
+const MINE_CONFIG = {
+  owners: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'],
+  threshold: 1,
+  safeVersion: '1.4.1' as const,
+  chainId: 1,
+}
+
+const SEARCH = {
+  config: MINE_CONFIG,
+  target: 'smile,open',
+  filters: { twoColor: true, minContrast: 80, minMatch: 90 },
+  start: 60_000_016_650_000,
 }
 
 // encodeConfigParam is typed to SharedConfig, so malformed/adversarial payloads that don't fit
@@ -139,6 +154,106 @@ describe('shareConfigPath', () => {
     expect(shareConfigPath(CONFIG, 'https://example.test/app')).toBe(
       `/app?config=${encodeConfigParam(CONFIG)}`,
     )
+  })
+})
+
+// A resume link is the second kind of link this module writes, and the two must never be
+// confusable: `config=` carrying a saltNonce means "look at this mined address", and these five
+// params mean "reproduce this search".
+describe('resumeSearchPath', () => {
+  it('writes the config and all five search params', () => {
+    const params = new URL(resumeSearchPath(SEARCH), 'http://localhost').searchParams
+
+    expect(params.get('config')).toBe(encodeConfigParam(MINE_CONFIG))
+    expect(params.get('start')).toBe('60000016650000')
+    expect(params.get('target')).toBe('smile,open')
+    expect(params.get('two-color')).toBe('1')
+    expect(params.get('min-contrast')).toBe('80')
+    expect(params.get('min-match')).toBe('90')
+  })
+
+  // npxCommandFor's rule, for its reason: a param that appears only sometimes leaves the reader
+  // working out whether it was left off or left at zero. The permissive end is exactly where that
+  // ambiguity costs something, because the two readings mine different searches.
+  it('writes every param at its permissive value too, rather than omitting it', () => {
+    const permissive = {
+      ...SEARCH,
+      target: 'faces',
+      filters: { twoColor: false, minContrast: 0, minMatch: 0 },
+      start: 0,
+    }
+    const params = new URL(resumeSearchPath(permissive), 'http://localhost').searchParams
+
+    expect(params.get('start')).toBe('0')
+    expect(params.get('target')).toBe('faces')
+    expect(params.get('two-color')).toBe('0')
+    expect(params.get('min-contrast')).toBe('0')
+    expect(params.get('min-match')).toBe('0')
+  })
+
+  // The digits, ungrouped. This value's destinations are a URL and the CLI's `--start`, and
+  // "60,000,016,650,000" would be read by Number as 60 — rescanning the whole search from the
+  // beginning, silently.
+  it('writes the start nonce as bare digits', () => {
+    expect(resumeSearchPath(SEARCH)).toContain('start=60000016650000')
+  })
+
+  // Same rule shareConfigPath keeps, and for the same reasons: under a basePath a link written
+  // over the site root is a 404 for whoever it is sent to, and the other params and the fragment
+  // belong to whoever put them there.
+  it('writes into the URL it is given, keeping the path, other params and the fragment', () => {
+    const path = resumeSearchPath(SEARCH, '/vanity/app?utm=spring#results')
+    const url = new URL(path, 'http://localhost')
+
+    expect(url.pathname).toBe('/vanity/app')
+    expect(url.searchParams.get('utm')).toBe('spring')
+    expect(url.hash).toBe('#results')
+  })
+
+  it('returns a path, never an absolute URL: the origin is the caller’s to add', () => {
+    expect(resumeSearchPath(SEARCH, 'https://example.test/app')).toMatch(/^\/app\?/)
+  })
+
+  // The bar usually already names a result when this is reached — the panel only opens on a
+  // stopped run, and a stopped run may well have had a deploy dialog open. A stale `config=` would
+  // otherwise put a MINED saltNonce into a resume link, which is the one combination that makes
+  // the two kinds of link indistinguishable.
+  it('replaces a config already in the URL, saltNonce and all', () => {
+    const stale = `/?config=${encodeConfigParam(CONFIG)}`
+    const params = new URL(resumeSearchPath(SEARCH, stale), 'http://localhost').searchParams
+
+    expect(params.getAll('config')).toHaveLength(1)
+    expect(params.get('config')).toBe(encodeConfigParam(MINE_CONFIG))
+    expect(decodeConfigParam(params.get('config') as string).config?.saltNonce).toBeUndefined()
+  })
+
+  it('replaces stale resume params rather than adding a second set', () => {
+    const stale = '/?start=1&target=frown&two-color=0&min-contrast=5&min-match=5'
+    const params = new URL(resumeSearchPath(SEARCH, stale), 'http://localhost').searchParams
+
+    for (const name of ['start', 'target', 'two-color', 'min-contrast', 'min-match']) {
+      expect(params.getAll(name)).toHaveLength(1)
+    }
+    expect(params.get('target')).toBe('smile,open')
+  })
+})
+
+// The other direction of the same rule. shareConfigPath writes INTO the current URL and preserves
+// everything else, so on a page loaded from a resume link a result share link would silently carry
+// the resume too — a link meant to show one address would also reproduce someone's search.
+describe('shareConfigPath and resume params', () => {
+  it('strips every resume param, so a result link is never also a resume link', () => {
+    const here = '/?start=999&target=frown&two-color=0&min-contrast=5&min-match=5&utm=spring'
+    const params = new URL(shareConfigPath(CONFIG, here), 'http://localhost').searchParams
+
+    expect(params.get('start')).toBeNull()
+    expect(params.get('target')).toBeNull()
+    expect(params.get('two-color')).toBeNull()
+    expect(params.get('min-contrast')).toBeNull()
+    expect(params.get('min-match')).toBeNull()
+    // Everything that is not a resume param is still nobody else's business.
+    expect(params.get('utm')).toBe('spring')
+    expect(params.get('config')).toBe(encodeConfigParam(CONFIG))
   })
 })
 
