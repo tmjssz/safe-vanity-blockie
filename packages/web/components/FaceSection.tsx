@@ -273,7 +273,17 @@ export function FaceSection({
           {/* Only while closed. Open, every chip is restating a control the reader can already
               see, a few pixels below where the chip sits. */}
           {!open && (
-            <div data-slot="filter-summary" className="flex flex-wrap items-center gap-2">
+            // `ml-auto` only on the quiet header, where nothing else claims the right edge — the
+            // loud one ends in its chevron, and a second `ml-auto` on that row would strand the
+            // chips in the middle of it rather than at either end.
+            //
+            // Against the edge rather than against the label because left of it they read as a
+            // continuation of the title — "Filter smile, frown" — instead of as the row's readout.
+            // The gap between the two is what says which is which.
+            <div
+              data-slot="filter-summary"
+              className={cn('flex flex-wrap items-center gap-2', quiet && 'ml-auto')}
+            >
               <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
                 {/* No `text-muted-foreground` here, unlike the icon this replaced: the glyph's
                     bright dots inherit `currentColor`, so muting the root would flatten it to one

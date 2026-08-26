@@ -295,6 +295,25 @@ describe('FaceSection', () => {
       expect(cls).toMatch(/transition-\[[^\]]*transform/)
     })
 
+    // The values sit against the right edge, where the chevron would be on the loud header. Left
+    // against the label they read as a continuation of it — "Filter smile, frown" — rather than as
+    // the row's readout, and the gap between the two is what says which is which.
+    it('pushes the collapsed values to the right edge of the row', () => {
+      const { container } = render(
+        <FaceSection
+          mouths={['smile', 'frown']}
+          filters={DEFAULT_FACE_FILTERS}
+          quiet
+          defaultOpen={false}
+          onMouthsChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+        />,
+      )
+
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary.className).toContain('ml-auto')
+    })
+
     it('takes the vertical padding off the card so the row sits tight to its neighbours', () => {
       const { container } = render(
         <FaceSection
@@ -316,6 +335,10 @@ describe('FaceSection', () => {
         <FaceSection
           mouths={['smile']}
           filters={DEFAULT_FACE_FILTERS}
+          // `mining`, so the card is closed and the chips are actually in the tree: the summary
+          // assertion below is about where they sit, and it would pass for any reason at all
+          // against an open card that renders none.
+          mining
           onMouthsChange={vi.fn()}
           onFiltersChange={vi.fn()}
         />,
@@ -323,6 +346,11 @@ describe('FaceSection', () => {
 
       const chevron = container.querySelector('[data-slot="filter-chevron"]') as SVGElement
       expect(chevron.getAttribute('class')).toContain('ml-auto')
+      // And the values are NOT pushed right here: the chevron is what claims that edge, and two
+      // `ml-auto` on one row would strand the chips in the middle of it.
+      const summary = container.querySelector('[data-slot="filter-summary"]') as HTMLElement
+      expect(summary).not.toBeNull()
+      expect(summary.className).not.toContain('ml-auto')
       expect(container.querySelectorAll('svg').length).toBeGreaterThan(1)
     })
   })
