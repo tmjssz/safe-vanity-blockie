@@ -28,6 +28,19 @@ export interface FacePickerProps {
   onChange: (mouthNames: string[]) => void
   filters: FaceFilters
   onFiltersChange: (filters: FaceFilters) => void
+  /**
+   * Whether there is a run for an apply to restart.
+   *
+   * It gates the confirmation below, and only that. The question is about a run: a leaderboard
+   * discarded, the scanned total back to zero, the search begun again — which is why it is asked
+   * every time rather than only once a board has filled up. On the idle screen (where a resume
+   * link mounts this card so its recipient can see the search before starting it) there is no run
+   * at all, so every sentence in that dialog is false and the press it costs buys nothing.
+   *
+   * Defaults to true: a host that says nothing gets the question, because the cost it warns about
+   * is the normal case.
+   */
+  live?: boolean
 }
 
 /** A perfect match, and the top of the match slider. */
@@ -65,7 +78,13 @@ function Explains({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePickerProps) {
+export function FacePicker({
+  value,
+  onChange,
+  filters,
+  onFiltersChange,
+  live = true,
+}: FacePickerProps) {
   const [error, setError] = useState<string | undefined>()
   const [confirming, setConfirming] = useState(false)
 
@@ -166,7 +185,14 @@ export function FacePicker({ value, onChange, filters, onFiltersChange }: FacePi
                 >
                   Reset
                 </Button>
-                <Button type="button" size="xs" onClick={() => setConfirming(true)}>
+                <Button
+                  type="button"
+                  size="xs"
+                  // Straight through when there is nothing to restart. Deliberately the same
+                  // control either way rather than two: what Apply MEANS is unchanged — the draft
+                  // becomes what is mined — and only the question in front of it goes away.
+                  onClick={() => (live ? setConfirming(true) : onChange(draft))}
+                >
                   Apply
                 </Button>
               </>

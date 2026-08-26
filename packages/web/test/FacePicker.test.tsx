@@ -13,6 +13,7 @@ function renderPicker(
     onChange: (mouthNames: string[]) => void
     filters: FaceFilters
     onFiltersChange: (filters: FaceFilters) => void
+    live: boolean
   }> = {},
 ) {
   const onChange = overrides.onChange ?? vi.fn()
@@ -22,6 +23,7 @@ function renderPicker(
     onChange,
     filters: overrides.filters ?? DEFAULT_FACE_FILTERS,
     onFiltersChange,
+    ...(overrides.live === undefined ? {} : { live: overrides.live }),
   }
   const result = render(<FacePicker {...props} />)
   return { ...result, onChange, onFiltersChange }
@@ -340,6 +342,34 @@ describe('FacePicker', () => {
       const dialog = await screen.findByRole('dialog')
       expect(dialog.textContent).toMatch(/restart/i)
       expect(dialog.textContent).toMatch(/discard/i)
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    // The warning is about a run: a leaderboard discarded, scanned nonces thrown away, the search
+    // started again. On the idle screen — where a resume link now mounts this card so the
+    // recipient can see what they are about to start — none of that exists, so every sentence in
+    // that dialog is false and the press it costs buys nothing.
+    it('applies straight away when there is no run to restart', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+
+      expect(onChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    // The default is the behaviour that already existed. A host that says nothing gets the
+    // question, because the cost it warns about is the normal case.
+    it('still warns when nothing says whether a run exists', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+
+      expect(await screen.findByRole('dialog')).toBeDefined()
       expect(onChange).not.toHaveBeenCalled()
     })
 

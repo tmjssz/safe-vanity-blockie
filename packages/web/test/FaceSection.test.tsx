@@ -49,7 +49,13 @@ describe('FaceSection', () => {
   // on one click with nothing said.
   it('applies a colour filter on the spot, and stages an expression change', async () => {
     const user = userEvent.setup()
-    const props = renderSection()
+    // `mining: true` because the scenario this test's comment describes ("while mining") is a run
+    // in progress — the only case `FaceSection` is actually mounted for today (see page.tsx). The
+    // picker's restart question below is gated on that, since Task 6 taught it not to ask when
+    // there is no run. That also starts the card collapsed, so it is opened by hand before the
+    // controls inside it are reached.
+    const props = renderSection({ mining: true })
+    await user.click(trigger())
 
     await user.click(screen.getByRole('switch', { name: /two colours only/i }))
     expect(props.onFiltersChange).toHaveBeenCalled()
@@ -436,5 +442,20 @@ describe('FaceSection', () => {
     expect(props.onFiltersChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ minContrast: 151 }),
     )
+  })
+
+  // The card is the only thing that knows whether a run exists — the page tells it, and it is what
+  // decides whether the card starts collapsed. The picker inside it needs the same fact for a
+  // different reason, and a picker left to assume would ask about a restart on the idle screen.
+  it('tells the picker whether there is a run to restart', async () => {
+    const user = userEvent.setup()
+    const { onMouthsChange } = renderSection({ mouths: ['smile', 'frown'] })
+
+    await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+    await user.click(screen.getByRole('button', { name: /^apply$/i }))
+
+    // No `mining`, so no run: applied with no question asked.
+    expect(onMouthsChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

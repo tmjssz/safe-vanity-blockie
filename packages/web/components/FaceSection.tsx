@@ -255,6 +255,17 @@ export function FaceSection({
               onChange={onMouthsChange}
               filters={filters}
               onFiltersChange={onFiltersChange}
+              // The card already knows whether a run exists — `mining` is what decides whether it
+              // starts collapsed. The picker needs the same fact for its restart question, and
+              // reading it from here rather than from a prop of its own is what keeps the two from
+              // disagreeing about a page that is idle.
+              //
+              // Boolean, not `mining` raw: the prop is optional, and an omitted one means "no run"
+              // here (it is the idle screen's case, see this component's own doc) while `undefined`
+              // reaching FacePicker would fall to ITS default, which is "there is a run". Two
+              // optionals with opposite defaults meeting in the middle is exactly the seam to nail
+              // shut.
+              live={Boolean(mining)}
             />
           </CardContent>
         </CollapsibleContent>
