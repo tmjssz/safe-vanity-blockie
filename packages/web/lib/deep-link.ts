@@ -44,8 +44,8 @@ export function encodeConfigParam(config: SharedConfig): string {
  * second copy of them is a second place they can be got wrong — and every one of them exists
  * because it was got wrong once already. Written INTO the current URL rather than over it: `/?…`
  * was the whole spelling once, and under a basePath that is a navigation off the deployment
- * entirely (a 404 on reload, and a 404 for whoever the link is sent to), throwing away every other
- * query parameter and the fragment with it.
+ * entirely (a 404 on reload, and a 404 for whoever the link is sent to), and on any deployment it
+ * threw away every other query parameter and the fragment.
  *
  * `base` is the URL to write into, defaulting to wherever the document currently is. It is a
  * parameter only so the rule above is testable and so this is safe where there is no document (a
@@ -95,6 +95,10 @@ export interface SharedSearch {
  * page.tsx pushes when that dialog opens. They have to be the same string (it is the one a user
  * copies straight out of the bar), and the only way to be sure of that is for there to be one
  * builder rather than two that agree today.
+ *
+ * Every other query parameter and the fragment survive the write — that is writeIntoUrl's rule —
+ * and those are exactly what `closeSelection` in page.tsx is careful to keep when it takes
+ * `config` back out again; the two halves of the same URL now follow the same rule.
  */
 export function shareConfigPath(config: SharedConfig, base?: string): string {
   return writeIntoUrl(base, (params) => {
