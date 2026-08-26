@@ -124,8 +124,9 @@ function HomeContent() {
   // A URL with no `config=` latches nothing, so a hand-made `?start=…` alone is ignored. That is
   // deliberate: `resumeSearchPath` always writes the config, and a start nonce with no Safe to
   // mine for names no search at all.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `linkParam` is never read in here — it is the trigger, and it is the right one: it changes exactly when the latch above fires, which is the only moment `linkParamsRef.current` becomes readable. Reading the ref itself cannot be a dependency, and dropping `linkParam` from the list would leave this memoised against nothing, decoding the params of whatever mount it first ran on.
   const resumeResult = useMemo(() => {
-    const resume = linkParam ? linkParamsRef.current?.resume : undefined
+    const resume = linkParamsRef.current?.resume
     return resume ? decodeResumeParams(resume) : undefined
   }, [linkParam])
 
@@ -133,8 +134,8 @@ function HomeContent() {
   // Where the search starts. Held here rather than in the form, which is unmounted for the whole
   // run, and deliberately NOT folded into `config`: that object is what `?config=` encodes.
   const [startNonce, setStartNonce] = useState(0)
-  const [mouths, setMouths] = useState<string[]>(ALL_MOUTH_NAMES)
-  const [filters, setFilters] = useState<FaceFilters>(DEFAULT_FACE_FILTERS)
+  // `mouths` and `filters` are declared further down, beside `chainId` — see there for why they are
+  // DERIVED rather than seeded, and for why that placement follows `linkedSearch`.
   // The candidate whose deploy dialog is open, together with the config its address was derived
   // from. Clicking any result card sets both; closing the dialog clears them, which unmounts the
   // dialog entirely.
