@@ -268,11 +268,17 @@ describe('reporting the draft upward', () => {
 })
 
 describe('the checkpoint field', () => {
+  // An owner in every render here, and it is load-bearing rather than scenery: the offer that
+  // reveals this field only appears once Start can actually be pressed, so an ownerless form has no
+  // route to the field at all. These tests are about what the field does once reached; the offer's
+  // own condition is covered in the describe below.
+  const answered = { initial: { owners: [OWNER] } }
+
   // An accordion for one optional field was a section header, a chevron and a container around a
   // single input. One quiet line does the same work: every run answers the questions above it, and
   // only a resumed run answers this one.
   it('offers one quiet line by default, with no accordion left', () => {
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
 
     expect(revealAction()).toBeDefined()
     expect(screen.queryByRole('button', { name: /^advanced$/i })).toBeNull()
@@ -283,7 +289,7 @@ describe('the checkpoint field', () => {
 
   it('swaps the line for the field, focused, when pressed', async () => {
     const user = userEvent.setup()
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
 
     await user.click(revealAction())
 
@@ -297,7 +303,7 @@ describe('the checkpoint field', () => {
   // one press the first time and nothing after that, which is what the filter labels already do.
   it('carries the whole explanation behind the info control, with nothing standing under the field', async () => {
     const user = userEvent.setup()
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
 
     await user.click(revealAction())
 
@@ -319,7 +325,7 @@ describe('the checkpoint field', () => {
   // field keeps a real description either way.
   it('keeps the explanation as the field’s description for assistive tech', async () => {
     const user = userEvent.setup()
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
 
     await user.click(revealAction())
 
@@ -331,7 +337,9 @@ describe('the checkpoint field', () => {
   // button, appearing exactly when the field was revealed and nothing was wrong.
   it('reserves no space above Start for a complaint it does not have', async () => {
     const user = userEvent.setup()
-    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    const { container } = render(
+      <ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />,
+    )
 
     await user.click(revealAction())
 
@@ -507,20 +515,7 @@ describe('the primary control and the checkpoint offer beneath it', () => {
   })
 
   // Below the button, so reading order is "the thing this card does", then "the one alternative".
-  it('offers the checkpoint as a link under the button, in both states', () => {
-    const { unmount } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
-
-    const link = revealAction()
-    const following = Node.DOCUMENT_POSITION_FOLLOWING
-    // Invalid: the button carries a message, and the offer is still there.
-    expect(startButton().textContent).toMatch(/add an owner to start/i)
-    expect(startButton().compareDocumentPosition(link) & following).toBeTruthy()
-    // "or" is plain text; only the action is the control.
-    expect(link.textContent).toBe('continue from a checkpoint')
-    expect(link.parentElement?.textContent).toMatch(/^or continue from a checkpoint$/)
-    unmount()
-
-    // Valid: same offer, same place.
+  it('offers the checkpoint as a link under the button once Start is pressable', () => {
     render(
       <ConfigForm
         chainId={1}
@@ -529,12 +524,56 @@ describe('the primary control and the checkpoint offer beneath it', () => {
         {...filterProps()}
       />,
     )
+
+    const link = revealAction()
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(startButton().textContent).toMatch(/^start mining$/i)
+    expect(startButton().compareDocumentPosition(link) & following).toBeTruthy()
+    // "or" is plain text; only the action is the control.
+    expect(link.textContent).toBe('continue from a checkpoint')
+    expect(link.parentElement?.textContent).toMatch(/^or continue from a checkpoint$/)
+  })
+
+  /**
+   * The offer used to stand in both states, and this is the half that changed.
+   *
+   * "or" proposes an alternative to the control above it, and there is no alternative on offer while
+   * that control cannot be pressed: the button is carrying the unmet requirement as its label, and a
+   * second line under it both competes with that message and leads somewhere that does not fix it. A
+   * checkpoint says where a search begins; it has nothing to say about a missing owner.
+   *
+   * Both blockers a first visit can actually produce, since they take different routes through the
+   * form: no owner at all, and an owner that is not an address.
+   */
+  it('withholds the offer while Start is blocked, for either reason', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(startButton().textContent).toMatch(/add an owner to start/i)
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+
+    await user.type(ownerField(1), '0xnope')
+
+    expect(startButton().textContent).toMatch(/fix the owner address above/i)
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+
+    // And it arrives the moment the form is answered, without anything else being pressed.
+    await user.clear(ownerField(1))
+    await user.type(ownerField(1), OWNER)
+
     expect(startButton().textContent).toMatch(/^start mining$/i)
     expect(revealAction()).toBeDefined()
   })
 
   it('is link-styled and centred, with no icon of its own', () => {
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
 
     const link = revealAction()
     expect(link.className).toContain('text-primary')
@@ -1498,9 +1537,10 @@ describe('ConfigForm: start from saltNonce', () => {
   })
 
   // The first screen a new visitor sees is owners, threshold, version, Start. This field is for
-  // the returning user resuming a search, so it is reachable rather than present.
+  // the returning user resuming a search, so it is reachable rather than present. Reachable once the
+  // form is answered: the offer that reveals it is not on screen while Start is blocked.
   it('keeps the field behind a collapsed disclosure', () => {
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    render(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
     expect(revealAction()).toBeDefined()
     expect(screen.queryByLabelText(/^start from saltnonce$/i)).toBeNull()
   })

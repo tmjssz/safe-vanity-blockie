@@ -923,10 +923,20 @@ export function ConfigForm({
             doing it that way. Above the button it was a line the eye had to pass on the way to
             Start, for something most visits never want.
 
+            And only while Start can actually be pressed. "or" offers an alternative to doing the
+            thing above, which is a false offer when the thing above cannot be done: the button is
+            carrying the unmet requirement as its label, and a second line under it competes with
+            that message while leading somewhere that does not fix it. A checkpoint is where a search
+            BEGINS, so it settles nothing about a missing owner or an unscoreable face. Once the form
+            is answered the offer means what it says, and appears.
+
+            `startBlocker === 'start-nonce'` never reaches this: a bad checkpoint requires a revealed
+            field, and a revealed field has already taken the offer away.
+
             "or" stays plain muted text and only the action is a link, so what is pressable is
             exactly what is underlined on hover. Centred under a full-width button because there is
             no left edge to align to that would not look like a stray. */}
-        {!revealed && (
+        {!revealed && startBlocker === undefined && (
           <p className="text-center text-sm text-muted-foreground">
             or{' '}
             <Button
