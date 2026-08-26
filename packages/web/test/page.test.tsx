@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout from '../app/layout'
 import Page from '../app/page'
-import { decodeConfigParam, encodeConfigParam } from '../lib/deep-link'
+import { decodeConfigParam, encodeConfigParam, resumeSearchPath } from '../lib/deep-link'
 
 // Drives the real Page end to end, mocking only the heavy children and the wallet/RPC boundary.
 //
@@ -478,6 +478,34 @@ async function chooseChain(user: ReturnType<typeof userEvent.setup>, name: RegEx
  * a user's screen reader would find it.
  */
 const shownChain = () => screen.getByRole('combobox', { name: /^chain$/i }).textContent
+
+/** What the mocked ConfigForm was seeded with, as the page built it. */
+function seededInitial(): Record<string, unknown> | undefined {
+  const raw = screen.getByRole('button', { name: 'submit-config' }).getAttribute('data-initial')
+  return raw ? JSON.parse(raw) : undefined
+}
+
+/**
+ * A resume link's params, as the checkpoint panel writes them.
+ *
+ * The explicit `'/'` base matters: `resumeSearchPath` defaults to `window.location.href`, and
+ * `searchParamsRef`'s setter has been rewriting that all suite long — so an implicit base would
+ * make this fixture depend on whichever test ran before it.
+ */
+function resumeLinkParams(overrides: Record<string, string> = {}): URLSearchParams {
+  const path = resumeSearchPath(
+    {
+      config: { owners: CONFIG.owners, threshold: 1, safeVersion: '1.4.1', chainId: 1 },
+      target: 'smile,open',
+      filters: { twoColor: true, minContrast: 80, minMatch: 90 },
+      start: 60_000_016_650_000,
+    },
+    '/',
+  )
+  const params = new URL(path, 'http://localhost').searchParams
+  for (const [name, value] of Object.entries(overrides)) params.set(name, value)
+  return params
+}
 
 describe('Page', () => {
   // The headline of this change: the chain is no longer one of the Configure card's fields. It
@@ -3018,5 +3046,84 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'submit-config' }))
     await user.click(screen.getByRole('button', { name: 'select-a' }))
     expect(sharedChainId()).toBe(11155111)
+  })
+
+  describe('a resume link', () => {
+    it('seeds the form with the checkpoint the link carries', () => {
+      searchParamsRef.current = resumeLinkParams()
+
+      render(<Page />)
+
+      expect(seededInitial()).toMatchObject({
+        owners: CONFIG.owners,
+        threshold: 1,
+        safeVersion: '1.4.1',
+        start: 60_000_016_650_000,
+      })
+    })
+
+    // The rule the whole idle screen keeps: opening someone's link must not spin up five to eight
+    // workers at full CPU unasked. A resume link pre-fills; it does not start.
+    it('starts nothing until the recipient asks', () => {
+      searchParamsRef.current = resumeLinkParams()
+
+      render(<Page />)
+
+      expect(screen.queryByTestId('mining-view')).toBeNull()
+    })
+
+    // A `?config=` with no resume params is the link this app has always written, and it must keep
+    // behaving exactly as it did — no start seeded from anywhere.
+    it('leaves a plain config link seeding no start nonce', () => {
+      searchParamsRef.current = new URLSearchParams({
+        config: encodeConfigParam({
+          owners: CONFIG.owners,
+          threshold: 1,
+          safeVersion: '1.4.1',
+          chainId: 1,
+        }),
+      })
+
+      render(<Page />)
+
+      expect(seededInitial()?.start).toBe(0)
+    })
+
+    // One bad param rejects the whole link — `config=` included, even though it decoded perfectly.
+    // Keeping the valid half would start a search the link did not describe, which is the failure
+    // this path exists to prevent; the recipient gets an empty form and a sentence.
+    it('reports one bad param and pre-fills nothing at all', () => {
+      searchParamsRef.current = resumeLinkParams({ 'min-match': '101' })
+
+      render(<Page />)
+
+      const alert = screen.getByText(/this share link could not be used/i)
+      expect(alert.textContent).toMatch(/match floor/i)
+      expect(seededInitial()).toBeUndefined()
+    })
+
+    it('reports an unknown expression the same way', () => {
+      searchParamsRef.current = resumeLinkParams({ target: 'grin' })
+
+      render(<Page />)
+
+      expect(screen.getByText(/this share link could not be used/i).textContent).toMatch(
+        /unknown expression/i,
+      )
+    })
+
+    // "Start over" throws the run and the link away, and the form comes back asking again. Re-typing
+    // an eleven-digit resume point is the work this feature exists to avoid, so the value the run
+    // was actually started with is what comes back — not the link's, which is gone, and not zero.
+    it('hands the submitted start nonce back after Start over', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = resumeLinkParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config-with-start' }))
+      await user.click(screen.getByRole('button', { name: 'start-over' }))
+
+      expect(seededInitial()?.start).toBe(41_200_000_000)
+    })
   })
 })

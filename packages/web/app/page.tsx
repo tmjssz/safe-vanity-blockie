@@ -23,7 +23,12 @@ import {
   type RunOptions,
   validateMineConfig,
 } from '../lib/config'
-import { candidateFromSaltNonce, decodeConfigParam, shareConfigPath } from '../lib/deep-link'
+import {
+  candidateFromSaltNonce,
+  decodeConfigParam,
+  decodeResumeParams,
+  shareConfigPath,
+} from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
 import { useSafeConstants } from '../lib/use-safe-constants'
 
@@ -89,11 +94,22 @@ function HomeContent() {
   // Latched on first sight rather than captured on the first render: this subtree reaches its
   // first client render through the Suspense bailout above, and taking whatever
   // useSearchParams() held at that instant risks latching an empty one and dropping the link.
-  const linkParamRef = useRef<string | null>(null)
-  if (linkParamRef.current === null && configParam && !writtenSelections.current.has(configParam)) {
-    linkParamRef.current = configParam
+  //
+  // The resume params are latched in the SAME `if`, off the same searchParams snapshot, so all six
+  // values land together or not at all. Read separately they could be read on different renders —
+  // and a `start=` that arrived without its `target=` is a search whose expressions silently fell
+  // back to all five.
+  const linkParamsRef = useRef<{ config: string; resume: URLSearchParams } | null>(null)
+  if (
+    linkParamsRef.current === null &&
+    configParam &&
+    !writtenSelections.current.has(configParam)
+  ) {
+    // Copied, not held: `searchParams` is the App Router's live object, and the latch's whole
+    // point is that what it holds cannot change afterwards.
+    linkParamsRef.current = { config: configParam, resume: new URLSearchParams(searchParams) }
   }
-  const linkParam = linkParamRef.current
+  const linkParam = linkParamsRef.current?.config ?? null
 
   // Re-decoding on every render would be wasted work and (for the error case) would not
   // change the outcome anyway, so this is keyed on the one input that can change it — which,
@@ -102,6 +118,16 @@ function HomeContent() {
     () => (linkParam ? decodeConfigParam(linkParam) : undefined),
     [linkParam],
   )
+
+  // Keyed on the latched object, which since the latch above changes at most once per mount.
+  //
+  // A URL with no `config=` latches nothing, so a hand-made `?start=…` alone is ignored. That is
+  // deliberate: `resumeSearchPath` always writes the config, and a start nonce with no Safe to
+  // mine for names no search at all.
+  const resumeResult = useMemo(() => {
+    const resume = linkParam ? linkParamsRef.current?.resume : undefined
+    return resume ? decodeResumeParams(resume) : undefined
+  }, [linkParam])
 
   const [config, setConfig] = useState<MineConfig | undefined>()
   // Where the search starts. Held here rather than in the form, which is unmounted for the whole
@@ -234,7 +260,17 @@ function HomeContent() {
   // only an actual change to the accepted expressions should do that.
   const faceSpec = useMemo(() => faceSpecFromSelection(mouths), [mouths])
 
-  const linked = linkDismissed ? undefined : linkResult?.config
+  // A rejected resume link pre-fills NOTHING, its valid `config=` included. See the alert above:
+  // the link is judged as one thing, because half a search is a different search.
+  const linked = linkDismissed || resumeResult?.error ? undefined : linkResult?.config
+  // Gated on dismissal the same way `linked` is: "Start over" throws the link away, and what it
+  // carried with it.
+  //
+  // A link carrying BOTH kinds is a result link. `resumeSearchPath` cannot produce one (it writes
+  // no saltNonce), so this only arises hand-made — and then the resume params are ignored outright
+  // rather than half-applied, because a page reconstructing someone's mined address while quietly
+  // pre-filling a different search underneath it is worse than either alone.
+  const linkedSearch = linkDismissed || linked?.saltNonce ? undefined : resumeResult?.resume
   // The chain no longer travels with the other three: those are Configure's fields, this is the
   // header's control, so it is answered here instead of in the form. A share link puts the whole
   // config on screen, chain included, or none of it. (A recipient meets the sender's chain, which
@@ -244,7 +280,7 @@ function HomeContent() {
   // DERIVED from the link, not seeded from it into state. `useState(() => linked?.chainId ?? …)`
   // could only ever see the FIRST client render, and this subtree reaches that through the Suspense
   // bailout above with a useSearchParams() that may still be empty — which is exactly why the link
-  // is LATCHED on first sight rather than captured on the first render (see `linkParamRef`). The
+  // is LATCHED on first sight rather than captured on the first render (see `linkParamsRef`). The
   // form's fields follow that latch, so a late link leaves an obviously blank owners field that a
   // recipient fills in; a chain that missed it read "Ethereum" instead, the other singleton class
   // from every link that names one of the six, and a recipient who submitted then mined a different
@@ -266,9 +302,12 @@ function HomeContent() {
         owners: linked.owners,
         threshold: linked.threshold,
         safeVersion: linked.safeVersion,
-        // Never from the link — `?config=` does not carry it (and must not). This is the value
-        // this session last submitted, which is what "Start over" has to hand back.
-        start: startNonce,
+        // From the link when it named one. `?config=` still does not carry a start nonce and must
+        // not — where a search began is not part of what a shared ADDRESS is (see RunOptions) —
+        // but the `start=` param beside it exists to carry exactly that, because a resume link's
+        // whole purpose is to reproduce a search rather than to present a result. Falls back to
+        // what this session last submitted, which is what "Start over" has to hand back.
+        start: linkedSearch?.start ?? startNonce,
       }
     : lastSubmitted
       ? {
@@ -581,12 +620,13 @@ function HomeContent() {
       // Keyed on the LATCHED param, not on "is a `?config=` we don't recognise": the latch is
       // what everything else here keys off too, and this must never be the thing that decides a
       // param is a share link. Nothing about the latch moves when a traversal lands on it —
-      // `linkParamRef` was set at mount and only ever set once — so no overlay drops over the
+      // `linkParamsRef` was set at mount and only ever set once — so no overlay drops over the
       // dialog and mining is not paused by arriving back on the URL the session started on.
       // A written entry wins where a link's param and a mined result's encode identically: the
       // app really pushed that one, and it is the newer of the two.
       const restored =
-        written ?? (param && param === linkParamRef.current ? linkSelection.current : undefined)
+        written ??
+        (param && param === linkParamsRef.current?.config ? linkSelection.current : undefined)
       // Whatever the URL names, including nothing: an entry naming a result puts it back — with
       // its own config, the pairing intact — and a base entry closes the dialog.
       setSelection(restored)
@@ -941,10 +981,13 @@ function HomeContent() {
           be centred in. It costs nothing once a run is on screen: the content is taller than the
           viewport by then, so there is no leftover height to distribute. */}
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
-        {!config && !linkDismissed && linkResult?.error && (
+        {!config && !linkDismissed && (linkResult?.error || resumeResult?.error) && (
           <Alert variant="destructive">
             <AlertDescription>
-              This share link could not be used: {linkResult.error}
+              {/* One alert for both halves of one link. Two would be two things to read about a
+                  single paste, and only ever one of them is populated: a malformed param rejects
+                  the whole link, config included. */}
+              This share link could not be used: {linkResult?.error ?? resumeResult?.error}
             </AlertDescription>
           </Alert>
         )}
