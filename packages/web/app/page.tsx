@@ -27,6 +27,8 @@ import {
   candidateFromSaltNonce,
   decodeConfigParam,
   decodeResumeParams,
+  draftSearchPath,
+  hasResumeParams,
   shareConfigPath,
 } from '../lib/deep-link'
 import { ALL_MOUTH_NAMES, faceSpecFromSelection } from '../lib/face-selection'
@@ -48,6 +50,15 @@ type WrittenEntry = { selection: Selection; generation: number }
 // useSearchParams() opts this subtree out of static rendering unless it is wrapped in
 // Suspense; isolating it in its own component keeps that bailout scoped instead of
 // disabling static generation for the whole page.
+/**
+ * How long the address bar waits behind the form.
+ *
+ * Long enough that a slider drag or a pasted address is one write rather than dozens, short enough
+ * that a reader who edits and immediately reloads does not beat it. It only ever costs the last few
+ * hundred milliseconds of typing, and only if the page is reloaded inside that window.
+ */
+const DRAFT_URL_DEBOUNCE_MS = 300
+
 function HomeContent() {
   const searchParams = useSearchParams()
   const configParam = searchParams.get('config')
@@ -99,11 +110,15 @@ function HomeContent() {
   // values land together or not at all. Read separately they could be read on different renders —
   // and a `start=` that arrived without its `target=` is a search whose expressions silently fell
   // back to all five.
-  const linkParamsRef = useRef<{ config: string; resume: URLSearchParams } | null>(null)
+  const linkParamsRef = useRef<{ config: string | null; resume: URLSearchParams } | null>(null)
+  // `hasResumeParams` too, not just `configParam`: the address bar is now also where an unsubmitted
+  // form is kept, and a visitor who moved a slider before typing an owner has filters to restore
+  // with no `config=` to carry them. Insisting on one would drop exactly the state that writing
+  // exists to preserve.
   if (
     linkParamsRef.current === null &&
-    configParam &&
-    !writtenSelections.current.has(configParam)
+    (configParam || hasResumeParams(searchParams)) &&
+    !(configParam && writtenSelections.current.has(configParam))
   ) {
     // Copied, not held: `searchParams` is the App Router's live object, and the latch's whole
     // point is that what it holds cannot change afterwards.
@@ -121,14 +136,18 @@ function HomeContent() {
 
   // Keyed on the latched object, which since the latch above changes at most once per mount.
   //
-  // A URL with no `config=` latches nothing, so a hand-made `?start=…` alone is ignored. That is
-  // deliberate: `resumeSearchPath` always writes the config, and a start nonce with no Safe to
-  // mine for names no search at all.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `linkParam` is never read in here — it is the trigger, and it is the right one: it changes exactly when the latch above fires, which is the only moment `linkParamsRef.current` becomes readable. Reading the ref itself cannot be a dependency, and dropping `linkParam` from the list would leave this memoised against nothing, decoding the params of whatever mount it first ran on.
+  // A URL with neither a `config=` nor a resume param latches nothing, which leaves an ordinary
+  // visit exactly as it was. It used to require the config specifically; the address bar is now also
+  // where an unsubmitted form is kept, and filters can reach it before any owner does.
+  //
+  // Keyed on the latched query string rather than on `linkParam`: such a URL has no `config=` to key
+  // on, and keying on one would leave this memoised against null forever.
+  const latchedResume = linkParamsRef.current?.resume.toString() ?? null
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `latchedResume` is the trigger and the whole input — it changes exactly once, when the latch above fires, which is the only moment `linkParamsRef.current` becomes readable.
   const resumeResult = useMemo(() => {
     const resume = linkParamsRef.current?.resume
     return resume ? decodeResumeParams(resume) : undefined
-  }, [linkParam])
+  }, [latchedResume])
 
   const [config, setConfig] = useState<MineConfig | undefined>()
   // Where the search starts. Held here rather than in the form, which is unmounted for the whole
@@ -705,23 +724,40 @@ function HomeContent() {
     // plain `setPicked(chainId)` would undo the switch the user just confirmed. Queued updates see
     // each other, so `previous` is that `next` and the pick stands.
     setPicked((previous) => previous ?? chainId)
-    // The same guard, for the same reason, over the two other things the link spoke for. This
-    // reset retires the link (`setLinkDismissed`), and a recipient who never opened the Filter card
-    // has answered nothing — so without this their untouched expressions and filters would snap
-    // back to all five and no floors in the same instant as everything else disappearing, silently
-    // widening the search they were about to restart.
-    //
-    // Functional, as `setPicked` is: these read the values derived from the link, and a queued
-    // update sees the one before it.
-    setPickedMouths((previous) => previous ?? mouths)
-    setPickedFilters((previous) => previous ?? filters)
     // Nothing is running to be paused any more, and the next run must not inherit a stop the
     // user asked of the one before it.
     setPausedByUser(false)
-    // `startNonce` is deliberately NOT reset. The run is discarded; where the user asked the
-    // search to begin is an answer they gave the form, and the form is about to come back asking
-    // it again. Re-typing an eleven-digit resume point is the work this feature exists to avoid.
-  }, [chainId, closeSelection, mouths, filters])
+
+    // Everything else goes back to what a first visit holds. This used to hand the config, the
+    // checkpoint and the search back to the form on the grounds that they were answers the user had
+    // given and would rather not retype — a real argument, and the reason the old comment here said
+    // `startNonce` was deliberately NOT reset.
+    //
+    // It is the wrong trade now that the app name in the header is the only route back. That reads
+    // as "take me to the beginning", and a beginning that arrives holding the previous run's owners,
+    // floors and resume point is not one. Keeping them also made the address bar impossible to
+    // clear: the draft writer puts whatever the form holds straight back, so a reset that left the
+    // answers in place would have watched its own cleared URL repopulate a few hundred milliseconds
+    // later.
+    setLastSubmitted(undefined)
+    setStartNonce(0)
+    // To `undefined`, not to the defaults: these are the "user picked something" halves of derived
+    // values, and clearing them is what lets `mouths` and `filters` fall back through a dismissed
+    // link to the app's own defaults. Writing the defaults in would look identical today and stop
+    // being identical the moment a default changes.
+    setPickedMouths(undefined)
+    setPickedFilters(undefined)
+    // So the writer has nothing left to put back, and its next write comes from a form that has
+    // just been rebuilt empty.
+    setFormDraft(undefined)
+    // And the address bar itself, immediately rather than on the writer's next tick: a URL still
+    // describing the discarded run is one reload away from restoring it, and the reset has to be
+    // true the instant it is asked for. Path and fragment are kept, which is the same rule every
+    // other writer in this file follows.
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
+    }
+  }, [chainId, closeSelection])
 
   // Starting a search. With a run already on screen this is a RESTART, and the results below
   // belong to the config that produced them — so the old run is discarded exactly as "Start over"
@@ -729,6 +765,77 @@ function HomeContent() {
   // Safes mined for a config nobody is on any more. The form only submits when it is idle or when
   // its fields have been edited away from the run (a plain resume goes through `toggleMining`
   // instead), so this cannot fire on a press that was only meant to continue.
+  /**
+   * What the Configure form currently holds, as it reports it (see ConfigForm's `onDraftChange`).
+   *
+   * Held here rather than in the form because the other half of the draft — the expressions and the
+   * colour filters — is page state, and one writer has to see all of it. Two writers on one address
+   * bar would each drop the other's params.
+   */
+  const [formDraft, setFormDraft] = useState<{ config?: MineConfig; start: number } | undefined>()
+
+  /**
+   * Keeps the address bar in step with the start screen, so a reload does not cost the reader their
+   * work.
+   *
+   * Idle only, and that boundary is the point. Once a run exists the URL belongs to the share and
+   * selection machinery (`pushSelectionUrl`, `shareConfigPath`), and a draft writer racing it would
+   * be two things editing one address bar with different ideas of what belongs in it. A link
+   * candidate can open a dialog before anything is submitted, so `selection` is checked too.
+   *
+   * `replaceState`, never push: a history entry per keystroke would make Back mean "one character
+   * ago" rather than "the page before this one". Debounced, so a slider drag writes once at the end
+   * of it rather than forty times through it.
+   *
+   * Deliberately NOT recorded in `writtenSelections`. That set answers "did this page write this
+   * `config=` as a SELECTION?", and these writes are not selections; recording them would make a
+   * traversal onto one try to restore a dialog that never existed.
+   */
+  /**
+   * Where the URL's contents come from: the form while it is on screen, the run once one exists.
+   *
+   * They are the same four facts either way, and only the source moves. On the start screen the form
+   * is the only place owners, threshold, version and the checkpoint live; once Start is pressed the
+   * form unmounts and the run holds them, unchanged for its whole life. The expressions and the
+   * filters are page state throughout and are read directly below, which is what lets a change to
+   * either reach the URL mid-run as readily as it does before one.
+   */
+  const urlDraft = config ? { config, start: startNonce } : formDraft
+
+  useEffect(() => {
+    // `linked?.saltNonce` is the one that is easy to miss, and the window it guards is wide. A
+    // result share link's `config=` carries a mined saltNonce, and `draftSearchPath` writes no
+    // saltNonce at all — so a URL someone was sent to show one address would have that address
+    // stripped out of it a few hundred milliseconds after it loaded, before the dialog naming it
+    // had even opened, because reconstructing the candidate costs an RPC read and keccak's wasm
+    // init while this waits only on a timer. The dialog would still appear (the link is latched),
+    // and a reload would then find nothing. That URL is not a draft; it is somebody's shared
+    // result, and this has no business editing it.
+    // No longer stops once a run exists. The expressions and the filters stay editable for the whole
+    // of one, and a reader who narrows them mid-run has changed what is being mined just as
+    // decisively as they would have before pressing Start.
+    //
+    // `selection` still stops it, and has to: an open result dialog means `pushSelectionUrl` owns
+    // the address bar, and two writers with different ideas of what belongs in `config=` would take
+    // turns overwriting each other.
+    if (selection || linked?.saltNonce || !urlDraft) return
+    const timer = setTimeout(() => {
+      const path = draftSearchPath({
+        config: urlDraft.config,
+        target: faceSpec.name,
+        filters,
+        start: urlDraft.start,
+      })
+      // Only when it would actually change something: React re-runs this for reasons that have
+      // nothing to do with the URL, and a replaceState that rewrites the same string is work the
+      // browser does for nothing.
+      if (path !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+        window.history.replaceState(null, '', path)
+      }
+    }, DRAFT_URL_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [selection, linked?.saltNonce, urlDraft, faceSpec.name, filters])
+
   const submitConfig = useCallback((next: MineConfig, run: RunOptions) => {
     setLastSubmitted(next)
     setStartNonce(run.start)
@@ -1044,17 +1151,18 @@ function HomeContent() {
                 Advanced disclosure (see ConfigForm), which is what puts the expressions and the
                 floors in front of a link's recipient BEFORE they press Start. It is offered on
                 every visit, not only for a link — anyone may narrow the target before the first
-                nonce is tried — and `linkCarriedFilters` decides only whether that card arrives
+                nonce is tried — and `linkNarrowedFilters` decides only whether that card arrives
                 open, which is the one thing a link has an opinion about. */}
             <ConfigSection
               initial={initial}
               chainId={chainId}
               onSubmit={submitConfig}
+              onDraftChange={setFormDraft}
               mouths={mouths}
               filters={filters}
               onMouthsChange={applyMouths}
               onFiltersChange={setPickedFilters}
-              linkCarriedFilters={linkedSearch?.carriesSearch}
+              linkNarrowedFilters={linkedSearch?.narrowsFilters}
             />
           </div>
         )}

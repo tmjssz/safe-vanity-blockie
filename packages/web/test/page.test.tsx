@@ -80,9 +80,12 @@ const {
       | {
           mouths?: string[]
           filters?: unknown
-          linkCarriedFilters?: boolean
+          linkNarrowedFilters?: boolean
           onMouthsChange?: (names: string[]) => void
           onFiltersChange?: (filters: unknown) => void
+          // The real form calls this as it is edited; the tests drive it directly to stand in for
+          // typing, so what is exercised is the page's writer rather than the form's reporting.
+          onDraftChange?: (draft: { config?: unknown; start: number }) => void
         }
       | undefined,
   },
@@ -262,7 +265,7 @@ vi.mock('../components/ConfigForm', () => ({
     onSubmit: (config: unknown, run: { start: number }) => void
     mouths?: string[]
     filters?: unknown
-    linkCarriedFilters?: boolean
+    linkNarrowedFilters?: boolean
     onMouthsChange?: (names: string[]) => void
     onFiltersChange?: (filters: unknown) => void
   }) => {
@@ -1922,7 +1925,7 @@ describe('Page', () => {
     expect(screen.queryByText(/could not be reconstructed/i)).toBeNull()
   })
 
-  it('prefills the config form and the header chain from a ?config= link, and keeps the mined config on "Start over"', async () => {
+  it('prefills the config form and the header chain from a ?config= link, and clears both on "Start over"', async () => {
     searchParamsRef.current = new URLSearchParams({
       config: encodeConfigParam({
         owners: CONFIG.owners,
@@ -1953,24 +1956,15 @@ describe('Page', () => {
     // …and the fourth to the header, which is where the chain is chosen now.
     expect(shownChain()).toContain('Polygon')
 
-    // "Start over" is still a deliberate break with the LINK — its saltNonce, its dialog and its
-    // errors are all out of reach afterwards. What changed is what the form comes back holding:
-    // it used to come back empty, and now it comes back seeded from the config that was actually
-    // being mined. Retyping owner addresses to change one threshold was friction with a real
-    // hazard behind it, since every retype of an address is a chance to mine a different Safe by
-    // typo. Here the two happen to coincide — the recipient submitted the link's own config.
+    // "Start over" is a deliberate break with the LINK — its saltNonce, its dialog and its errors
+    // are all out of reach afterwards — and now with the run as well. It briefly handed the mined
+    // config back, so a threshold could be changed without retyping addresses; the app name in the
+    // header is the only route back from a run now, and that reads as "take me to the beginning".
+    // A beginning holding the previous run's owners is not one.
     await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
     await userEvent.click(screen.getByRole('button', { name: 'start-over' }))
 
-    expect(
-      JSON.parse(screen.getByRole('button', { name: 'submit-config' }).dataset.initial || '{}'),
-    ).toEqual({
-      owners: CONFIG.owners,
-      threshold: CONFIG.threshold,
-      safeVersion: CONFIG.safeVersion,
-      // The mock submitted the untouched default; "Start over" hands that back too.
-      start: 0,
-    })
+    expect(screen.getByRole('button', { name: 'submit-config' }).dataset.initial).toBe('')
     // The header, though, stays where it is. It is chrome rather than one of Configure's fields,
     // and dropping an unpicked header back to the default would move the user to the OTHER
     // singleton class from the one the link named — quietly, on a screen that has just emptied
@@ -2105,7 +2099,12 @@ describe('Page', () => {
     expect(screen.getByText('running')).toBeDefined()
   })
 
-  it('restores the previous config into the form after start over', async () => {
+  // It used to hand the config back, on the grounds that it was an answer the user had given and
+  // would rather not retype. The app name in the header is the only route back from a run now, and
+  // that reads as "take me to the beginning": a beginning holding the previous run's owners is not
+  // one. Keeping them also made the address bar impossible to clear, since the draft writer puts
+  // whatever the form holds straight back.
+  it('clears the form after start over', async () => {
     render(<Page />)
     const user = userEvent.setup()
 
@@ -2113,17 +2112,16 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'start-over' }))
 
     const form = screen.getByRole('button', { name: 'submit-config' })
-    expect(JSON.parse(form.getAttribute('data-initial') || '{}')).toMatchObject({
-      owners: CONFIG.owners,
-      threshold: CONFIG.threshold,
-      safeVersion: CONFIG.safeVersion,
-    })
+    expect(form.getAttribute('data-initial')).toBe('')
   })
 
   // The field the user typed under Advanced is not thrown away with the rest of the run: it is
   // exactly what "Start over" has to hand back, and re-typing an eleven-digit resume point is the
   // work this feature exists to avoid.
-  it('hands a start saltNonce back to the form after Start over', async () => {
+  // The checkpoint goes with the rest of it. A fresh start that arrives holding the previous run's
+  // resume point would silently skip the reader past everything that run had already covered.
+  it('clears the start saltNonce after Start over, and the URL with it', async () => {
+    searchParamsRef.current = new URLSearchParams()
     render(<Page />)
     const user = userEvent.setup()
 
@@ -2131,9 +2129,10 @@ describe('Page', () => {
     await user.click(screen.getByRole('button', { name: 'start-over' }))
 
     const form = screen.getByRole('button', { name: 'submit-config' })
-    expect(JSON.parse(form.getAttribute('data-initial') || '{}')).toMatchObject({
-      start: 41_200_000_000,
-    })
+    expect(form.getAttribute('data-initial')).toBe('')
+    // Immediately, not on the writer's next tick: a URL still describing the discarded run is one
+    // reload away from restoring it.
+    expect(window.location.search).toBe('')
   })
 
   // The other end of the same wire, and the one link in it nothing else covered: the page holds
@@ -3079,6 +3078,164 @@ describe('Page', () => {
     expect(sharedChainId()).toBe(11155111)
   })
 
+  // The address bar doubles as where the start screen's own state is kept, so a reload does not cost
+  // the reader their work. The mocked ConfigForm reports a draft through the same callback the real
+  // one does, so this drives the page's writer rather than the form's reporting.
+  describe('keeping the start screen in the URL', () => {
+    it('writes the filters and the checkpoint as they change, without pushing history', async () => {
+      searchParamsRef.current = new URLSearchParams()
+      const depth = window.history.length
+      render(<Page />)
+
+      act(() => configFormPropsRef.current?.onDraftChange?.({ config: CONFIG, start: 500 }))
+
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        expect(params.get('start')).toBe('500')
+        expect(decodeConfigParam(params.get('config') as string).config).toEqual(CONFIG)
+        // The filters are untouched here, so none of them is in the URL: a param spelled out at its
+        // default value says nothing a missing one does not.
+        expect(params.get('target')).toBeNull()
+        expect(params.get('two-color')).toBeNull()
+        expect(params.get('min-contrast')).toBeNull()
+        expect(params.get('min-match')).toBeNull()
+      })
+
+      // Replaced, not pushed: a history entry per keystroke would make Back mean "one character
+      // ago" rather than "the page before this one".
+      expect(window.history.length).toBe(depth)
+    })
+
+    // And a filter that has actually moved does reach the URL, or none of this would persist.
+    it('writes a filter once it leaves its default, and drops it when it returns', async () => {
+      searchParamsRef.current = new URLSearchParams()
+      render(<Page />)
+      act(() => configFormPropsRef.current?.onDraftChange?.({ config: CONFIG, start: 0 }))
+
+      const moved = { ...DEFAULT_FACE_FILTERS, minContrast: 200 }
+      act(() => configFormPropsRef.current?.onFiltersChange?.(moved))
+      await waitFor(() =>
+        expect(new URLSearchParams(window.location.search).get('min-contrast')).toBe('200'),
+      )
+
+      act(() => configFormPropsRef.current?.onFiltersChange?.(DEFAULT_FACE_FILTERS))
+      await waitFor(() =>
+        expect(new URLSearchParams(window.location.search).get('min-contrast')).toBeNull(),
+      )
+    })
+
+    // What it writes it must read back, which is the whole point of writing it.
+    it('is read back on a reload, filters and all', async () => {
+      searchParamsRef.current = new URLSearchParams()
+      const { unmount } = render(<Page />)
+      act(() => configFormPropsRef.current?.onDraftChange?.({ config: CONFIG, start: 777 }))
+      await waitFor(() => expect(window.location.search).toContain('start=777'))
+      const written = window.location.search
+      unmount()
+
+      // A fresh mount over the URL the last one left behind, which is what a reload is.
+      searchParamsRef.current = new URLSearchParams(written)
+      render(<Page />)
+
+      expect(seededInitial()).toMatchObject({ owners: CONFIG.owners, start: 777 })
+    })
+
+    // A URL carrying only filters has no `config=` to latch on. Insisting on one would drop exactly
+    // the state this writing exists to preserve, for the visitor who moved a slider before typing an
+    // owner.
+    it('restores filters from a URL that never got a config', () => {
+      searchParamsRef.current = new URLSearchParams({
+        target: 'smile,open',
+        'two-color': '0',
+        'min-contrast': '120',
+        'min-match': '90',
+      })
+
+      render(<Page />)
+
+      expect(new Set(configFormPropsRef.current?.mouths)).toEqual(new Set(['smile', 'open']))
+      expect(configFormPropsRef.current?.filters).toEqual({
+        twoColor: false,
+        minContrast: 120,
+        minMatch: 90,
+      })
+    })
+
+    // A result share link's `config=` carries a mined saltNonce and a draft URL carries none, so
+    // writing over it would strip the address the link exists to show — before the dialog naming it
+    // has even opened, since reconstructing the candidate costs an RPC read and wasm init while the
+    // writer waits only on a timer.
+    it('never writes over a link that names a mined result', async () => {
+      const shared = encodeConfigParam({
+        owners: CONFIG.owners,
+        threshold: CONFIG.threshold,
+        safeVersion: CONFIG.safeVersion,
+        chainId: CONFIG.chainId,
+        saltNonce: '12345',
+      })
+      // Held pending on purpose. With the reconstruction resolved, `selection` is set and its own
+      // guard blocks the write, so this would pass whether the saltNonce guard existed or not — the
+      // window that matters is precisely the one where the candidate has NOT arrived yet, which in
+      // production is an RPC read plus keccak's wasm init and in here is however long this promise
+      // is left hanging.
+      linkCandidateOverride.current = () => new Promise(() => {})
+      searchParamsRef.current = new URLSearchParams({ config: shared })
+      render(<Page />)
+
+      act(() => configFormPropsRef.current?.onDraftChange?.({ config: CONFIG, start: 999 }))
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      // The saltNonce is still in the URL, so a reload still finds the shared address.
+      const stillThere = new URLSearchParams(window.location.search).get('config')
+      expect(decodeConfigParam(stillThere as string).config?.saltNonce).toBe('12345')
+    })
+
+    // The expressions and the filters stay editable for the whole of a run, and narrowing them
+    // mid-run changes what is being mined just as decisively as it would have before Start. So the
+    // writing follows the run rather than stopping at it.
+    it('keeps writing once a search has started, as the filters change', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = new URLSearchParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await waitFor(() => expect(screen.getByTestId('mining-view')).toBeDefined())
+
+      act(() =>
+        configFormPropsRef.current?.onFiltersChange?.({ ...DEFAULT_FACE_FILTERS, minMatch: 95 }),
+      )
+
+      await waitFor(() =>
+        expect(new URLSearchParams(window.location.search).get('min-match')).toBe('95'),
+      )
+      // And the run's own config travels with it, so a reload lands on a pre-filled start screen.
+      const config = new URLSearchParams(window.location.search).get('config')
+      expect(decodeConfigParam(config as string).config?.owners).toEqual(CONFIG.owners)
+    })
+
+    // An open result dialog means `pushSelectionUrl` owns the address bar. Two writers with
+    // different ideas of what belongs in `config=` would take turns overwriting each other, and the
+    // one that lost would be the one naming the address the reader is about to deploy.
+    it('yields the address bar while a result dialog is open', async () => {
+      const user = userEvent.setup()
+      searchParamsRef.current = new URLSearchParams()
+      render(<Page />)
+
+      await user.click(screen.getByRole('button', { name: 'submit-config' }))
+      await waitFor(() => expect(screen.getByTestId('mining-view')).toBeDefined())
+      await user.click(screen.getByRole('button', { name: 'select-a' }))
+      await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
+
+      const whileOpen = window.location.search
+      act(() =>
+        configFormPropsRef.current?.onFiltersChange?.({ ...DEFAULT_FACE_FILTERS, minMatch: 33 }),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      expect(window.location.search).toBe(whileOpen)
+    })
+  })
+
   describe('a resume link', () => {
     it('seeds the form with the checkpoint the link carries', () => {
       searchParamsRef.current = resumeLinkParams()
@@ -3175,7 +3332,7 @@ describe('Page', () => {
     // "Start over" throws the run and the link away, and the form comes back asking again. Re-typing
     // an eleven-digit resume point is the work this feature exists to avoid, so the value the run
     // was actually started with is what comes back — not the link's, which is gone, and not zero.
-    it('hands the submitted start nonce back after Start over', async () => {
+    it('clears the checkpoint on Start over rather than handing it back', async () => {
       const user = userEvent.setup()
       searchParamsRef.current = resumeLinkParams()
       render(<Page />)
@@ -3183,7 +3340,7 @@ describe('Page', () => {
       await user.click(screen.getByRole('button', { name: 'submit-config-with-start' }))
       await user.click(screen.getByRole('button', { name: 'start-over' }))
 
-      expect(seededInitial()?.start).toBe(41_200_000_000)
+      expect(seededInitial()).toBeUndefined()
     })
 
     it('mines the expressions and filters the link named, once Start is pressed', async () => {
@@ -3233,7 +3390,11 @@ describe('Page', () => {
     // everything else disappearing. The expressions and filters need the same guard: a recipient who
     // never opened the Filter card has "chosen" nothing, and would silently be put back on all five
     // expressions and no floors.
-    it('keeps the link’s expressions and filters through Start over', async () => {
+    // Start over resets the search along with everything else now. It used to keep whatever the
+    // link had named, so a recipient who never opened the Filter card would not have their untouched
+    // floors snap back — but the header's app name is the only route back from a run now, and that
+    // reads as "take me to the beginning" rather than "restart the search I was sent".
+    it('resets the link’s expressions and filters on Start over', async () => {
       const user = userEvent.setup()
       searchParamsRef.current = resumeLinkParams()
       render(<Page />)
@@ -3243,12 +3404,8 @@ describe('Page', () => {
       await user.click(screen.getByRole('button', { name: 'submit-config' }))
       await openFilterCard(user)
 
-      expect(new Set(facePickerPropsRef.current?.value)).toEqual(new Set(['smile', 'open']))
-      expect(facePickerPropsRef.current?.filters).toEqual({
-        twoColor: true,
-        minContrast: 80,
-        minMatch: 90,
-      })
+      expect(facePickerPropsRef.current?.value).toHaveLength(5)
+      expect(facePickerPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
     })
 
     // The Filter card lives on Configure's start screen now, so the page's job here is to hand the
@@ -3267,7 +3424,7 @@ describe('Page', () => {
         minMatch: 90,
       })
       // The flag that opens both disclosures on arrival, because the link named part of the search.
-      expect(configFormPropsRef.current?.linkCarriedFilters).toBe(true)
+      expect(configFormPropsRef.current?.linkNarrowedFilters).toBe(true)
       // Still idle. The values are there to be read, not because a run started.
       expect(screen.queryByTestId('mining-view')).toBeNull()
     })
@@ -3293,7 +3450,30 @@ describe('Page', () => {
 
       render(<Page />)
 
-      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
+      expect(configFormPropsRef.current?.linkNarrowedFilters).toBeFalsy()
+      expect(seededInitial()?.start).toBe(60_000_016_650_000)
+    })
+
+    // Every resume link spells out all five params, so a run left at the defaults produces a link
+    // naming `target=faces`, `two-color=1`, `min-contrast=80`, `min-match=0` — every one of them
+    // what an ordinary visit already uses. It must read the same as no link at all, or the section
+    // opens to present the app's own defaults as though the sender had chosen them.
+    it('does not flag a link whose named values are all the defaults', () => {
+      const params = resumeLinkParams({
+        target: 'faces',
+        'two-color': String(DEFAULT_FACE_FILTERS.twoColor ? 1 : 0),
+        'min-contrast': String(DEFAULT_FACE_FILTERS.minContrast),
+        'min-match': String(DEFAULT_FACE_FILTERS.minMatch),
+      })
+      searchParamsRef.current = params
+
+      render(<Page />)
+
+      expect(configFormPropsRef.current?.linkNarrowedFilters).toBeFalsy()
+      // The values still arrive; only the "worth opening for" verdict is false.
+      expect(configFormPropsRef.current?.mouths).toHaveLength(5)
+      expect(configFormPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
+      // And the checkpoint it carried is still seeded, which is a separate question.
       expect(seededInitial()?.start).toBe(60_000_016_650_000)
     })
 
@@ -3302,7 +3482,7 @@ describe('Page', () => {
 
       render(<Page />)
 
-      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
+      expect(configFormPropsRef.current?.linkNarrowedFilters).toBeFalsy()
       expect(configFormPropsRef.current?.mouths).toHaveLength(5)
       expect(configFormPropsRef.current?.filters).toEqual(DEFAULT_FACE_FILTERS)
     })
@@ -3351,7 +3531,7 @@ describe('Page', () => {
       // The resume params were ignored outright, not half-applied: nothing flagged as carried, so
       // neither disclosure opens onto a search this link's recipient never asked for (`linkedSearch`
       // is undefined here, which is the guard under test)…
-      expect(configFormPropsRef.current?.linkCarriedFilters).toBeFalsy()
+      expect(configFormPropsRef.current?.linkNarrowedFilters).toBeFalsy()
       // …and no checkpoint seeded into the form either.
       expect(seededInitial()?.start).toBe(0)
     })
