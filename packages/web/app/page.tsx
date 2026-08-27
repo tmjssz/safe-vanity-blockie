@@ -26,6 +26,7 @@ import {
 } from '../lib/config'
 import {
   candidateFromSaltNonce,
+  clearedSearchPath,
   decodeConfigParam,
   decodeResumeParams,
   draftSearchPath,
@@ -756,10 +757,15 @@ function HomeContent() {
     setFormGeneration((generation) => generation + 1)
     // And the address bar itself, immediately rather than on the writer's next tick: a URL still
     // describing the discarded run is one reload away from restoring it, and the reset has to be
-    // true the instant it is asked for. Path and fragment are kept, which is the same rule every
-    // other writer in this file follows.
+    // true the instant it is asked for.
+    //
+    // Through `clearedSearchPath`, which deletes the six params this app owns and leaves the rest
+    // of the query alone. This used to rebuild the URL from the path and fragment, which took a
+    // deployment's `utm_*` or anything else appended to the link with it — and the comment here
+    // claimed to be following the same rule as every other writer in this file while doing the one
+    // thing none of them do.
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
+      window.history.replaceState(null, '', clearedSearchPath())
     }
   }, [chainId, closeSelection])
 

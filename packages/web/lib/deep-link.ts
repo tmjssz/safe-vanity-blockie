@@ -109,6 +109,24 @@ export interface SharedSearch {
 }
 
 /**
+ * The URL with everything this app puts in it taken out, and nothing else touched.
+ *
+ * What "Start over" writes. It is the same rule every other writer here follows: the params this
+ * app owns are `config` and the five resume params, and a query string can hold things that are
+ * nobody's business here — a `utm_*` campaign, an analytics tag, whatever a deployment appends. A
+ * reset throws away the run, not the visit.
+ *
+ * The path and fragment survive for the same reason: the page is not navigating anywhere, it is
+ * putting one page back to how it started.
+ */
+export function clearedSearchPath(base?: string): string {
+  return writeIntoUrl(base, (params) => {
+    params.delete('config')
+    for (const param of RESUME_PARAMS) params.delete(param)
+  })
+}
+
+/**
  * The share link for a config, as a path — the single place a `?config=` URL is spelled out.
  * Two of them exist now: the copyable field in the deploy dialog, and the address bar, which
  * page.tsx pushes when that dialog opens. They have to be the same string (it is the one a user

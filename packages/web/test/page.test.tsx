@@ -2230,11 +2230,10 @@ describe('Page', () => {
     expect(form.getAttribute('data-initial')).toBe('')
   })
 
-  // The field the user typed under Advanced is not thrown away with the rest of the run: it is
-  // exactly what "Start over" has to hand back, and re-typing an eleven-digit resume point is the
-  // work this feature exists to avoid.
-  // The checkpoint goes with the rest of it. A fresh start that arrives holding the previous run's
-  // resume point would silently skip the reader past everything that run had already covered.
+  // The checkpoint goes with the rest of it. It used to be the one thing "Start over" handed back,
+  // on the grounds that re-typing an eleven-digit resume point is the work the feature exists to
+  // avoid; a fresh start that arrives holding the previous run's resume point would silently skip
+  // the reader past everything that run had already covered.
   it('clears the start saltNonce after Start over, and the URL with it', async () => {
     searchParamsRef.current = new URLSearchParams()
     render(<Page />)
@@ -2248,6 +2247,31 @@ describe('Page', () => {
     // Immediately, not on the writer's next tick: a URL still describing the discarded run is one
     // reload away from restoring it.
     expect(window.location.search).toBe('')
+  })
+
+  /**
+   * A reset throws away the run, not the visit.
+   *
+   * This rebuilt the URL from the path and fragment, which cleared the six params this app owns and
+   * took everything else with them — a deployment's `utm_*`, an analytics tag, anything appended to
+   * the link that shared the page. Every other writer here leaves unrelated params alone and says so
+   * (`writeIntoUrl`'s rule); the comment on this one claimed to follow it while doing the opposite.
+   */
+  it('keeps query params that are not its own through Start over', async () => {
+    window.history.replaceState(null, '', '/?utm=spring&config=' + encodeConfigParam(CONFIG))
+    searchParamsRef.current = new URLSearchParams(window.location.search)
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'submit-config-with-start' }))
+    await user.click(screen.getByRole('button', { name: 'start-over' }))
+
+    const params = new URLSearchParams(window.location.search)
+    // Ours are gone...
+    expect(params.get('config')).toBeNull()
+    expect(params.get('start')).toBeNull()
+    // ...and the visit's own is not.
+    expect(params.get('utm')).toBe('spring')
   })
 
   // The other end of the same wire, and the one link in it nothing else covered: the page holds

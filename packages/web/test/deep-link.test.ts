@@ -15,6 +15,7 @@ import { DEFAULT_FACE_FILTERS } from '../lib/config'
 import { CONTRAST_MAX } from '../lib/contrast-preview'
 import {
   candidateFromSaltNonce,
+  clearedSearchPath,
   DEFAULT_TARGET,
   decodeConfigParam,
   decodeResumeParams,
@@ -166,6 +167,30 @@ describe('shareConfigPath', () => {
 // A resume link is the second kind of link this module writes, and the two must never be
 // confusable: `config=` carrying a saltNonce means "look at this mined address", and these five
 // params mean "reproduce this search".
+// What "Start over" writes. The rule it exists for is the one every writer here follows and the
+// reset used to break: the six params this app owns go, and a query string can hold things that are
+// nobody's business here.
+describe('clearedSearchPath', () => {
+  it('deletes the config and every resume param', () => {
+    const full = `/?config=${encodeConfigParam(CONFIG)}&start=42&target=smile&two-color=1&min-contrast=90&min-match=95`
+    expect(clearedSearchPath(full)).toBe('/')
+  })
+
+  it('keeps params it does not own, with the path and the fragment', () => {
+    expect(clearedSearchPath('/vanity/app?utm=spring&config=stale&start=7#results')).toBe(
+      '/vanity/app?utm=spring#results',
+    )
+  })
+
+  it('leaves a URL that had none of them exactly as it was', () => {
+    expect(clearedSearchPath('/vanity?utm=spring#results')).toBe('/vanity?utm=spring#results')
+  })
+
+  it('defaults to the URL the document is on', () => {
+    expect(clearedSearchPath()).toBe('/')
+  })
+})
+
 describe('resumeSearchPath', () => {
   it('writes the config and all five search params', () => {
     const params = new URL(resumeSearchPath(SEARCH), 'http://localhost').searchParams
