@@ -96,6 +96,56 @@ describe('the filter card on the start screen', () => {
     expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
   })
 
+  /**
+   * The case the two tests around this one cannot reach, and the one the real app actually takes.
+   *
+   * `linkNarrowedFilters` is derived from the latched link, and the card mounts before that latch
+   * fires: this subtree reaches its first client render through app/page.tsx's Suspense bailout with
+   * a useSearchParams() that can still be empty. So the prop is false at mount and true a render
+   * later. Seeding the open state alone left the card collapsed for good, and a recipient pressed
+   * Start on constraints they were never shown.
+   *
+   * Not reproducible through page.test.tsx, which mocks useSearchParams to return a value set before
+   * render — the prop is present on the first render there and the ordering never happens. The
+   * rerender here IS that ordering, stated at the boundary where it occurs.
+   */
+  it('opens itself when a link narrowed the search but arrived a render late', () => {
+    const props = {
+      chainId: 1,
+      initial: { owners: [OWNER] },
+      onSubmit: vi.fn(),
+      ...filterProps(),
+    }
+    const { rerender } = render(<ConfigForm {...props} linkNarrowedFilters={undefined} />)
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+
+    rerender(<ConfigForm {...props} linkNarrowedFilters />)
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  // The other half of that effect. A reader who has already answered the question outranks a link
+  // answering it late: a card springing back open under someone's hand is worse than one that never
+  // opened, and the window between mount and the latch is where both can happen.
+  it('leaves a card the reader has collapsed alone when the link lands late', async () => {
+    const user = userEvent.setup()
+    const props = {
+      chainId: 1,
+      initial: { owners: [OWNER] },
+      onSubmit: vi.fn(),
+      ...filterProps(),
+    }
+    const { rerender } = render(<ConfigForm {...props} linkNarrowedFilters={undefined} />)
+
+    await user.click(filterToggle())
+    await user.click(filterToggle())
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+
+    rerender(<ConfigForm {...props} linkNarrowedFilters />)
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
   // The two disclosures are independent now that they hold different things. A link that names a
   // target but no checkpoint is only reachable by hand-editing — `resumeSearchPath` always writes
   // all five params — but it pins the rule: opening Advanced for it would present an empty field as

@@ -184,8 +184,8 @@ export function FaceSection({
   // means nobody has seen it yet, so it shows itself.
   //
   // `defaultOpen` overrides that when the host knows which of the three arrival states this is —
-  // see the prop. Read once, as an initial value: it is where the card starts, not a rule it has
-  // to keep obeying.
+  // see the prop. Read as an initial value because it is where the card starts, not a rule it has
+  // to keep obeying; the effect below is what handles it arriving after that.
   const [open, setOpen] = useState(defaultOpen ?? !mining)
   // Set by the header, and never by anything else. Once the user has said what they want the card
   // to be, no rule here may say otherwise for the rest of the session: an auto-collapse that
@@ -201,6 +201,31 @@ export function FaceSection({
     if (mining && !wasMining.current && !userChose.current) setOpen(false)
     wasMining.current = mining
   }, [mining])
+
+  /**
+   * Opens the card when `defaultOpen` turns true after mount, which is the only way a link's answer
+   * ever actually arrives.
+   *
+   * A `useState` initialiser sees the first client render and no other, and this card reaches that
+   * render through the Suspense bailout in app/page.tsx with a useSearchParams() that can still be
+   * empty. So `linkNarrowedFilters` is false at mount and true a render later, and seeding alone
+   * left a link that narrowed the filters collapsed — a recipient pressing Start on constraints
+   * they were never shown, which is the whole failure `narrowsFilters` exists to prevent. It is the
+   * same reason page.tsx derives `chainId`, `mouths` and `filters` from the link instead of seeding
+   * them; this was the one link-dependent value still seeded.
+   *
+   * On the transition, not on the value, so it opens the card once rather than re-opening it on
+   * every unrelated re-render — the rule the `mining` effect above follows, for the same reason.
+   * `userChose` still outranks it: an answer that arrives after the reader has already decided is
+   * late, and a card that springs back open under someone's hand is worse than one that never
+   * opened. One-directional, too — a link asks for the card to be shown and never for it to be
+   * hidden, so `false` arriving late does nothing.
+   */
+  const wasDefaultOpen = useRef(defaultOpen)
+  useEffect(() => {
+    if (defaultOpen && !wasDefaultOpen.current && !userChose.current) setOpen(true)
+    wasDefaultOpen.current = defaultOpen
+  }, [defaultOpen])
 
   // Answers `revealRequest`. It outranks `userChose` deliberately: the request comes from a button
   // the user has just pressed, so it IS the user choosing — a card they collapsed earlier is not a
