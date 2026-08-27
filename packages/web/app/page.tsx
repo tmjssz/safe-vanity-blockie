@@ -112,13 +112,31 @@ function HomeContent() {
   // values land together or not at all. Read separately they could be read on different renders —
   // and a `start=` that arrived without its `target=` is a search whose expressions silently fell
   // back to all five.
+  // Set by the draft writer the first time it puts anything in the address bar. See the latch.
+  const wroteOwnUrl = useRef(false)
   const linkParamsRef = useRef<{ config: string | null; resume: URLSearchParams } | null>(null)
   // `hasResumeParams` too, not just `configParam`: the address bar is now also where an unsubmitted
   // form is kept, and a visitor who moved a slider before typing an owner has filters to restore
   // with no `config=` to carry them. Insisting on one would drop exactly the state that writing
   // exists to preserve.
+  //
+  // `wroteOwnUrl` is the other half of "the app did not write itself". `writtenSelections` covers
+  // the result links this page pushes, but the draft writer's `replaceState` is deliberately not
+  // recorded there — and Next patches replaceState, so that write comes straight back through
+  // useSearchParams as an ordinary param. On a visit that arrived with nothing, the page's own
+  // first draft would otherwise be latched as an incoming share link: `linked` defined from our
+  // own URL, `initial` on the link branch for the rest of the session, and ConfigForm's seeding
+  // effect re-seeding the form from a config it had just reported upward.
+  //
+  // A flag rather than a comparison of what was written, because there is nothing to compare
+  // against: the point is not which params these are, it is that from the first write onward the
+  // address bar is this page's own output. The latch only ever needed to stay armed across the
+  // renders either side of hydration, and the draft writer's first write is a 300ms debounce
+  // later. Nothing else can feed the page params it wrote: the selection writers are recorded,
+  // and `startOver` only ever deletes.
   if (
     linkParamsRef.current === null &&
+    !wroteOwnUrl.current &&
     (configParam || hasResumeParams(searchParams)) &&
     !(configParam && writtenSelections.current.has(configParam))
   ) {
@@ -873,6 +891,9 @@ function HomeContent() {
       // nothing to do with the URL, and a replaceState that rewrites the same string is work the
       // browser does for nothing.
       if (path !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+        // Before the write, not after: Next's patched replaceState is what publishes the new params,
+        // so the render that reads them can already be underway by the time this line returns.
+        wroteOwnUrl.current = true
         window.history.replaceState(null, '', path)
       }
     }, DRAFT_URL_DEBOUNCE_MS)

@@ -3352,6 +3352,48 @@ describe('Page', () => {
       expect(decodeConfigParam(config as string).config?.owners).toEqual(CONFIG.owners)
     })
 
+    /**
+     * The page must not read its own writing back as somebody else's share link.
+     *
+     * The latch takes the first `config=` or resume param a mount sees that the app did not write
+     * itself, and Next patches replaceState, so the draft writer's output comes straight back
+     * through useSearchParams as an ordinary param. Nothing recorded it: `writtenSelections` holds
+     * the result links this page pushes, not drafts. So on a visit that arrived with nothing, the
+     * page's own first draft was latched as an incoming link, `initial` moved to the link branch for
+     * the rest of the session, and ConfigForm was handed back the config it had just reported.
+     *
+     * Observed through `initial`, which is the thing that changes: a form seeded from a link shows
+     * it, an untouched one is handed nothing at all.
+     */
+    it('does not latch its own draft write as an incoming share link', async () => {
+      searchParamsRef.current = new URLSearchParams()
+      render(<Page />)
+      expect(screen.getByText('submit-config').getAttribute('data-initial')).toBe('')
+
+      act(() => configFormPropsRef.current?.onDraftChange?.({ config: CONFIG, start: 0 }))
+      await waitFor(() =>
+        expect(new URLSearchParams(window.location.search).get('config')).not.toBeNull(),
+      )
+
+      // The URL now names a config, and the form is still holding nothing from anyone.
+      expect(screen.getByText('submit-config').getAttribute('data-initial')).toBe('')
+    })
+
+    // The same guard must not cost a real link anything: the link is latched on sight, several
+    // hundred milliseconds before any draft can be written, so the flag is never reached in time to
+    // matter. Worth pinning, because a guard that disarmed the latch too early would drop the whole
+    // feature this branch exists for and every other test here would still pass.
+    it('still latches a link that was there on arrival', async () => {
+      searchParamsRef.current = new URLSearchParams({ config: encodeConfigParam(CONFIG) })
+      render(<Page />)
+
+      await waitFor(() =>
+        expect(screen.getByText('submit-config').getAttribute('data-initial')).toContain(
+          CONFIG.owners[0],
+        ),
+      )
+    })
+
     // An open result dialog means `pushSelectionUrl` owns the address bar. Two writers with
     // different ideas of what belongs in `config=` would take turns overwriting each other, and the
     // one that lost would be the one naming the address the reader is about to deploy.
