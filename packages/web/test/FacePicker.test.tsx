@@ -659,9 +659,11 @@ describe('FacePicker', () => {
     })
 
     // A floor from the first render, and the one default with a cost: match quality is a property of
-    // how long the search has run, so 80 leaves the grid empty for the opening stretch of a run. The
-    // grid's own empty state is what makes that readable rather than alarming — it says whether
-    // nothing has been found yet or nothing survived the filters, and offers to relax them.
+    // how long the search has run, so a non-zero floor leaves the grid empty for the opening stretch
+    // of a run. The grid's own empty state is what makes that readable rather than alarming — it
+    // says whether nothing has been found yet or nothing survived the filters, and offers to relax
+    // them. No number in this comment on purpose: the floor has moved twice, and the assertions
+    // below read it from the constant.
     it('starts at the default floor, which is not zero', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
@@ -670,6 +672,22 @@ describe('FacePicker', () => {
       expect(screen.getByTestId('min-match-value').textContent).toBe(
         `${DEFAULT_FACE_FILTERS.minMatch}%`,
       )
+    })
+
+    // The help text has to survive a change to the default, and once did not: it advised leaving the
+    // floor at 0 while a search is young, which is advice against the value the app now ships. Copy
+    // that argues with the state it is describing is worse than none, because it is read and
+    // believed. Pinned as "does not contradict the default" rather than word for word, so the
+    // wording stays free to improve.
+    it('explains the floor without advising against the one it ships', async () => {
+      const user = userEvent.setup()
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+
+      await user.click(screen.getByRole('button', { name: /about minimum match/i }))
+      const help = (await screen.findByRole('dialog')).textContent ?? ''
+
+      expect(help).toMatch(/climbs as a search runs/i)
+      expect(help).not.toMatch(/leave it at 0/i)
     })
 
     it('reports the new floor, and shows it, when the slider is moved', async () => {

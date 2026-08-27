@@ -342,9 +342,11 @@ export interface DecodedResume {
    * wrong at first.
    *
    * Naming a value is not narrowing anything. `resumeSearchPath` always writes all five params, so
-   * a link built from a run left at the defaults spells out `two-color=1`, `min-contrast=80`,
-   * `min-match=0`: exactly what an ordinary visit uses. Opening the section over that would present
-   * the app's own defaults as though the sender had chosen them.
+   * a link built from a run left at the defaults spells every one of them out — whatever
+   * DEFAULT_FACE_FILTERS happens to hold — which is exactly what an ordinary visit uses. Opening
+   * the section over that would present the app's own defaults as though the sender had chosen
+   * them. Compared against the constant rather than against numbers written here, because the
+   * defaults have moved twice and a doc naming them goes stale silently while the code stays right.
    *
    * And `target` is not in that section. The expressions became a section of Configure in their own
    * right, always visible, so a link that narrowed only them has nothing for this disclosure to

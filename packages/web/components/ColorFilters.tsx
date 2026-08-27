@@ -71,9 +71,9 @@ export function ColorFilters({ filters, onFiltersChange }: ColorFiltersProps) {
           </span>
           <Explains label="minimum match">
             How closely a blockie has to reproduce the face, as a share of a perfect score — the
-            same percentage each result tile shows. Leave it at 0 while a search is young: the best
-            match climbs as the search runs, so a floor set early hides everything until it is
-            reached.
+            same percentage each result tile shows. The best match climbs as a search runs, so a
+            high floor shows nothing for a while and then only the strongest faces. Lower it to see
+            what is being found in the meantime.
           </Explains>
           {/* A slider with no readout is unusable for a value this precise. The unit rides with
             the number here, unlike the contrast readout, because a bare percentage is a
