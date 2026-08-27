@@ -1013,14 +1013,37 @@ describe('ConfigForm', () => {
       expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toBe('1.3.0')
     })
 
-    // The wallet prefill is not an answer to the question — it is this form guessing, and the link
-    // is the sender's actual config. Reversing that leaves a recipient mining a Safe owned by
-    // THEMSELVES under a link that promised someone else's, which is the one case where the blank
-    // field would at least have been obvious.
-    it('outranks the address the connected wallet prefilled', () => {
+    /**
+     * This used to run the other way, and the reversal is the point.
+     *
+     * The link outranked the wallet PREFILL, because a prefill was this form guessing while the link
+     * was the sender's actual config, and letting a guess win left a recipient mining a Safe owned
+     * by themselves under a link that promised someone else's. Nothing guesses any more: the only
+     * way the wallet reaches that field is a press, and a press is an answer. So this falls under
+     * the rule the test below states for typing, and states it for the offer as well.
+     *
+     * The old hazard needs a deliberate press inside the few milliseconds between mount and the
+     * latch to reach at all, where it used to need nothing. What is on screen when the link lands is
+     * something the reader put there, and overwriting that is the worse failure of the two.
+     */
+    it('leaves an address the wallet offer filled in alone', async () => {
+      const user = userEvent.setup()
       useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
       const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(screen.getByRole('button', { name: /use connected wallet/i }))
       expect(ownerField(1).value).toBe(WALLET)
+
+      rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(WALLET)
+    })
+
+    // And an untouched field still takes the link, which is what makes the rule above about the
+    // reader's answer rather than about the wallet being connected at all.
+    it('fills an untouched field even with a wallet connected', () => {
+      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(ownerField(1).value).toBe('')
 
       rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
 
@@ -1395,186 +1418,227 @@ describe('ConfigForm', () => {
     })
   })
 
-  // Owners are part of the Safe address, so this writes into an address-determining field without
-  // the user typing. What keeps that honest is that it can only ever fill a BLANK — every test
-  // below is a variation on "and otherwise it does nothing".
-  describe('prefilling owner 1 from the connected wallet', () => {
-    it('fills the empty first field when a wallet connects', () => {
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe('')
+  /**
+   * The form no longer answers its own first question.
+   *
+   * Owner 1 used to fill itself from the connected wallet, and the argument for it was that this is
+   * the address a user is nearly always mining for. What it cost was that a connected visitor met an
+   * owner list that looked decided before they had read it, in the one field that decides which Safe
+   * every result belongs to. The offer replaces it: same address, one press, and the press is an
+   * answer rather than a guess. It lives inside the field it fills, so there is nothing to work out
+   * about which row it means.
+   */
+  describe('the "Use connected wallet" offer inside an empty owner field', () => {
+    const connected = () => useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+    const offers = () => screen.queryAllByRole('button', { name: /use connected wallet/i })
+    const offer = () => screen.getByRole('button', { name: /use connected wallet/i })
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+    // The headline of the change, and the only one a returning user will notice.
+    it('leaves the field empty for a wallet already connected on mount', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe('')
+      expect(offer()).toBeDefined()
+    })
+
+    it('leaves the field empty when a wallet connects later', () => {
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(offers()).toHaveLength(0)
+
+      connected()
       rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The reconnect wagmi performs on load arrives as an address that is simply already there on
-    // the first render, with no click behind it. A returning user should still meet a filled form.
-    it('fills it for a wallet that was already connected on mount', () => {
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    it('leaves the field empty while no wallet is connected', () => {
-      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
       expect(ownerField(1).value).toBe('')
+      expect(offer()).toBeDefined()
     })
 
-    it('never overwrites an address the user typed', async () => {
+    it('is not offered while no wallet is connected', () => {
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe('')
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Inside the field, which is the whole point of moving it: a control under the list had to pick
+    // a row on the user's behalf, and with two rows on screen nothing said which.
+    it('renders inside the field it would fill, after it in the tab order', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      const wrapper = ownerField(1).parentElement as HTMLElement
+      expect(wrapper.contains(offer())).toBe(true)
+      // Tabbing from the field reaches this next, which is what putting it after the input buys.
+      const following = Node.DOCUMENT_POSITION_FOLLOWING
+      expect(ownerField(1).compareDocumentPosition(offer()) & following).toBeTruthy()
+    })
+
+    it('fills the field it was rendered in, and goes away once it has', async () => {
       const user = userEvent.setup()
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      await user.type(ownerField(1), OWNER)
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
 
-      expect(ownerField(1).value).toBe(OWNER)
+      expect(ownerField(1).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
     })
 
-    // A share link's owners are seeded before the wallet is ever consulted. Overwriting one would
-    // mine a different Safe than the link named, silently.
-    it('never overwrites an address a share link prefilled', () => {
-      const { rerender } = render(
-        <ConfigForm initial={{ owners: [OWNER] }} chainId={1} onSubmit={vi.fn()} />,
-      )
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm initial={{ owners: [OWNER] }} chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(OWNER)
-    })
-
-    // Only the first row, ever. A second row is somewhere the user chose to put a co-signer.
-    it('does not fill a later empty row when owner 1 is occupied', async () => {
+    // The value is a value like any other, so everything keyed on one follows: the identicon that
+    // only renders for an address that parses is the visible proof it went through the same path a
+    // typed address does.
+    it('brings the row to life exactly as typing does', async () => {
       const user = userEvent.setup()
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      connected()
+      const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(container.querySelector('[data-slot="owner-identicon"]')).toBeNull()
+
+      await user.click(offer())
+
+      expect(container.querySelector('[data-slot="owner-identicon"]')).not.toBeNull()
+    })
+
+    it('goes away as soon as the user types, so it never sits over a value', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      await user.type(ownerField(1), '0x')
+
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Every empty row offers it, independently. The row that takes it settles the question for all
+    // of them, because a second copy of one address is a duplicate the validator rejects.
+    it('is offered in each empty row, and in none once one of them takes it', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(addOwner())
+
+      expect(offers()).toHaveLength(2)
+
+      await user.click(offers()[1])
+
+      expect(ownerField(1).value).toBe('')
+      expect(ownerField(2).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
+    })
+
+    it('is not offered in a row that already holds something', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
       await user.type(ownerField(1), OWNER)
       await user.click(addOwner())
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(OWNER)
-      expect(ownerField(2).value).toBe('')
+      // The filled row does not offer it; the empty one does, and it is the only offer on screen.
+      expect(offers()).toHaveLength(1)
+      const wrapper = ownerField(2).parentElement as HTMLElement
+      expect(wrapper.contains(offer())).toBe(true)
     })
 
-    it('keeps the first address when the wallet switches account', () => {
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    it('is not offered once the wallet is an owner, wherever it sits', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(addOwner())
+      await user.type(ownerField(2), WALLET)
+
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Screen-reader users get the address itself, not "Use connected wallet" repeated once per empty
+    // row with no way to tell which wallet is being offered.
+    it('names the whole address for assistive tech', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(offer().getAttribute('aria-label')).toBe(`Use connected wallet ${WALLET}`)
+    })
+
+    /**
+     * It sits inside a form whose only other button submits, so the type matters: a press that
+     * started the search instead of filling the field would be the worst misfire available here.
+     *
+     * Asserted as the attribute rather than by pressing it and watching for a submit, because jsdom
+     * implements no form submission at all: a `type="submit"` here passes an `onSubmit` was-not-
+     * called test just as cleanly as the correct markup does. Verified by trying it. So this pins
+     * the one thing that can actually be checked in this environment, and the press below shows the
+     * handler ran.
+     */
+    it('is a plain button, so a press cannot submit the form', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+
+      expect(offer().getAttribute('type')).toBe('button')
+
+      await user.click(offer())
+
+      expect(onSubmit).not.toHaveBeenCalled()
       expect(ownerField(1).value).toBe(WALLET)
+    })
+
+    // A class contract, not a measurement: jsdom loads no stylesheet, so nothing here knows what a
+    // container query means. What can be held is that the field drops its placeholder only at a
+    // width, and only while the offer is there to collide with it.
+    it('gives up the placeholder only when the field is too narrow for both', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).className).toContain('@max-[11rem]:placeholder:text-transparent')
+      expect(ownerField(1).getAttribute('placeholder')).toBe('0x…')
+
+      // With no offer to make room for, the placeholder is unconditional again.
+      await user.click(offer())
+
+      expect(ownerField(1).className).not.toContain('placeholder:text-transparent')
+    })
+
+    it('submits the address the offer filled in', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+
+      await user.click(offer())
+      await user.click(startButton())
+
+      expect(onSubmit).toHaveBeenCalledOnce()
+      expect(onSubmit.mock.calls[0][0].owners).toEqual([WALLET])
+    })
+
+    // Out of scope for the move and unchanged by it, which is worth pinning precisely because the
+    // offer is the only thing the wallet controls now: disconnecting withdraws the offer and touches
+    // no value, and switching account offers the new one without disturbing the old.
+    it('withdraws the offer on disconnect and leaves what it filled', async () => {
+      const user = userEvent.setup()
+      connected()
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
+
+      useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
+      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
+    })
+
+    it('offers a newly switched account without touching the first', async () => {
+      const user = userEvent.setup()
+      connected()
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
+      await user.click(addOwner())
 
       useAccountMock.mockReturnValue({ address: OWNER_B, isConnected: true })
       rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
       expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The one that decides whether the field can be emptied at all. Refilling on "the field went
-    // blank" would make Owner 1 impossible to clear for as long as a wallet is connected.
-    it('does not fill it again after the user clears it', async () => {
-      const user = userEvent.setup()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe(WALLET)
-
-      await user.clear(ownerField(1))
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe('')
-    })
-
-    // Disconnecting and connecting again is a new connection, not the same one — so the blank it
-    // finds is one to fill.
-    it('fills it again after a disconnect and reconnect', async () => {
-      const user = userEvent.setup()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      await user.clear(ownerField(1))
-
-      useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe('')
-
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The auto-prefill only ever touches a blank owner 1. This action is the manual counterpart:
-    // it puts the wallet wherever there is room, including rows the prefill will never reach.
-    describe('the "Use connected wallet" action', () => {
-      const useWallet = () => screen.getByRole('button', { name: /use connected wallet/i })
-
-      it('is not offered while no wallet is connected', () => {
-        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
-      })
-
-      // Nothing to add: the prefill has already put this address in owner 1, and a second copy
-      // is a duplicate that validateMineConfig rejects. Offering it would be offering an error.
-      it('is not offered when the wallet is already an owner', () => {
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        expect(ownerField(1).value).toBe(WALLET)
-        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
-      })
-
-      it('fills the first empty row', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-        await user.click(addOwner())
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(WALLET)
-      })
-
-      it('appends a row when every existing one is filled', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(WALLET)
-      })
-
-      it('never overwrites a filled row', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-        await user.click(addOwner())
-        await user.type(ownerField(2), OWNER_C)
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(OWNER_C)
-        expect(ownerField(3).value).toBe(WALLET)
-      })
-    })
-
-    it('submits the prefilled address as the owner', async () => {
-      const user = userEvent.setup()
-      const onSubmit = vi.fn()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
-
-      await user.click(startButton())
-
-      expect(onSubmit).toHaveBeenCalledOnce()
-      expect(onSubmit.mock.calls[0][0].owners).toEqual([WALLET])
+      expect(offer().getAttribute('aria-label')).toBe(`Use connected wallet ${OWNER_B}`)
     })
   })
 })

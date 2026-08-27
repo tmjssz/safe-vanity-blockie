@@ -234,35 +234,12 @@ export function ConfigForm({
     }
   }, [initial])
 
-  // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
-  // for, and the one they would otherwise paste from the header they just clicked.
-  //
-  // It can only ever fill a BLANK. Owners are part of the Safe address, so writing over an answer
-  // already on screen would change which Safe is mined with nothing to say so; the guard lives
-  // inside the updater rather than in this effect body precisely so it judges the rows React
-  // holds, not whatever this closure captured — a value typed between render and effect still
-  // wins. Returning `rows` untouched is a real no-op: React bails out on an identical reference.
-  //
-  // Keyed on the address alone, which settles three cases at once and is why none of them needs
-  // bookkeeping of its own:
-  //
-  //   - Connected before this mounted (wagmi's silent reconnect on load) — the address is simply
-  //     already here on the first pass, and a returning user meets a filled form.
-  //   - The wallet switches account. This re-runs, finds row 0 occupied, and declines. The first
-  //     address stands, as it does against anything else already typed.
-  //   - The user clears the field. The address has NOT changed, so this does not re-run and the
-  //     field stays empty. Watching the field instead would make owner 1 impossible to empty for
-  //     as long as a wallet is connected. Disconnecting and reconnecting is a different address
-  //     value (undefined and back), so that does fill it again — a new connection, a new blank.
+  // Read only to offer "Use connected wallet" inside an empty owner field — see the row below.
+  // Nothing is filled in without being asked for: a form that answers its own first question makes
+  // a connected visitor's owner list look decided before they have looked at it, and the one thing
+  // that field decides is which Safe every result belongs to. The offer is one press, and a press
+  // is an answer.
   const { address } = useAccount()
-  useEffect(() => {
-    if (!address) return
-    setOwners((rows) => {
-      const first = rows[0]
-      if (!first || first.value.trim().length > 0) return rows
-      return [{ ...first, value: address }, ...rows.slice(1)]
-    })
-  }, [address])
 
   // Lands the caret in the field the press just produced. Keyed on the ref rather than on
   // `revealed`, so a value arriving from a link — which reveals the field too — does not pull focus
@@ -380,8 +357,8 @@ export function ConfigForm({
             : 'Start mining'
 
   // Every route by which the USER answers this form marks it answered, and nothing else does —
-  // see `edited` above. The wallet prefill is deliberately not one of them; "Use connected wallet"
-  // is, because that one was asked for.
+  // see `edited` above. "Use connected wallet" is one of them, because that one was asked for;
+  // there is no longer anything that fills a field without being asked.
   const setOwnerValue = (id: string, value: string) => {
     edited.current = true
     setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value } : row)))
@@ -426,21 +403,16 @@ export function ConfigForm({
     })
   }
 
-  // "Use connected wallet", applied. Distinct from the prefill above in what it is allowed to
-  // touch: the prefill only ever fills a blank owner 1, while this puts the wallet in the first
-  // blank ANYWHERE, and makes a new row when there is no blank to use. Neither overwrites.
-  const useConnectedWallet = () => {
+  // "Use connected wallet", applied to the row that offered it. It used to search for the first
+  // blank row and grow the list when it found none, because one control at the bottom of the card
+  // had to guess which field it meant. The offer lives inside a specific empty field now, so there
+  // is nothing to guess and nothing to overwrite: the row it fills is the row it was rendered in.
+  // Not named `use…`: the offer calls it from inside the row's JSX, and a `use` prefix there reads
+  // to React's own lint rule as a hook called from a nested function.
+  const fillFromConnectedWallet = (id: string) => {
     if (!address) return
     edited.current = true
-    setOwners((rows) => {
-      const blank = rows.findIndex((row) => row.value.trim().length === 0)
-      if (blank >= 0) {
-        return rows.map((row, index) => (index === blank ? { ...row, value: address } : row))
-      }
-      const added = makeRows([address], nextRowId)
-      focusRow.current = added[0].id
-      return [...rows, ...added]
-    })
+    setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value: address } : row)))
   }
 
   // Offered only when it has something to do. Once the wallet is already an owner the only thing
@@ -509,6 +481,10 @@ export function ConfigForm({
         <div className="flex flex-col gap-2">
           {owners.map((owner, index) => {
             const complaint = ownerComplaint(owner)
+            // Every empty row offers it independently, and none of them once the wallet is already
+            // an owner: see `canUseConnectedWallet`. Emptiness is what keeps the offer from ever
+            // sitting over a value, which is also why it needs no reserved space in the field.
+            const offerWallet = canUseConnectedWallet && owner.value.trim().length === 0
             return (
               <div key={owner.id} className="flex flex-col">
                 <div className="flex items-end gap-2">
@@ -535,22 +511,57 @@ export function ConfigForm({
                     {/* Each field carries its own name — "Owner 1", "Owner 2" — or the list is a
                         row of identically-named boxes to a screen reader. */}
                     <Label htmlFor={ownerFieldId(index)}>Owner {index + 1}</Label>
-                    <Input
-                      id={ownerFieldId(index)}
-                      ref={(element: HTMLInputElement | null) => {
-                        inputs.current.set(owner.id, element)
-                      }}
-                      value={owner.value}
-                      onChange={(event) => setOwnerValue(owner.id, event.target.value)}
-                      onBlur={() => touchOwner(owner.id)}
-                      // The row says so itself, and says so programmatically: with "Start"
-                      // disabled there is no press left to produce the validator's message, so a
-                      // row that merely looked wrong would leave a screen-reader user with a dead
-                      // button and no reason for it.
-                      aria-invalid={complaint ? true : undefined}
-                      aria-describedby={complaint ? ownerErrorId(index) : undefined}
-                      placeholder="0x…"
-                    />
+                    {/* `relative` for the offer below, and `@container` so it can answer to the
+                        width of this field rather than the width of the window: the same card is
+                        the whole of the start screen and a narrow column beside a run. */}
+                    <div className="@container relative">
+                      <Input
+                        id={ownerFieldId(index)}
+                        ref={(element: HTMLInputElement | null) => {
+                          inputs.current.set(owner.id, element)
+                        }}
+                        value={owner.value}
+                        onChange={(event) => setOwnerValue(owner.id, event.target.value)}
+                        onBlur={() => touchOwner(owner.id)}
+                        // The row says so itself, and says so programmatically: with "Start"
+                        // disabled there is no press left to produce the validator's message, so a
+                        // row that merely looked wrong would leave a screen-reader user with a dead
+                        // button and no reason for it.
+                        aria-invalid={complaint ? true : undefined}
+                        aria-describedby={complaint ? ownerErrorId(index) : undefined}
+                        // Dropped when the field is too narrow to hold both, and only then: the
+                        // offer is the more useful of the two, since "0x…" says what an address
+                        // looks like to someone who already knows and the offer hands them one.
+                        // 11rem is where a ~120px offer inset by the field's own padding meets a
+                        // ~28px placeholder inset by the same, measured at this text size.
+                        className={
+                          offerWallet ? '@max-[11rem]:placeholder:text-transparent' : undefined
+                        }
+                        placeholder="0x…"
+                      />
+                      {/* Inside the field it fills, rather than one control under the whole list.
+                          The old placement had to guess which row it meant (the first blank, or a
+                          new one), and a card with two owner rows gave no clue which would move.
+
+                          After the Input in the DOM, so it is the next stop from the field it
+                          belongs to. A real button, not a value written into the input: a value
+                          would be indistinguishable from a typed one, and the read of it that
+                          matters here is "this field is still empty".
+
+                          Absolutely positioned, so the field's own text has the whole width. It
+                          never shares that width with a value: the first keystroke removes it. */}
+                      {offerWallet && (
+                        <button
+                          type="button"
+                          data-slot="use-connected-wallet"
+                          aria-label={`Use connected wallet ${address}`}
+                          className="absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] text-primary hover:underline"
+                          onClick={() => fillFromConnectedWallet(owner.id)}
+                        >
+                          Use connected wallet
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {/* Absent while there is only one row, rather than present and disabled. There
                       is always at least one owner (validateMineConfig rejects an empty list), and
@@ -618,17 +629,6 @@ export function ConfigForm({
             <Plus aria-hidden="true" />
             Add another owner
           </Button>
-          {canUseConnectedWallet && (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={useConnectedWallet}
-            >
-              Use connected wallet
-            </Button>
-          )}
         </div>
         {errors.owners && (
           <p role="alert" className="text-sm text-destructive">
