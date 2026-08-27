@@ -10,6 +10,17 @@ export interface Rgb {
  */
 export const MAX_RGB_DISTANCE = Math.sqrt(3 * 255 ** 2)
 
+/**
+ * The contrast slider's ceiling: `MAX_RGB_DISTANCE` rounded up to a whole number a label can
+ * carry.
+ *
+ * Here rather than in FacePicker, which is where it used to be, because a second consumer arrived:
+ * `min-contrast=` in a resume link is validated against exactly this bound (lib/deep-link). Two
+ * copies of it would be two things that agree until one is edited — and the failure that produces
+ * is a link the app refuses to read back from itself, at a value its own slider handed the user.
+ */
+export const CONTRAST_MAX = Math.ceil(MAX_RGB_DISTANCE)
+
 /** Euclidean distance in RGB space, the same measure the miner filters candidates by. */
 export function rgbDistance(a: Rgb, b: Rgb): number {
   return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2)

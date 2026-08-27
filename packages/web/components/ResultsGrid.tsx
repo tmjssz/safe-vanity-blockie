@@ -73,7 +73,7 @@ export interface ResultsGridProps {
  */
 function excludingFilters(filters: FaceFilters): string {
   const criteria = [
-    filters.twoColor ? 'two colours only' : undefined,
+    filters.twoColor ? 'two-color' : undefined,
     filters.minContrast > 0 ? `minimum contrast ${filters.minContrast}` : undefined,
     filters.minMatch > 0 ? `minimum match ${filters.minMatch}%` : undefined,
   ].filter((criterion): criterion is string => criterion !== undefined)

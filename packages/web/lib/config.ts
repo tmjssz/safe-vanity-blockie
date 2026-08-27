@@ -111,17 +111,34 @@ export interface FaceFilters {
 }
 
 /**
- * Contrast is 80 rather than 0, on a scale that runs to 442. Zero accepts a pair whose two colours
- * differ by less than the eye reliably separates, so a face drawn in them is not a face anybody was
- * hoping to mine — which made the first run every user sees the least useful one, with the slider
- * left to be discovered before the results got better.
+ * Neither floor is 0. Zero contrast accepts a pair whose two colours differ by less than the eye
+ * reliably separates, so a face drawn in them is not a face anybody was hoping to mine; zero match
+ * accepts every near-miss the miner has ever scored. Both made the first run a user sees the least
+ * useful one, with a slider left to be discovered before the results got better.
  *
- * The match floor is 0, and deliberately not given the same treatment. Contrast is a property of a
- * candidate alone, so a floor on it is satisfiable from the first second; match quality is a
- * property of how long the search has run, so any non-zero default would empty the grid for the
- * opening seconds of every run and present a working search as one finding nothing.
+ * 60 rather than the 80 contrast started at, and 85 rather than the 0 match started at. The two
+ * numbers are not on the same scale and do not mean the same kind of thing: contrast is 0 to 442 and
+ * describes one candidate, match is a percentage of the best a candidate could have scored.
+ *
+ * The match floor is the one with a cost, and it is accepted deliberately rather than overlooked.
+ * Contrast is a property of a candidate alone, so a floor on it is satisfiable from the first
+ * second. Match quality is a property of how long the search has run, so a floor of 85 leaves the
+ * grid empty for the opening stretch of every run — and an empty grid is exactly what a broken
+ * search looks like. What makes that survivable is that the grid says which it is: its empty state
+ * distinguishes "nothing found yet" from "nothing survived the filters" and offers the control that
+ * relaxes them (see ResultsGrid). Without that this default would be the wrong one.
  */
-export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 80, minMatch: 0 }
+export const DEFAULT_FACE_FILTERS: FaceFilters = { twoColor: true, minContrast: 60, minMatch: 85 }
+
+/**
+ * A perfect match, and the top of the match slider. Lives here rather than in FacePicker, which is
+ * where it used to be, because a second consumer arrived: `min-match=` in a resume link is
+ * validated against exactly this bound (lib/deep-link). Two copies of it would be two things that
+ * agree until one is edited — the same reason `CONTRAST_MAX` moved out of FacePicker and into
+ * lib/contrast-preview.ts. Here rather than there because `minMatch` is a field of `FaceFilters`,
+ * declared a few lines up, and a bound on that field belongs beside the type it bounds.
+ */
+export const MATCH_MAX = 100
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 

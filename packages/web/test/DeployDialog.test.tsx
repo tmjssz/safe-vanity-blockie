@@ -191,7 +191,7 @@ describe('DeployDialog', () => {
   it('drops the expression, contrast and colour-count chips', async () => {
     await renderDialog()
     expect(screen.queryByText(/contrast/i)).toBeNull()
-    expect(screen.queryByText(/two colours/i)).toBeNull()
+    expect(screen.queryByText(/two-color/i)).toBeNull()
     expect(screen.queryByText(/^small$/i)).toBeNull()
   })
 

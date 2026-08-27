@@ -82,10 +82,11 @@ export function getTemplate(name: string): FaceSpec {
  * Commas because that is the one list separator the CLI already has — `--owners 0x..,0x..` — and a
  * second convention for a second list is one more thing to remember at the prompt for no gain.
  *
- * Lives beside TEMPLATES rather than in the app that needs it, because it is one half of a
- * round-trip whose other half is `faceSpecForTarget` below — the app names a selection with this,
- * hands that name to the CLI, and the CLI resolves it back to the same set of expressions. Split
- * across two packages, the two halves would be free to drift apart with nothing failing.
+ * Lives beside TEMPLATES rather than in the app that needs it, because it is one side of a
+ * round-trip whose other two sides are `faceSpecForTarget` (name → spec) and `mouthNamesForTarget`
+ * below (name → names) — the app names a selection with this, hands that name to the CLI or a URL,
+ * and either resolves it back to the same set of expressions. Split across two packages, the sides
+ * would be free to drift apart with nothing failing.
  *
  * Validates nothing: the caller builds the spec from the same names, and `faceWithMouths` is where
  * an unknown one is caught, with the error that lists the expressions.
@@ -98,21 +99,26 @@ export function targetNameForMouths(mouthNames: string[]): string {
 }
 
 /**
- * A `--target` name: a builtin template, or a comma-separated list of expressions — so
- * `smile,frown` accepts either of those two mouths and nothing else.
+ * The expressions a `--target` name accepts.
  *
- * The list form exists because the builtins name only the two ends of the range, one expression or
- * all five, while the browser app accepts any subset of them. A narrowed selection therefore had no
- * name to be handed to the CLI at all, and the command the app offered for "run this same search
- * natively" quietly searched a wider target than the screen it was copied from.
+ * The third side of the round-trip whose other two are `targetNameForMouths` (names → name) and
+ * `faceSpecForTarget` (name → spec). It exists because a caller reading a name back needs the
+ * NAMES, not a spec: the browser app's state is the accepted expressions, and it builds its own
+ * spec from them (see the web package's `faceSpecFromSelection`). Handed a FaceSpec it would have
+ * to take that object apart again to find out what is in it, or keep a second parser of its own —
+ * and a second parser is how a `--target` at the prompt and a `target=` in a URL come to disagree
+ * about what `smile,open` means.
  *
- * A repeat is deduped rather than rejected: it names the same expression twice, which is not
+ * Lives here for the reason `targetNameForMouths` gives: split across packages, the halves of a
+ * round-trip are free to drift apart with nothing failing.
+ *
+ * A repeat is deduped rather than rejected — it names the same expression twice, which is not
  * ambiguous, and a second identical alternative is scoring work for no wider target.
  */
-export function faceSpecForTarget(target: string): FaceSpec {
-  // Same null-prototype reasoning as TEMPLATES: `hasOwn`, so a URL- or argv-supplied
-  // "constructor" cannot resolve to an inherited key.
-  if (Object.hasOwn(TEMPLATES, target)) return TEMPLATES[target]
+export function mouthNamesForTarget(target: string): string[] {
+  // The only builtin that is not simply a list of expressions. Every other TEMPLATES key IS a
+  // mouth name, which the list branch below already reads, so this is the whole special case.
+  if (target === 'faces') return MOUTHS.map((mouth) => mouth.name)
 
   const known = new Set(MOUTHS.map((mouth) => mouth.name))
   const names = [
@@ -133,6 +139,30 @@ export function faceSpecForTarget(target: string): FaceSpec {
         `or a comma-separated list of expressions (${MOUTHS.map((mouth) => mouth.name).join(', ')})`,
     )
   }
+  return names
+}
+
+/**
+ * A `--target` name: a builtin template, or a comma-separated list of expressions — so
+ * `smile,frown` accepts either of those two mouths and nothing else.
+ *
+ * The list form exists because the builtins name only the two ends of the range, one expression or
+ * all five, while the browser app accepts any subset of them. A narrowed selection therefore had no
+ * name to be handed to the CLI at all, and the command the app offered for "run this same search
+ * natively" quietly searched a wider target than the screen it was copied from.
+ *
+ * The TEMPLATES lookup stays a fast path rather than being folded into the parse below, and not
+ * for speed: it returns the MEMOISED spec for a builtin name, and identity is load-bearing for the
+ * browser app, which keys a run's identity on the spec object (see MiningView's `sameRun`).
+ * Rebuilding an equal one here would restart a run over nothing. Its `hasOwn` also keeps the
+ * null-prototype guard exactly where the TEMPLATES comment explains it.
+ */
+export function faceSpecForTarget(target: string): FaceSpec {
+  // Same null-prototype reasoning as TEMPLATES: `hasOwn`, so a URL- or argv-supplied
+  // "constructor" cannot resolve to an inherited key.
+  if (Object.hasOwn(TEMPLATES, target)) return TEMPLATES[target]
+
+  const names = mouthNamesForTarget(target)
   return faceWithMouths(targetNameForMouths(names), names)
 }
 

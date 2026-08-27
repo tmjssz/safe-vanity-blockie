@@ -101,7 +101,7 @@ export const ResultCard = memo(function ResultCard({
             id={colourId}
             className="absolute bottom-1 left-1 z-30 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] leading-none font-medium text-white/80"
           >
-            two colours
+            Two-color
           </span>
         )}
         {/* Nothing on a compact tile says what clicking it does — the words that said so are what

@@ -143,11 +143,12 @@ export function MiningView({
     setStatusBarSlot(document.getElementById(MINING_STATUS_BAR_SLOT_ID))
   }, [])
 
-  // Makes the app title in the header the second door back to the Configure card, for exactly as
-  // long as this component is mounted — which is exactly as long as there is a run to discard.
-  // It is registered from here for the same reason the status bar is rendered from here: the
-  // count the confirmation names and the reset it calls both live at this level. Unmounting on
-  // "Start over" is what puts the title back to plain text, so neither side keeps a flag.
+  // Makes the app title in the header the way back to the Configure card, for exactly as long as
+  // this component is mounted — which is exactly as long as there is a run to discard. The status
+  // bar carried a button of its own once; now that it does not, this registration is the only
+  // thing standing between a run and no way out of it. It happens from here because the count the
+  // confirmation names and the reset it calls both live at this level. Unmounting on "Start over"
+  // is what puts the title back to plain text, so neither side keeps a flag.
   useRegisterStartOver(state.candidates.length, onStartOver)
 
   // The three constants a worker actually mines with, as values. Everything below keys off these
@@ -425,11 +426,14 @@ export function MiningView({
     <MiningStatusBar
       status={status}
       config={config}
+      // `faceSpec.name` rather than the mouth list: it is the name core gave this selection
+      // (`targetNameForMouths`), which is what the link and the CLI's `--target` both take, so
+      // neither has to be told the expressions twice.
+      target={faceSpec.name}
+      filters={filters}
       // The same number the Results badge shows, so the confirmation puts exactly what the user
       // can see at stake rather than a different, larger count they have no way to check.
-      resultCount={state.candidates.length}
       onPauseToggle={onPauseToggle}
-      onStartOver={onStartOver}
       onShowCommand={() => setCommandOpen(true)}
     />
   )

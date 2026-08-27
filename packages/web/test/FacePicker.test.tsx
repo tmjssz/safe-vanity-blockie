@@ -13,6 +13,7 @@ function renderPicker(
     onChange: (mouthNames: string[]) => void
     filters: FaceFilters
     onFiltersChange: (filters: FaceFilters) => void
+    live: boolean
   }> = {},
 ) {
   const onChange = overrides.onChange ?? vi.fn()
@@ -22,6 +23,7 @@ function renderPicker(
     onChange,
     filters: overrides.filters ?? DEFAULT_FACE_FILTERS,
     onFiltersChange,
+    ...(overrides.live === undefined ? {} : { live: overrides.live }),
   }
   const result = render(<FacePicker {...props} />)
   return { ...result, onChange, onFiltersChange }
@@ -78,6 +80,26 @@ function expectedCells(mouthName: string): string {
 }
 
 describe('FacePicker', () => {
+  // The card is rendered at two very different widths: ~1072px inside the results page's card,
+  // and ~472px inside Configure's card on the start screen. A VIEWPORT breakpoint
+  // cannot tell those apart — `lg:` fires on a wide desktop regardless of how narrow the box
+  // actually is, which put two columns into 472px and crushed both. So the split is asked of the
+  // CONTAINER instead.
+  //
+  // Asserted as a class contract rather than a measurement, because jsdom computes no layout at
+  // all: there is nothing here that could observe a column actually appearing. What it can hold on
+  // to is that the query is a container query and not a viewport one, which is the whole of the
+  // bug that was fixed.
+  it('splits into columns on its container width, never on the viewport', () => {
+    const { container } = renderPicker()
+    const query = container.querySelector('[data-slot="picker-columns"]') as HTMLElement
+
+    expect(query.className).toMatch(/@[\w]+:grid-cols-/)
+    expect(query.className).not.toMatch(/(^|\s)(sm|md|lg|xl|2xl):grid-cols-/)
+    // The container the query is asked of has to be an ancestor, not the queried element itself:
+    // an element cannot be its own query container.
+    expect(query.closest('.\\@container')).not.toBeNull()
+  })
   it('renders a toggle for every expression', () => {
     renderPicker({ value: ['smile'] })
     expect(
@@ -175,20 +197,34 @@ describe('FacePicker', () => {
       expect(checkedNames()).toEqual(['smile', 'frown', 'neutral'])
     })
 
-    // Colour alone would leave the accepted set invisible to anyone who cannot see it, so the
-    // state is carried by a mark as well: a check on the accepted tiles, absent on the rejected.
-    // The emphasis is inverted from what it was — every expression starts accepted, so the
-    // notable state is the rejected one, and it is the rejected tile that is dimmed rather than
-    // the accepted one that is ringed.
-    it('marks an accepted tile with more than colour, and dims a rejected one', () => {
+    // The check mark that used to sit in the corner of an accepted tile is gone: the pattern it
+    // overlapped is the whole content of the tile, and a glyph on top of an 8x8 grid at 40px is
+    // covering the thing being chosen.
+    //
+    // State is still carried on two channels, which is what the mark was there for. For the eye,
+    // rejection dims the tile — opacity, not colour, so it survives any colour-vision difference.
+    // For assistive tech, each tile is a real checkbox reporting `aria-checked`, which is what a
+    // screen reader has always read; the glyph never spoke to one, being aria-hidden.
+    //
+    // The emphasis stays inverted: every expression starts accepted, so the notable state is the
+    // rejected one, and it is the rejected tile that is dimmed rather than the accepted one marked.
+    it('shows acceptance by dimming the rejected, on both channels and with no overlay', () => {
       renderPicker({ value: ['smile'] })
-      const accepted = tile('smile')
-      expect(accepted.querySelector('[data-slot="expression-selected-mark"]')).not.toBeNull()
 
+      const accepted = tile('smile')
       const rejected = tile('frown')
+
+      // Nothing is drawn over either pattern.
+      expect(accepted.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
       expect(rejected.querySelector('[data-slot="expression-selected-mark"]')).toBeNull()
+
+      // For the eye: the rejected one is dimmed, the accepted one is simply normal.
       expect(rejected.className).toMatch(/opacity-/)
       expect(accepted.className).not.toMatch(/opacity-/)
+
+      // For assistive tech, which never saw the glyph.
+      expect(accepted.getAttribute('aria-checked')).toBe('true')
+      expect(rejected.getAttribute('aria-checked')).toBe('false')
     })
 
     // Inside a tile that is already named after its expression, the preview's own
@@ -234,7 +270,7 @@ describe('FacePicker', () => {
       const user = userEvent.setup()
       renderPicker({ value: ['smile'] })
 
-      await user.click(screen.getByRole('button', { name: /about two colours only/i }))
+      await user.click(screen.getByRole('button', { name: /about two-color/i }))
       expect(await screen.findByText(/no cell uses the spot colour/i)).toBeDefined()
       await user.keyboard('{Escape}')
 
@@ -340,6 +376,74 @@ describe('FacePicker', () => {
       const dialog = await screen.findByRole('dialog')
       expect(dialog.textContent).toMatch(/restart/i)
       expect(dialog.textContent).toMatch(/discard/i)
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    // The warning is about a run: a leaderboard discarded, scanned nonces thrown away, the search
+    // started again. On the idle screen — where a resume link now mounts this card so the
+    // recipient can see what they are about to start — none of that exists, so every sentence in
+    // that dialog is false and the press it costs buys nothing.
+    // Staging exists to put a warning between a click and a restarted search. With no run there is
+    // nothing to restart, so the click simply takes effect — no Apply to press, and no dialog.
+    it('applies a click straight away when there is no run to restart', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+
+      expect(onChange).toHaveBeenCalledWith(['smile', 'frown', 'neutral'])
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    // Apply and Reset exist only to govern a staged edit. With nothing ever staged they would be
+    // two controls that can never do anything, on the one screen where the reader has the least
+    // context for working out what they were for.
+    it('offers neither Apply nor Reset when there is no run', async () => {
+      renderPicker({ value: ['smile', 'frown'], live: false })
+      const user = userEvent.setup()
+
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+
+      // And still neither after a click, which is when they would have appeared.
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+
+      expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /^reset$/i })).toBeNull()
+    })
+
+    // Select all is not a staging control — it widens the selection — so it stays, and takes effect
+    // on the spot like every other click here.
+    it('applies Select all straight away when there is no run', async () => {
+      const { onChange } = renderPicker({ value: ['smile'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('button', { name: /select all/i }))
+
+      expect(onChange).toHaveBeenCalledWith(ALL_MOUTH_NAMES)
+    })
+
+    // The floor still holds: applying immediately must not make it possible to reject the last one.
+    it('still refuses to remove the last expression when there is no run', async () => {
+      const { onChange } = renderPicker({ value: ['smile'], live: false })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^smile$/i }))
+
+      expect(onChange).not.toHaveBeenCalled()
+      expect(screen.getByText(/keep at least one expression/i)).toBeDefined()
+    })
+
+    // The default is the behaviour that already existed. A host that says nothing gets the
+    // question, because the cost it warns about is the normal case.
+    it('still warns when nothing says whether a run exists', async () => {
+      const { onChange } = renderPicker({ value: ['smile', 'frown'] })
+      const user = userEvent.setup()
+
+      await user.click(screen.getByRole('checkbox', { name: /^neutral$/i }))
+      await user.click(applyButton())
+
+      expect(await screen.findByRole('dialog')).toBeDefined()
       expect(onChange).not.toHaveBeenCalled()
     })
 
@@ -493,7 +597,7 @@ describe('FacePicker', () => {
     it('leaves the colour filters applying immediately', async () => {
       const { onFiltersChange } = renderPicker({ value: ['smile', 'frown'] })
 
-      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+      await userEvent.click(screen.getByRole('switch', { name: /^two-color$/i }))
 
       expect(onFiltersChange).toHaveBeenCalled()
       expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull()
@@ -554,12 +658,36 @@ describe('FacePicker', () => {
       expect(screen.getByTestId('min-match-value').textContent).toBe('90%')
     })
 
-    it('is off at zero by default, so a fresh run hides nothing', () => {
+    // A floor from the first render, and the one default with a cost: match quality is a property of
+    // how long the search has run, so a non-zero floor leaves the grid empty for the opening stretch
+    // of a run. The grid's own empty state is what makes that readable rather than alarming — it
+    // says whether nothing has been found yet or nothing survived the filters, and offers to relax
+    // them. No number in this comment on purpose: the floor has moved twice, and the assertions
+    // below read it from the constant.
+    it('starts at the default floor, which is not zero', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
         screen.getByRole('slider', { name: /minimum match/i }).getAttribute('aria-valuenow'),
-      ).toBe('0')
-      expect(screen.getByTestId('min-match-value').textContent).toBe('0%')
+      ).toBe(String(DEFAULT_FACE_FILTERS.minMatch))
+      expect(screen.getByTestId('min-match-value').textContent).toBe(
+        `${DEFAULT_FACE_FILTERS.minMatch}%`,
+      )
+    })
+
+    // The help text has to survive a change to the default, and once did not: it advised leaving the
+    // floor at 0 while a search is young, which is advice against the value the app now ships. Copy
+    // that argues with the state it is describing is worse than none, because it is read and
+    // believed. Pinned as "does not contradict the default" rather than word for word, so the
+    // wording stays free to improve.
+    it('explains the floor without advising against the one it ships', async () => {
+      const user = userEvent.setup()
+      renderPicker({ filters: DEFAULT_FACE_FILTERS })
+
+      await user.click(screen.getByRole('button', { name: /about minimum match/i }))
+      const help = (await screen.findByRole('dialog')).textContent ?? ''
+
+      expect(help).toMatch(/climbs as a search runs/i)
+      expect(help).not.toMatch(/leave it at 0/i)
     })
 
     it('reports the new floor, and shows it, when the slider is moved', async () => {
@@ -630,7 +758,7 @@ describe('FacePicker', () => {
     it('shows the defaults it was given', () => {
       renderPicker({ filters: DEFAULT_FACE_FILTERS })
       expect(
-        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /^two-color$/i }).getAttribute('aria-checked'),
       ).toBe('true')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),
@@ -642,7 +770,7 @@ describe('FacePicker', () => {
 
     it('calls onFiltersChange with twoColor flipped when the switch is toggled', async () => {
       const { onFiltersChange } = renderPicker({ filters: DEFAULT_FACE_FILTERS })
-      await userEvent.click(screen.getByRole('switch', { name: /two colours only/i }))
+      await userEvent.click(screen.getByRole('switch', { name: /^two-color$/i }))
       expect(onFiltersChange).toHaveBeenCalledWith({
         twoColor: false,
         minContrast: DEFAULT_FACE_FILTERS.minContrast,
@@ -701,7 +829,7 @@ describe('FacePicker', () => {
     it('reflects a non-default filters prop', () => {
       renderPicker({ filters: { twoColor: false, minContrast: 150, minMatch: 0 } })
       expect(
-        screen.getByRole('switch', { name: /two colours only/i }).getAttribute('aria-checked'),
+        screen.getByRole('switch', { name: /^two-color$/i }).getAttribute('aria-checked'),
       ).toBe('false')
       expect(
         screen.getByRole('slider', { name: /minimum contrast/i }).getAttribute('aria-valuenow'),

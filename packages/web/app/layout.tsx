@@ -36,11 +36,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 `bg-background` is required: without it the page scrolls visibly underneath. */}
             <header className="sticky top-0 z-50 h-14 border-b bg-background">
               <div className="mx-auto flex h-full max-w-6xl items-center gap-4 px-4">
-                {/* The app name, and — once a run exists — the second route back to the Configure
-                    card, asking the same confirmed question the status bar's "Start over" does. A
-                    run buries the form under a face, a status bar and up to 200 results, and the
-                    title is where a user looks to get out of a page. See AppTitle for why it is a
-                    context rather than the portal the chain selector arrives by. */}
+                {/* The app name, and — once a run exists — the only route back to the Configure
+                    card, behind a confirmation. A run buries the form under a face, a status bar
+                    and up to 200 results, and the title is where a user looks to get out of a
+                    page. See AppTitle for why it is a context rather than the portal the chain
+                    selector arrives by. */}
                 <AppTitle />
                 <div className="ml-auto flex items-center gap-2">
                   {/* The chain picker lands here, portaled in by the page. It is not rendered here

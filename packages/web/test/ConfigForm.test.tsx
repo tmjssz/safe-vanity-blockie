@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConfigForm } from '../components/ConfigForm'
-import { maxStartNonce } from '../lib/config'
+import { DEFAULT_FACE_FILTERS, maxStartNonce } from '../lib/config'
 
 // Hoisted so each test can drive its own connection state — a module-scoped factory can only ever
 // return one fixed state, and the prefill below is defined entirely by how that state CHANGES.
@@ -23,9 +23,13 @@ const WALLET = '0x' + '99'.repeat(20)
 /** The nth owner field, by the accessible name a screen reader hears. */
 const ownerField = (n: number) =>
   screen.getByLabelText(new RegExp(`^owner ${n}$`, 'i')) as HTMLInputElement
-const startButton = () => screen.getByRole('button', { name: /^start mining$/i })
-const advancedToggle = () => screen.getByRole('button', { name: /^advanced$/i })
-const startNonceField = () => screen.getByLabelText(/^start from saltnonce$/i) as HTMLInputElement
+/**
+ * The primary control, found by identity rather than by name: its label IS the validation message
+ * now, so a name-based query would stop finding it exactly when the form is invalid, which is when
+ * most of these tests want it.
+ */
+const startButton = () => document.querySelector('[data-slot="start-mining"]') as HTMLButtonElement
+const startNonceField = () => screen.getByLabelText(/^checkpoint$/i) as HTMLInputElement
 const addOwner = () => screen.getByRole('button', { name: /add another owner/i })
 /** Radix renders the threshold Select as a combobox, not a native select. */
 const thresholdTrigger = () => screen.getByRole('combobox', { name: /threshold/i })
@@ -45,6 +49,681 @@ async function chooseThreshold(
   await user.click(thresholdTrigger())
   await user.click(await screen.findByRole('option', { name: String(value) }))
 }
+
+/** The props that mount the Filter card inside Advanced. Omitted, the disclosure holds the field alone. */
+const filterProps = () => ({
+  mouths: ['smile', 'open'],
+  filters: DEFAULT_FACE_FILTERS,
+  onMouthsChange: vi.fn(),
+  onFiltersChange: vi.fn(),
+})
+const filterToggle = () => screen.getByRole('button', { name: /^filter$/i })
+
+describe('the filter card on the start screen', () => {
+  // The expressions and the colour filters decide what the miner credits and what the grid shows.
+  // Before this they were unreachable until a run existed, so a resume link's recipient pressed
+  // Start on a search they could not see.
+  //
+  // Above the Advanced disclosure, not inside it: this is not an advanced question, and a
+  // disclosure would hide the very values a link was sent to communicate. So it is reachable with
+  // nothing pressed.
+  it('is offered without anything having to be opened first', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(filterToggle()).toBeDefined()
+  })
+
+  it('is absent when the host passes no filters', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /^filter$/i })).toBeNull()
+  })
+
+  // Three arrival states, told apart. A link that named filters has something to show, so the card
+  // opens; a link that named only a checkpoint has the field to show and nothing else; an ordinary
+  // visit has neither and both stay out of the way.
+  it('opens itself when a link carried filters', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 42 }}
+        linkNarrowedFilters
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  /**
+   * The case the two tests around this one cannot reach, and the one the real app actually takes.
+   *
+   * `linkNarrowedFilters` is derived from the latched link, and the card mounts before that latch
+   * fires: this subtree reaches its first client render through app/page.tsx's Suspense bailout with
+   * a useSearchParams() that can still be empty. So the prop is false at mount and true a render
+   * later. Seeding the open state alone left the card collapsed for good, and a recipient pressed
+   * Start on constraints they were never shown.
+   *
+   * Not reproducible through page.test.tsx, which mocks useSearchParams to return a value set before
+   * render — the prop is present on the first render there and the ordering never happens. The
+   * rerender here IS that ordering, stated at the boundary where it occurs.
+   */
+  it('opens itself when a link narrowed the search but arrived a render late', () => {
+    const props = {
+      chainId: 1,
+      initial: { owners: [OWNER] },
+      onSubmit: vi.fn(),
+      ...filterProps(),
+    }
+    const { rerender } = render(<ConfigForm {...props} linkNarrowedFilters={undefined} />)
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+
+    rerender(<ConfigForm {...props} linkNarrowedFilters />)
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  // The other half of that effect. A reader who has already answered the question outranks a link
+  // answering it late: a card springing back open under someone's hand is worse than one that never
+  // opened, and the window between mount and the latch is where both can happen.
+  it('leaves a card the reader has collapsed alone when the link lands late', async () => {
+    const user = userEvent.setup()
+    const props = {
+      chainId: 1,
+      initial: { owners: [OWNER] },
+      onSubmit: vi.fn(),
+      ...filterProps(),
+    }
+    const { rerender } = render(<ConfigForm {...props} linkNarrowedFilters={undefined} />)
+
+    await user.click(filterToggle())
+    await user.click(filterToggle())
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+
+    rerender(<ConfigForm {...props} linkNarrowedFilters />)
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  // The two disclosures are independent now that they hold different things. A link that names a
+  // target but no checkpoint is only reachable by hand-editing — `resumeSearchPath` always writes
+  // all five params — but it pins the rule: opening Advanced for it would present an empty field as
+  // though it had something to say.
+  it('opens itself when a link narrowed the search but carried no checkpoint', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        linkNarrowedFilters
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('true')
+    // And the checkpoint line stays a line: nothing was carried for it to show.
+    expect(revealAction()).toBeDefined()
+  })
+
+  it('stays shut when a link carried only a checkpoint', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 42 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+    // The checkpoint it did carry is on screen, without anything being pressed.
+    expect(checkpointField().value).toBe('42')
+  })
+
+  it('stays shut on an ordinary visit', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  // Its header still reads as a quiet line rather than a card heading, which is what keeps it a peer
+  // of the checkpoint line below rather than announcing itself as the more important of the two.
+  // The card's padding is a separate matter now that the section has a background to fill.
+  it('keeps its header in the quiet voice', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const row = container.querySelector('[data-slot="card-header"]') as HTMLElement
+    const glyphs = [...row.children].filter((child) => child.tagName.toLowerCase() === 'svg')
+    // One glyph, and it is the chevron — against the label, as Advanced's is, rather than a filter
+    // icon in front and a chevron thrown to the far edge.
+    expect(glyphs).toHaveLength(1)
+    expect(glyphs[0].getAttribute('data-slot')).toBe('filter-chevron')
+    expect(glyphs[0].getAttribute('class')).not.toContain('ml-auto')
+  })
+
+  // A tinted block, so the section reads as one thing rather than two rows that happen to be
+  // adjacent. Background only: a border inside a bordered card is two outlines a few pixels apart,
+  // and the tint alone is enough to say "this is a group".
+  it('sits on its own tint, wrapping the title row as well as the panel', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toMatch(/bg-muted/)
+    expect(card.className).toContain('border-0')
+    expect(card.className).toContain('shadow-none')
+
+    // Collapsed, the tint is still there: it wraps the header, not just the panel below it. Radix
+    // unmounts a closed panel, so if the padding lived on the content this row would sit on nothing.
+    expect(filterToggle().getAttribute('aria-expanded')).toBe('false')
+    expect(card.contains(filterToggle())).toBe(true)
+    expect(card.className).toMatch(/(^|\s)p[xy]?-/)
+
+    // And open, the same block simply grows.
+    await user.click(filterToggle())
+    expect(container.querySelector('[data-slot="card"]')?.className).toMatch(/bg-muted/)
+  })
+
+  // Card carries no horizontal padding itself — its header and content each carry their own `px-6`
+  // — so a bare `px-0` on the card would be inert and this section's text would sit indented from
+  // everything around it. On a card stripped of its border that reads as a mistake, not as nesting.
+  it('sits flush with the fields around it rather than indented', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    // A class contract, not a measurement: jsdom loads no stylesheet, so `getComputedStyle` here
+    // knows nothing about what any Tailwind class means and would report an empty padding whether
+    // the rule were present or absent. What can be held on to is that the neutralising rules reach
+    // the card at all — a bare `px-0` would not, which is the mistake being guarded against.
+    const card = container.querySelector('[data-slot="card"]') as HTMLElement
+    expect(card.className).toContain('[&_[data-slot=card-header]]:px-0')
+    expect(card.className).toContain('[&_[data-slot=card-content]]:px-0')
+  })
+})
+
+const revealAction = () => screen.getByRole('button', { name: /continue from a checkpoint/i })
+const clearCheckpoint = () => screen.getByRole('button', { name: /clear the checkpoint/i })
+const checkpointField = () => screen.getByLabelText(/^checkpoint$/i) as HTMLInputElement
+const EXPLANATION = /each saltNonce produces one candidate address/i
+
+describe('reporting the draft upward', () => {
+  // The page keeps the address bar in step with the form, and it can only do that if the form tells
+  // it what it holds. Validation runs here exactly as submit runs it, so the page never has to guess
+  // whether what it is about to write would have been accepted.
+  it('reports a config only once the owners validate', async () => {
+    const user = userEvent.setup()
+    const onDraftChange = vi.fn()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} onDraftChange={onDraftChange} />)
+
+    // A blank form has no config to report, but still reports.
+    expect(onDraftChange).toHaveBeenCalledWith({ config: undefined, start: 0 })
+
+    onDraftChange.mockClear()
+    await user.type(ownerField(1), '0xnot-an-address')
+    // Every keystroke reports, and none of them carries a config.
+    expect(onDraftChange).toHaveBeenCalled()
+    for (const [draft] of onDraftChange.mock.calls) expect(draft.config).toBeUndefined()
+
+    onDraftChange.mockClear()
+    await user.clear(ownerField(1))
+    await user.type(ownerField(1), OWNER)
+
+    const last = onDraftChange.mock.calls.at(-1)?.[0]
+    expect(last.config).toEqual({ owners: [OWNER], threshold: 1, safeVersion: '1.4.1', chainId: 1 })
+  })
+
+  it('reports the checkpoint, and the default for one still being typed', async () => {
+    const user = userEvent.setup()
+    const onDraftChange = vi.fn()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        onDraftChange={onDraftChange}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    await user.type(startNonceField(), '500')
+    expect(onDraftChange.mock.calls.at(-1)?.[0].start).toBe(500)
+
+    // Unparseable is reported as the default rather than withheld: the URL is a draft, and a value
+    // still being typed has no business erasing the rest of it.
+    onDraftChange.mockClear()
+    await user.clear(startNonceField())
+    await user.type(startNonceField(), '4.12e10')
+    expect(onDraftChange.mock.calls.at(-1)?.[0].start).toBe(0)
+  })
+
+  // The array is rebuilt on every render, so a dependency on it would fire this for renders that
+  // changed nothing at all.
+  it('does not report again for a render that changed nothing', () => {
+    const onDraftChange = vi.fn()
+    const props = {
+      chainId: 1,
+      initial: { owners: [OWNER] },
+      onSubmit: vi.fn(),
+      onDraftChange,
+      ...filterProps(),
+    }
+    const { rerender } = render(<ConfigForm {...props} />)
+    const first = onDraftChange.mock.calls.length
+
+    rerender(<ConfigForm {...props} />)
+
+    expect(onDraftChange.mock.calls.length).toBe(first)
+  })
+})
+
+describe('the checkpoint field', () => {
+  // An owner in every render here, and it is load-bearing rather than scenery: the offer that
+  // reveals this field only appears once Start can actually be pressed, so an ownerless form has no
+  // route to the field at all. These tests are about what the field does once reached; the offer's
+  // own condition is covered in the describe below.
+  const answered = { initial: { owners: [OWNER] } }
+
+  // An accordion for one optional field was a section header, a chevron and a container around a
+  // single input. One quiet line does the same work: every run answers the questions above it, and
+  // only a resumed run answers this one.
+  it('offers one quiet line by default, with no accordion left', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
+
+    expect(revealAction()).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^advanced$/i })).toBeNull()
+    // The field itself is not merely hidden, it is absent.
+    expect(screen.queryByLabelText(/^checkpoint$/i)).toBeNull()
+    expect(screen.queryByText(EXPLANATION)).toBeNull()
+  })
+
+  it('swaps the line for the field, focused, when pressed', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
+
+    await user.click(revealAction())
+
+    expect(checkpointField()).toBe(document.activeElement)
+    // Swapped in place, not added beside.
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+  })
+
+  // The explanation the field used to carry under it, now one press away, as the filter labels do.
+  // The explanation used to be a standing caption under the field. Behind the info control it costs
+  // one press the first time and nothing after that, which is what the filter labels already do.
+  it('carries the whole explanation behind the info control, with nothing standing under the field', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
+
+    await user.click(revealAction())
+
+    // Closed, the sentence is in the tree exactly once, and that copy is sr-only: nothing is on
+    // screen under the field for a sighted reader to scroll past.
+    const before = screen.getAllByText(EXPLANATION)
+    expect(before).toHaveLength(1)
+    expect(before[0].className).toContain('sr-only')
+
+    await user.click(screen.getByRole('button', { name: /about the starting saltnonce/i }))
+
+    const visible = (await screen.findAllByText(EXPLANATION)).filter(
+      (node) => !node.className.includes('sr-only'),
+    )
+    expect(visible).toHaveLength(1)
+  })
+
+  // Radix unmounts a popover's content while closed, so `aria-describedby` cannot point at it. The
+  // field keeps a real description either way.
+  it('keeps the explanation as the field’s description for assistive tech', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />)
+
+    await user.click(revealAction())
+
+    const described = checkpointField().getAttribute('aria-describedby') as string
+    expect((document.getElementById(described) as HTMLElement).textContent).toMatch(EXPLANATION)
+  })
+
+  // The reserved line the complaint used to hold was 20px of permanent gap directly above the Start
+  // button, appearing exactly when the field was revealed and nothing was wrong.
+  it('reserves no space above Start for a complaint it does not have', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <ConfigForm chainId={1} onSubmit={vi.fn()} {...answered} {...filterProps()} />,
+    )
+
+    await user.click(revealAction())
+
+    const alert = container.querySelector('[role="alert"][id$="start-nonce-error"]') as HTMLElement
+    // Mounted, so the live region is in the tree before it speaks...
+    expect(alert).not.toBeNull()
+    // ...but taking no room while it has nothing to say.
+    expect(alert.className).toContain('empty:hidden')
+    expect(alert.className).not.toContain('min-h-')
+  })
+
+  it('clears to the default and collapses when the x is pressed', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={onSubmit}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(clearCheckpoint())
+
+    expect(revealAction()).toBeDefined()
+    expect(screen.queryByLabelText(/^checkpoint$/i)).toBeNull()
+
+    await user.click(startButton())
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), { start: 0 })
+  })
+
+  // A value restored from a share link or a previous session is on screen without being asked for:
+  // it silently moves where the search begins, so it can never be behind a press.
+  it('renders the field directly when a non-default value is already set', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 60_000_016_650_000 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+    expect(checkpointField().value).toBe('60,000,016,650,000')
+  })
+
+  it('leaves the line in place for the default value, which 0 is', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 0 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(revealAction()).toBeDefined()
+  })
+
+  // Separators are for reading. The value underneath is a plain integer, which is what the CLI's
+  // `--start` and the resume link both take.
+  it('strips separators as they are typed and puts them back on blur', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={onSubmit}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    await user.type(checkpointField(), '60,000,016,650,000')
+
+    // Focused: the digits, unseparated, so the caret is not fighting commas that move.
+    expect(checkpointField().value).toBe('60000016650000')
+
+    await user.tab()
+    expect(checkpointField().value).toBe('60,000,016,650,000')
+
+    await user.click(startButton())
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), { start: 60_000_016_650_000 })
+  })
+
+  // Once asked for it stays until the x says otherwise. Collapsing an empty field on blur took it
+  // away from under whatever was clicked next — the info icon beside it blurs the input, so pressing
+  // the field's own tooltip unmounted both, mid-click.
+  it('treats an empty field as the default and keeps it on screen', async () => {
+    const user = userEvent.setup()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    // Empty and focused: still on screen, because the reader is in it.
+    expect(checkpointField()).toBe(document.activeElement)
+    expect(checkpointField().value).toBe('')
+    expect(startButton().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('refuses anything that is not a non-negative integer', async () => {
+    const user = userEvent.setup()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    await user.type(checkpointField(), '4.12e10')
+    await user.tab()
+
+    expect(screen.getByText(/digits only/i)).toBeDefined()
+    expect((startButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('the primary control and the checkpoint offer beneath it', () => {
+  // Exactly one message, in the order the reader can act on them: an owner is needed before the
+  // expressions matter.
+  it('names the owner requirement ahead of the expressions one', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} mouths={[]} />)
+
+    expect(startButton().textContent).toMatch(/add an owner to start/i)
+    expect(startButton().textContent).not.toMatch(/expression/i)
+  })
+
+  it('names the expressions once the owner is satisfied', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+        mouths={[]}
+      />,
+    )
+
+    expect(startButton().textContent).toMatch(/accept at least one expression/i)
+    expect(startButton().disabled).toBe(true)
+  })
+
+  // Not in the specification's list of two, and here anyway: the button is disabled over an
+  // unusable checkpoint either way, and a disabled control reading "Start mining" explains nothing.
+  it('names the checkpoint when that is the only thing wrong', async () => {
+    const user = userEvent.setup()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    await user.type(startNonceField(), '0x10')
+
+    expect(startButton().textContent).toMatch(/fix the checkpoint to start/i)
+    expect(startButton().disabled).toBe(true)
+  })
+
+  // Below the button, so reading order is "the thing this card does", then "the one alternative".
+  it('offers the checkpoint as a link under the button once Start is pressable', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    const link = revealAction()
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(startButton().textContent).toMatch(/^start mining$/i)
+    expect(startButton().compareDocumentPosition(link) & following).toBeTruthy()
+    // "or" is plain text; only the action is the control.
+    expect(link.textContent).toBe('continue from a checkpoint')
+    expect(link.parentElement?.textContent).toMatch(/^or continue from a checkpoint$/)
+  })
+
+  /**
+   * The offer used to stand in both states, and this is the half that changed.
+   *
+   * "or" proposes an alternative to the control above it, and there is no alternative on offer while
+   * that control cannot be pressed: the button is carrying the unmet requirement as its label, and a
+   * second line under it both competes with that message and leads somewhere that does not fix it. A
+   * checkpoint says where a search begins; it has nothing to say about a missing owner.
+   *
+   * Both blockers a first visit can actually produce, since they take different routes through the
+   * form: no owner at all, and an owner that is not an address.
+   */
+  it('withholds the offer while Start is blocked, for either reason', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(startButton().textContent).toMatch(/add an owner to start/i)
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+
+    await user.type(ownerField(1), '0xnope')
+
+    expect(startButton().textContent).toMatch(/fix the owner address above/i)
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+
+    // And it arrives the moment the form is answered, without anything else being pressed.
+    await user.clear(ownerField(1))
+    await user.type(ownerField(1), OWNER)
+
+    expect(startButton().textContent).toMatch(/^start mining$/i)
+    expect(revealAction()).toBeDefined()
+  })
+
+  it('is link-styled and centred, with no icon of its own', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    const link = revealAction()
+    expect(link.className).toContain('text-primary')
+    expect(link.className).toContain('hover:underline')
+    expect(link.querySelector('svg')).toBeNull()
+    expect(link.parentElement?.className).toContain('text-center')
+  })
+
+  it('swaps itself for the field above the button, and comes back with the x', async () => {
+    const user = userEvent.setup()
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+    expect(startNonceField()).toBe(document.activeElement)
+    // Above the button, between the Filter row and it.
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(startNonceField().compareDocumentPosition(startButton()) & following).toBeTruthy()
+
+    await user.click(clearCheckpoint())
+
+    expect(revealAction()).toBeDefined()
+    expect(screen.queryByLabelText(/^checkpoint$/i)).toBeNull()
+  })
+
+  // A value that is already set is never behind a press, and an invalid form does not change that:
+  // it silently moves where the search begins, so it has to be visible whatever else is wrong.
+  it('arrives revealed for a non-default value even with no owner', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ start: 60_000_016_650_000 }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    expect(startNonceField().value).toBe('60,000,016,650,000')
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+    expect(startButton().textContent).toMatch(/add an owner to start/i)
+  })
+})
+
+describe('the face expressions section', () => {
+  // Always visible, and above the disclosures. What it asks is the other half of what this card is
+  // for: which patterns count as a hit. It used to be reachable only by opening the Filter card,
+  // which put the most consequential choice on the screen behind the same door as three constraints
+  // that cost nothing to change.
+  it('is visible with nothing pressed', () => {
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    expect(screen.getByRole('heading', { name: /face expressions/i })).toBeDefined()
+    expect(screen.getAllByRole('checkbox').length).toBe(5)
+  })
+
+  // Order matters: it reads as the last of the questions about what to mine, before the two
+  // disclosures that hold refinements.
+  it('sits after the Safe version row and before the Filter disclosure', () => {
+    const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    const version = screen.getByText(/safe version/i)
+    const expressions = screen.getByRole('heading', { name: /face expressions/i })
+    const filter = filterToggle()
+
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(version.compareDocumentPosition(expressions) & following).toBeTruthy()
+    expect(expressions.compareDocumentPosition(filter) & following).toBeTruthy()
+    expect(container).toBeDefined()
+  })
+
+  // And out of the Filter card, which now holds only the three colour constraints. Two copies of
+  // the tiles on one screen would be two controls for one value.
+  it('is not inside the Filter disclosure any more', async () => {
+    const user = userEvent.setup()
+    render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+    await user.click(filterToggle())
+
+    // Five tiles on the card, not ten: the disclosure contributed none.
+    expect(screen.getAllByRole('checkbox').length).toBe(5)
+    expect(screen.getByRole('switch', { name: /^two-color$/i })).toBeDefined()
+    expect(screen.getAllByRole('slider')).toHaveLength(2)
+  })
+})
+
+// The card states its boundaries with whitespace and section labels. Two rules had crept in: one
+// below the owners list and one above the filter section.
+it('draws no dividers between its sections', () => {
+  const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} {...filterProps()} />)
+
+  expect(container.querySelectorAll('hr')).toHaveLength(0)
+})
 
 describe('ConfigForm', () => {
   // Start is disabled for a malformed address, so the complaint cannot wait for a press any more —
@@ -334,14 +1013,37 @@ describe('ConfigForm', () => {
       expect(screen.getByRole('combobox', { name: /safe version/i }).textContent).toBe('1.3.0')
     })
 
-    // The wallet prefill is not an answer to the question — it is this form guessing, and the link
-    // is the sender's actual config. Reversing that leaves a recipient mining a Safe owned by
-    // THEMSELVES under a link that promised someone else's, which is the one case where the blank
-    // field would at least have been obvious.
-    it('outranks the address the connected wallet prefilled', () => {
+    /**
+     * This used to run the other way, and the reversal is the point.
+     *
+     * The link outranked the wallet PREFILL, because a prefill was this form guessing while the link
+     * was the sender's actual config, and letting a guess win left a recipient mining a Safe owned
+     * by themselves under a link that promised someone else's. Nothing guesses any more: the only
+     * way the wallet reaches that field is a press, and a press is an answer. So this falls under
+     * the rule the test below states for typing, and states it for the offer as well.
+     *
+     * The old hazard needs a deliberate press inside the few milliseconds between mount and the
+     * latch to reach at all, where it used to need nothing. What is on screen when the link lands is
+     * something the reader put there, and overwriting that is the worse failure of the two.
+     */
+    it('leaves an address the wallet offer filled in alone', async () => {
+      const user = userEvent.setup()
       useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
       const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(screen.getByRole('button', { name: /use connected wallet/i }))
       expect(ownerField(1).value).toBe(WALLET)
+
+      rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(WALLET)
+    })
+
+    // And an untouched field still takes the link, which is what makes the rule above about the
+    // reader's answer rather than about the wallet being connected at all.
+    it('fills an untouched field even with a wallet connected', () => {
+      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(ownerField(1).value).toBe('')
 
       rerender(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
 
@@ -503,8 +1205,8 @@ describe('ConfigForm', () => {
       render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
 
       expect((thresholdTrigger() as HTMLButtonElement).disabled).toBe(true)
-      expect((startButton() as HTMLButtonElement).disabled).toBe(true)
-      expect(screen.getByText(/add an owner address/i)).toBeDefined()
+      expect(startButton().disabled).toBe(true)
+      expect(startButton().textContent).toMatch(/add an owner to start/i)
 
       await user.click(startButton())
       expect(onSubmit).not.toHaveBeenCalled()
@@ -605,21 +1307,26 @@ describe('ConfigForm', () => {
     // A disabled control with no reason is worse than a button that explains itself when pressed,
     // which is what this replaces — so the reason is on screen, and tied to the button by
     // aria-describedby rather than left as prose that happens to sit nearby.
-    it('says why it is disabled, and says it to a screen reader too', async () => {
+    // The reason is the button's LABEL now, not a sentence above it tied on by
+    // `aria-describedby`. That makes the control's accessible name the reason, which is stronger
+    // than a description: a name is read whenever the control is, and there is no second element
+    // that can fall out of step with it.
+    it('says why it is disabled in its own label', async () => {
       const user = userEvent.setup()
       render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
-      const describedBy = () => startButton().getAttribute('aria-describedby')
-      expect(screen.getByText(/add an owner address/i).id).toBe(describedBy())
+      expect(startButton().textContent).toMatch(/add an owner to start/i)
+      expect(startButton().disabled).toBe(true)
 
       await user.type(ownerField(1), '0xnope')
-      expect(screen.getByText(/fix the owner address/i).id).toBe(describedBy())
+      expect(startButton().textContent).toMatch(/fix the owner address above/i)
 
       await user.clear(ownerField(1))
       await user.type(ownerField(1), OWNER)
-      expect(describedBy()).toBeNull()
-      expect(screen.queryByText(/add an owner address/i)).toBeNull()
-      expect(screen.queryByText(/fix the owner address/i)).toBeNull()
+      expect(startButton().textContent).toMatch(/^start mining$/i)
+      expect(startButton().disabled).toBe(false)
+      // And no standing hint line left behind above it.
+      expect(screen.queryByText(/to start\.$/)).toBeNull()
     })
 
     // WHEN the row complains: not on the first keystroke — "0x" is not yet wrong, it is
@@ -711,186 +1418,227 @@ describe('ConfigForm', () => {
     })
   })
 
-  // Owners are part of the Safe address, so this writes into an address-determining field without
-  // the user typing. What keeps that honest is that it can only ever fill a BLANK — every test
-  // below is a variation on "and otherwise it does nothing".
-  describe('prefilling owner 1 from the connected wallet', () => {
-    it('fills the empty first field when a wallet connects', () => {
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe('')
+  /**
+   * The form no longer answers its own first question.
+   *
+   * Owner 1 used to fill itself from the connected wallet, and the argument for it was that this is
+   * the address a user is nearly always mining for. What it cost was that a connected visitor met an
+   * owner list that looked decided before they had read it, in the one field that decides which Safe
+   * every result belongs to. The offer replaces it: same address, one press, and the press is an
+   * answer rather than a guess. It lives inside the field it fills, so there is nothing to work out
+   * about which row it means.
+   */
+  describe('the "Use connected wallet" offer inside an empty owner field', () => {
+    const connected = () => useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+    const offers = () => screen.queryAllByRole('button', { name: /use connected wallet/i })
+    const offer = () => screen.getByRole('button', { name: /use connected wallet/i })
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
+    // The headline of the change, and the only one a returning user will notice.
+    it('leaves the field empty for a wallet already connected on mount', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe('')
+      expect(offer()).toBeDefined()
+    })
+
+    it('leaves the field empty when a wallet connects later', () => {
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(offers()).toHaveLength(0)
+
+      connected()
       rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The reconnect wagmi performs on load arrives as an address that is simply already there on
-    // the first render, with no click behind it. A returning user should still meet a filled form.
-    it('fills it for a wallet that was already connected on mount', () => {
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    it('leaves the field empty while no wallet is connected', () => {
-      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
       expect(ownerField(1).value).toBe('')
+      expect(offer()).toBeDefined()
     })
 
-    it('never overwrites an address the user typed', async () => {
+    it('is not offered while no wallet is connected', () => {
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe('')
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Inside the field, which is the whole point of moving it: a control under the list had to pick
+    // a row on the user's behalf, and with two rows on screen nothing said which.
+    it('renders inside the field it would fill, after it in the tab order', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      const wrapper = ownerField(1).parentElement as HTMLElement
+      expect(wrapper.contains(offer())).toBe(true)
+      // Tabbing from the field reaches this next, which is what putting it after the input buys.
+      const following = Node.DOCUMENT_POSITION_FOLLOWING
+      expect(ownerField(1).compareDocumentPosition(offer()) & following).toBeTruthy()
+    })
+
+    it('fills the field it was rendered in, and goes away once it has', async () => {
       const user = userEvent.setup()
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      await user.type(ownerField(1), OWNER)
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
 
-      expect(ownerField(1).value).toBe(OWNER)
+      expect(ownerField(1).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
     })
 
-    // A share link's owners are seeded before the wallet is ever consulted. Overwriting one would
-    // mine a different Safe than the link named, silently.
-    it('never overwrites an address a share link prefilled', () => {
-      const { rerender } = render(
-        <ConfigForm initial={{ owners: [OWNER] }} chainId={1} onSubmit={vi.fn()} />,
-      )
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm initial={{ owners: [OWNER] }} chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(OWNER)
-    })
-
-    // Only the first row, ever. A second row is somewhere the user chose to put a co-signer.
-    it('does not fill a later empty row when owner 1 is occupied', async () => {
+    // The value is a value like any other, so everything keyed on one follows: the identicon that
+    // only renders for an address that parses is the visible proof it went through the same path a
+    // typed address does.
+    it('brings the row to life exactly as typing does', async () => {
       const user = userEvent.setup()
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      connected()
+      const { container } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      expect(container.querySelector('[data-slot="owner-identicon"]')).toBeNull()
+
+      await user.click(offer())
+
+      expect(container.querySelector('[data-slot="owner-identicon"]')).not.toBeNull()
+    })
+
+    it('goes away as soon as the user types, so it never sits over a value', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      await user.type(ownerField(1), '0x')
+
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Every empty row offers it, independently. The row that takes it settles the question for all
+    // of them, because a second copy of one address is a duplicate the validator rejects.
+    it('is offered in each empty row, and in none once one of them takes it', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(addOwner())
+
+      expect(offers()).toHaveLength(2)
+
+      await user.click(offers()[1])
+
+      expect(ownerField(1).value).toBe('')
+      expect(ownerField(2).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
+    })
+
+    it('is not offered in a row that already holds something', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
       await user.type(ownerField(1), OWNER)
       await user.click(addOwner())
 
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(OWNER)
-      expect(ownerField(2).value).toBe('')
+      // The filled row does not offer it; the empty one does, and it is the only offer on screen.
+      expect(offers()).toHaveLength(1)
+      const wrapper = ownerField(2).parentElement as HTMLElement
+      expect(wrapper.contains(offer())).toBe(true)
     })
 
-    it('keeps the first address when the wallet switches account', () => {
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    it('is not offered once the wallet is an owner, wherever it sits', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(addOwner())
+      await user.type(ownerField(2), WALLET)
+
+      expect(offers()).toHaveLength(0)
+    })
+
+    // Screen-reader users get the address itself, not "Use connected wallet" repeated once per empty
+    // row with no way to tell which wallet is being offered.
+    it('names the whole address for assistive tech', () => {
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(offer().getAttribute('aria-label')).toBe(`Use connected wallet ${WALLET}`)
+    })
+
+    /**
+     * It sits inside a form whose only other button submits, so the type matters: a press that
+     * started the search instead of filling the field would be the worst misfire available here.
+     *
+     * Asserted as the attribute rather than by pressing it and watching for a submit, because jsdom
+     * implements no form submission at all: a `type="submit"` here passes an `onSubmit` was-not-
+     * called test just as cleanly as the correct markup does. Verified by trying it. So this pins
+     * the one thing that can actually be checked in this environment, and the press below shows the
+     * handler ran.
+     */
+    it('is a plain button, so a press cannot submit the form', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+
+      expect(offer().getAttribute('type')).toBe('button')
+
+      await user.click(offer())
+
+      expect(onSubmit).not.toHaveBeenCalled()
       expect(ownerField(1).value).toBe(WALLET)
+    })
+
+    // A class contract, not a measurement: jsdom loads no stylesheet, so nothing here knows what a
+    // container query means. What can be held is that the field drops its placeholder only at a
+    // width, and only while the offer is there to collide with it.
+    it('gives up the placeholder only when the field is too narrow for both', async () => {
+      const user = userEvent.setup()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).className).toContain('@max-[11rem]:placeholder:text-transparent')
+      expect(ownerField(1).getAttribute('placeholder')).toBe('0x…')
+
+      // With no offer to make room for, the placeholder is unconditional again.
+      await user.click(offer())
+
+      expect(ownerField(1).className).not.toContain('placeholder:text-transparent')
+    })
+
+    it('submits the address the offer filled in', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      connected()
+      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
+
+      await user.click(offer())
+      await user.click(startButton())
+
+      expect(onSubmit).toHaveBeenCalledOnce()
+      expect(onSubmit.mock.calls[0][0].owners).toEqual([WALLET])
+    })
+
+    // Out of scope for the move and unchanged by it, which is worth pinning precisely because the
+    // offer is the only thing the wallet controls now: disconnecting withdraws the offer and touches
+    // no value, and switching account offers the new one without disturbing the old.
+    it('withdraws the offer on disconnect and leaves what it filled', async () => {
+      const user = userEvent.setup()
+      connected()
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
+
+      useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
+      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+
+      expect(ownerField(1).value).toBe(WALLET)
+      expect(offers()).toHaveLength(0)
+    })
+
+    it('offers a newly switched account without touching the first', async () => {
+      const user = userEvent.setup()
+      connected()
+      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+      await user.click(offer())
+      await user.click(addOwner())
 
       useAccountMock.mockReturnValue({ address: OWNER_B, isConnected: true })
       rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
 
       expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The one that decides whether the field can be emptied at all. Refilling on "the field went
-    // blank" would make Owner 1 impossible to clear for as long as a wallet is connected.
-    it('does not fill it again after the user clears it', async () => {
-      const user = userEvent.setup()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe(WALLET)
-
-      await user.clear(ownerField(1))
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe('')
-    })
-
-    // Disconnecting and connecting again is a new connection, not the same one — so the blank it
-    // finds is one to fill.
-    it('fills it again after a disconnect and reconnect', async () => {
-      const user = userEvent.setup()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      await user.clear(ownerField(1))
-
-      useAccountMock.mockReturnValue({ address: undefined, isConnected: false })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-      expect(ownerField(1).value).toBe('')
-
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-
-      expect(ownerField(1).value).toBe(WALLET)
-    })
-
-    // The auto-prefill only ever touches a blank owner 1. This action is the manual counterpart:
-    // it puts the wallet wherever there is room, including rows the prefill will never reach.
-    describe('the "Use connected wallet" action', () => {
-      const useWallet = () => screen.getByRole('button', { name: /use connected wallet/i })
-
-      it('is not offered while no wallet is connected', () => {
-        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
-      })
-
-      // Nothing to add: the prefill has already put this address in owner 1, and a second copy
-      // is a duplicate that validateMineConfig rejects. Offering it would be offering an error.
-      it('is not offered when the wallet is already an owner', () => {
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        expect(ownerField(1).value).toBe(WALLET)
-        expect(screen.queryByRole('button', { name: /use connected wallet/i })).toBeNull()
-      })
-
-      it('fills the first empty row', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-        await user.click(addOwner())
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(WALLET)
-      })
-
-      it('appends a row when every existing one is filled', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(WALLET)
-      })
-
-      it('never overwrites a filled row', async () => {
-        const user = userEvent.setup()
-        const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.type(ownerField(1), OWNER)
-        await user.click(addOwner())
-        await user.type(ownerField(2), OWNER_C)
-
-        useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-        rerender(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-        await user.click(useWallet())
-
-        expect(ownerField(1).value).toBe(OWNER)
-        expect(ownerField(2).value).toBe(OWNER_C)
-        expect(ownerField(3).value).toBe(WALLET)
-      })
-    })
-
-    it('submits the prefilled address as the owner', async () => {
-      const user = userEvent.setup()
-      const onSubmit = vi.fn()
-      useAccountMock.mockReturnValue({ address: WALLET, isConnected: true })
-      render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
-
-      await user.click(startButton())
-
-      expect(onSubmit).toHaveBeenCalledOnce()
-      expect(onSubmit.mock.calls[0][0].owners).toEqual([WALLET])
+      expect(offer().getAttribute('aria-label')).toBe(`Use connected wallet ${OWNER_B}`)
     })
   })
 })
@@ -903,10 +1651,11 @@ describe('ConfigForm: start from saltNonce', () => {
   })
 
   // The first screen a new visitor sees is owners, threshold, version, Start. This field is for
-  // the returning user resuming a search, so it is reachable rather than present.
+  // the returning user resuming a search, so it is reachable rather than present. Reachable once the
+  // form is answered: the offer that reveals it is not on screen while Start is blocked.
   it('keeps the field behind a collapsed disclosure', () => {
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-    expect(advancedToggle()).toBeDefined()
+    render(<ConfigForm chainId={1} initial={{ owners: [OWNER] }} onSubmit={vi.fn()} />)
+    expect(revealAction()).toBeDefined()
     expect(screen.queryByLabelText(/^start from saltnonce$/i)).toBeNull()
   })
 
@@ -926,7 +1675,7 @@ describe('ConfigForm: start from saltNonce', () => {
     const onSubmit = vi.fn()
     render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
     await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
+    await user.click(revealAction())
     await user.type(startNonceField(), '41200000000')
     await user.click(startButton())
     const [config, run] = onSubmit.mock.calls[0]
@@ -943,7 +1692,7 @@ describe('ConfigForm: start from saltNonce', () => {
     const onSubmit = vi.fn()
     render(<ConfigForm chainId={1} onSubmit={onSubmit} />)
     await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
+    await user.click(revealAction())
     await user.type(startNonceField(), '4.12e10')
     expect(startNonceField().getAttribute('aria-invalid')).toBeNull()
     await user.tab()
@@ -958,7 +1707,7 @@ describe('ConfigForm: start from saltNonce', () => {
     const user = userEvent.setup()
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
     await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
+    await user.click(revealAction())
     // One worker on this machine, so the ceiling is MAX_SAFE_INTEGER - WORKER_BLOCK.
     await user.type(startNonceField(), String(maxStartNonce(1) + 1))
     await user.tab()
@@ -971,7 +1720,7 @@ describe('ConfigForm: start from saltNonce', () => {
     const user = userEvent.setup()
     render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
     await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
+    await user.click(revealAction())
     await user.type(startNonceField(), '1.5')
     await user.tab()
     expect((startButton() as HTMLButtonElement).disabled).toBe(true)
@@ -983,7 +1732,7 @@ describe('ConfigForm: start from saltNonce', () => {
 
   // "Start over" brings the form back holding what it was mining, and the start is part of that:
   // retyping an eleven-digit resume point is exactly the work this feature exists to avoid.
-  it('opens already holding a seeded start, with the disclosure open', () => {
+  it('opens already holding a seeded start, with the field revealed', () => {
     render(
       <ConfigForm
         chainId={1}
@@ -991,7 +1740,7 @@ describe('ConfigForm: start from saltNonce', () => {
         onSubmit={vi.fn()}
       />,
     )
-    expect(startNonceField().value).toBe('41200000000')
+    expect(startNonceField().value).toBe('41,200,000,000')
   })
 
   // A seeded 0 is the same thing as an untouched field, and opening the disclosure to show a zero
@@ -1001,43 +1750,87 @@ describe('ConfigForm: start from saltNonce', () => {
     expect(screen.queryByLabelText(/^start from saltnonce$/i)).toBeNull()
   })
 
-  // The Start button is disabled with its reason inside the disclosure. Letting the disclosure
-  // close over that reason leaves a dead button and nothing on screen to fix.
-  it('refuses to collapse over a complaint', async () => {
+  // The complaint explains why Start is refused, so the field it belongs to cannot go away while it
+  // stands. Nothing special enforces that any more: an invalid value is a non-empty one, and a
+  // non-empty field is its own reason to be on screen.
+  it('keeps the field on screen while its value is being complained about', async () => {
     const user = userEvent.setup()
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-    await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
-    await user.type(startNonceField(), 'abc')
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER] }}
+        onSubmit={vi.fn()}
+        {...filterProps()}
+      />,
+    )
+
+    await user.click(revealAction())
+    await user.type(startNonceField(), '0x10')
     await user.tab()
-    await user.click(advancedToggle())
+
+    expect(screen.getByText(/digits only/i)).toBeDefined()
     expect(startNonceField()).toBeDefined()
-    expect(await screen.findByText(/digits only/i)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /continue from a checkpoint/i })).toBeNull()
+  })
+})
+
+// A resume link's checkpoint comes from whatever machine reached it, and `maxStartNonce` falls as
+// cores rise: a value a 4-core sender could legitimately start from can be over a 16-core
+// recipient's ceiling. The button already refuses it — the gate reads `startNonce.error` directly,
+// not the touched-gated complaint — so the only thing missing was the sentence saying why, at the
+// field the disabled button's caption points to.
+describe('a seeded start nonce this machine cannot take', () => {
+  // Number.MAX_SAFE_INTEGER is over the ceiling on any machine: maxStartNonce is
+  // `MAX_SAFE_INTEGER - workers * WORKER_BLOCK`, and plannedWorkerCount() floors the pool at 1, so
+  // the ceiling is always strictly below it. No worker-count stubbing needed.
+  it('shows the complaint immediately, with the field revealed and Start refused', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: Number.MAX_SAFE_INTEGER }}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    // Queried by its words, not by `role="alert"`. This form renders six alert elements and at
+    // least two of them are ALWAYS in the tree — the start-nonce complaint and each owner row's
+    // are reserved-space live regions, empty when silent, so that a message appearing cannot move
+    // the control below it. `getByRole('alert')` therefore throws on multiple matches and
+    // `queryByRole('alert')` is never null; neither says anything about this complaint.
+    expect(screen.getByText(/enter at most/i)).toBeDefined()
+    // Grouped, because the field is not focused. The value underneath is the bare integer.
+    expect(startNonceField().value).toBe(Number.MAX_SAFE_INTEGER.toLocaleString('en-US'))
+    expect((startButton() as HTMLButtonElement).disabled).toBe(true)
   })
 
-  // The refused press above must not be remembered: a naive `onOpenChange={setAdvancedOpen}`
-  // records the collapse Radix reports even though the panel stays open, and that recorded intent
-  // fires for real the moment the complaint clears on its own — unmounting the field mid-correction
-  // with focus still inside it. This is the path neither test above reaches: this one goes on to
-  // fix the value AFTER the refused press.
-  it('does not carry a refused collapse into the next valid keystroke', async () => {
-    const user = userEvent.setup()
-    render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
-    await user.type(ownerField(1), OWNER)
-    await user.click(advancedToggle())
-    await user.type(startNonceField(), 'abc')
-    await user.tab()
-    // The refused press: Radix asks to close, the complaint keeps it open.
-    await user.click(advancedToggle())
-    expect(await screen.findByText(/digits only/i)).toBeDefined()
+  // The path this already served: "Start over" hands back a value this machine accepted a moment
+  // ago, and a complaint over it would be an error about nothing.
+  it('says nothing about a seeded value that is in range', () => {
+    render(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: 41_200_000_000 }}
+        onSubmit={vi.fn()}
+      />,
+    )
 
-    // Corrected without ever re-opening the disclosure — there is nothing to re-open, the panel
-    // never left. If the refusal above had been recorded, this keystroke is the one that would
-    // unmount the field out from under the cursor correcting it.
-    await user.clear(startNonceField())
-    await user.type(startNonceField(), '500')
+    expect(startNonceField().value).toBe('41,200,000,000')
+    expect(screen.queryByText(/enter at most/i)).toBeNull()
+    expect((startButton() as HTMLButtonElement).disabled).toBe(false)
+  })
 
-    expect(screen.queryByLabelText(/^start from saltnonce$/i)).not.toBeNull()
-    expect(startNonceField()).toBe(document.activeElement)
+  // Same rule, arriving one render late — which is how a link reaches this form (page.tsx latches
+  // `?config=` on first sight, and its subtree's first render comes through a Suspense bailout).
+  it('shows the complaint for a value seeded after mount', () => {
+    const { rerender } = render(<ConfigForm chainId={1} onSubmit={vi.fn()} />)
+    rerender(
+      <ConfigForm
+        chainId={1}
+        initial={{ owners: [OWNER], start: Number.MAX_SAFE_INTEGER }}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/enter at most/i)).toBeDefined()
   })
 })

@@ -1,27 +1,98 @@
 'use client'
 
-import { ChevronDown, ListFilter, Smile } from 'lucide-react'
+import { ChevronDown, ListFilter } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { FaceFilters } from '../lib/config'
+import { DEFAULT_FACE_FILTERS, type FaceFilters } from '../lib/config'
 import { ALL_MOUTH_NAMES } from '../lib/face-selection'
+import { cn } from '../lib/utils'
+import { ColorFilters } from './ColorFilters'
 import { ContrastSwatch } from './ContrastSwatch'
+import { ExpressionsGlyph } from './ExpressionsGlyph'
 import { FacePicker } from './FacePicker'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+
+/**
+ * Whether every constraint is already at its default. Compared field by field rather than by
+ * reference: the host holds these in state and hands back a fresh object on every change, so a
+ * reference check would say "changed" forever after the first slider move.
+ */
+function sameFilters(a: FaceFilters, b: FaceFilters): boolean {
+  return a.twoColor === b.twoColor && a.minContrast === b.minContrast && a.minMatch === b.minMatch
+}
 
 export interface FaceSectionProps {
   mouths: string[]
   filters: FaceFilters
   /**
-   * Whether a run exists. It decides one thing only: whether the card starts collapsed.
+   * Whether a run exists.
+   *
+   * Two things read it, and they are separate questions that happened to share an answer while
+   * this card was only ever mounted on the results page. It supplies the DEFAULT for whether the
+   * card starts collapsed — `defaultOpen` overrides that outright — and it decides whether
+   * FacePicker asks about restarting a search, since on a screen with no run there is no
+   * leaderboard and no scanned nonces for that question to be about.
    *
    * Not read after the first render unless it changes, and the user's own choice outranks it from
-   * the moment they make one (see `userChose` below). The page passes this as true because it only
-   * renders this card once a config has been submitted; the false case is the idle screen, where
-   * the filter should be open because nobody has seen it yet.
+   * the moment they make one (see `userChose` below).
    */
   mining?: boolean
+  /**
+   * Whether the card starts open, when the host knows better than `mining` does.
+   *
+   * Three arrival states have to be told apart now that this card lives on Configure's start
+   * screen as well as on the results page: a resume link that named filters wants it
+   * open, because those filters decide what gets mined and nobody has seen them yet; a link that
+   * named only a checkpoint wants Advanced open but this shut, because nothing was carried to look
+   * at; and an ordinary visit wants both shut. One bit about whether a run exists cannot say which
+   * of those it is.
+   *
+   * Where the card STARTS, and nothing more — `userChose` still outranks it the moment the reader
+   * presses the header, because a starting point that kept reasserting itself would be a control
+   * that does not hold.
+   *
+   * `??` rather than a competing flag: omitted, `mining` decides exactly as it always did, which
+   * is what leaves the results page's call site untouched. Same precedence shape as `chainId` and
+   * `mouths` in app/page.tsx.
+   */
+  defaultOpen?: boolean
+  /**
+   * Whether the expression tiles are part of this card.
+   *
+   * False on Configure's start screen, where they are a section of their own directly above: what
+   * they ask is not the same KIND of question as the three constraints left here. These re-filter
+   * candidates already mined, so each applies the moment it moves; an expression change is what the
+   * miner is looking FOR, and applying one during a run discards the board.
+   *
+   * True everywhere else, which means the results page, and it has to stay that way: mid-run both
+   * halves are equally reachable, and taking the expressions out of the only card that page has
+   * would remove the ability to change them during a search.
+   */
+  withExpressions?: boolean
+  /**
+   * Draw the header in the same voice as Configure's Advanced disclosure: a quiet muted line with
+   * its chevron against the label, rather than a card header with a semibold heading, an icon of
+   * its own, and the chevron thrown to the far side of the row.
+   *
+   * It exists because on the start screen this sits one row above that disclosure, and the two are
+   * the same kind of thing — a line you press to see more. Drawn loud, it announced itself as the
+   * more important of the two, which is backwards: the checkpoint field below it is the advanced
+   * question, and this is half of what the form is for. Two lines that behave alike should look
+   * alike.
+   *
+   * It also takes the card's vertical padding off, so the row sits as tight to its neighbours as
+   * Advanced's does. The results page, where this really is a card among cards, passes nothing and
+   * keeps every bit of its own chrome.
+   */
+  quiet?: boolean
+  /**
+   * Classes for the Card itself. Nested on Configure's start screen this sits inside another Card,
+   * where its own border and shadow read as clutter rather than structure — so the host that put it
+   * there says so, rather than this component guessing where it is from a prop.
+   */
+  className?: string
   /**
    * A request from elsewhere on the page to show these controls — the results grid's empty state,
    * whose whole advice is "relax a filter" while this card sits collapsed and scrolled off the top
@@ -51,28 +122,33 @@ export interface FaceSectionProps {
 /**
  * At most four chips, and each is present only when its constraint actually constrains something.
  * A chip that says "everything is allowed" is a chip that has to be read to learn nothing, and a
- * collapsed card carrying four of those tells the user the filter is doing work it is not.
+ * collapsed card carrying three of those tells the user the filter is doing work it is not. With
+ * every constraint permissive there is nothing to report and the row carries no chips at all.
  *
  * They are rendered in the order the open card lays the controls out, and must stay that way: the
  * chips are a reading of those controls, and a summary that lists them in a different order leaves
  * the reader matching them up by name instead of by position.
  *
- * Expressions are the exception: they always constrain what the miner credits, so that chip is
- * always there. It reads off `mouths`, the APPLIED selection, not FacePicker's draft. A staged edit
- * is not what is being mined, and the collapsed card's job is to say what is.
+ * The expressions chip is shown only by a host that keeps the tiles INSIDE this card, which is the
+ * results page. On Configure they are a section of their own directly above it, so a chip counting
+ * them would restate what the reader can see a few pixels higher — but where the tiles are behind
+ * this card's own collapse, taking the chip away would leave nothing on screen saying which
+ * expressions are accepted, which is exactly what it was for. Unlike the other three it says
+ * nothing at the permissive value: all five accepted is not a constraint.
  */
 function summarise(mouths: string[], filters: FaceFilters) {
   const accepted = ALL_MOUTH_NAMES.filter((name) => mouths.includes(name))
   return {
-    // Names once the list is short enough to be worth more than a count: at three or fewer, "smile,
-    // open" says which, where "2 expressions" only says how many and sends the reader back into the
-    // card to find out. Above three the names are longer than the row has room for, and a count is
-    // the honest summary. All five accepted is the permissive default, so it counts rather than
-    // listing every name the app has.
+    // Names once the list is short enough to be worth more than a count: at three or fewer,
+    // "smile, open" says which, where "2 expressions" only says how many and sends the reader back
+    // into the card to find out. Above three the names are longer than the row has room for. All
+    // five accepted is the permissive default, so it says nothing at all.
     expressions:
-      accepted.length > 0 && accepted.length <= 3 && accepted.length < ALL_MOUTH_NAMES.length
-        ? accepted.join(', ')
-        : `${accepted.length} expressions`,
+      accepted.length === ALL_MOUTH_NAMES.length
+        ? undefined
+        : accepted.length > 0 && accepted.length <= 3
+          ? accepted.join(', ')
+          : `${accepted.length} expressions`,
     twoColor: filters.twoColor,
     minContrast: filters.minContrast > 0 ? filters.minContrast : undefined,
     minMatch: filters.minMatch > 0 ? filters.minMatch : undefined,
@@ -94,6 +170,10 @@ export function FaceSection({
   mouths,
   filters,
   mining = false,
+  withExpressions = true,
+  defaultOpen,
+  quiet = false,
+  className,
   revealRequest = 0,
   onOpenChange,
   onMouthsChange,
@@ -102,7 +182,11 @@ export function FaceSection({
   // Open when there is no run to get on with. A submitted config means the user has already said
   // what they want and is waiting for results, so the filter steps out of the way; an idle screen
   // means nobody has seen it yet, so it shows itself.
-  const [open, setOpen] = useState(!mining)
+  //
+  // `defaultOpen` overrides that when the host knows which of the three arrival states this is —
+  // see the prop. Read as an initial value because it is where the card starts, not a rule it has
+  // to keep obeying; the effect below is what handles it arriving after that.
+  const [open, setOpen] = useState(defaultOpen ?? !mining)
   // Set by the header, and never by anything else. Once the user has said what they want the card
   // to be, no rule here may say otherwise for the rest of the session: an auto-collapse that
   // fights a deliberate expand is a control that does not hold, which is worse than one that does
@@ -117,6 +201,31 @@ export function FaceSection({
     if (mining && !wasMining.current && !userChose.current) setOpen(false)
     wasMining.current = mining
   }, [mining])
+
+  /**
+   * Opens the card when `defaultOpen` turns true after mount, which is the only way a link's answer
+   * ever actually arrives.
+   *
+   * A `useState` initialiser sees the first client render and no other, and this card reaches that
+   * render through the Suspense bailout in app/page.tsx with a useSearchParams() that can still be
+   * empty. So `linkNarrowedFilters` is false at mount and true a render later, and seeding alone
+   * left a link that narrowed the filters collapsed — a recipient pressing Start on constraints
+   * they were never shown, which is the whole failure `narrowsFilters` exists to prevent. It is the
+   * same reason page.tsx derives `chainId`, `mouths` and `filters` from the link instead of seeding
+   * them; this was the one link-dependent value still seeded.
+   *
+   * On the transition, not on the value, so it opens the card once rather than re-opening it on
+   * every unrelated re-render — the rule the `mining` effect above follows, for the same reason.
+   * `userChose` still outranks it: an answer that arrives after the reader has already decided is
+   * late, and a card that springs back open under someone's hand is worse than one that never
+   * opened. One-directional, too — a link asks for the card to be shown and never for it to be
+   * hidden, so `false` arriving late does nothing.
+   */
+  const wasDefaultOpen = useRef(defaultOpen)
+  useEffect(() => {
+    if (defaultOpen && !wasDefaultOpen.current && !userChose.current) setOpen(true)
+    wasDefaultOpen.current = defaultOpen
+  }, [defaultOpen])
 
   // Answers `revealRequest`. It outranks `userChose` deliberately: the request comes from a button
   // the user has just pressed, so it IS the user choosing — a card they collapsed earlier is not a
@@ -144,12 +253,25 @@ export function FaceSection({
   }, [open, onOpenChange])
 
   const summary = summarise(mouths, filters)
+  // Whether anything is constrained at all. Gates the collapsed row, so a card with every filter
+  // permissive shows a bare label rather than an empty chip container.
+  // Whether the trailing group has anything in it. An empty one still carries `ml-auto` and would
+  // claim the free space the collapsed summary needs, which is the same two-auto-margins bug in a
+  // different shape: quiet and collapsed, there is no chevron here and no reset either.
+  const canReset = open && !sameFilters(filters, DEFAULT_FACE_FILTERS)
+  const hasTrailing = canReset || !quiet
+
+  const anyConstraint =
+    (withExpressions && summary.expressions !== undefined) ||
+    summary.twoColor ||
+    summary.minMatch !== undefined ||
+    summary.minContrast !== undefined
 
   return (
     // `gap-0` because the Card's own `gap-6` sits between the header and the panel whether or not
     // the panel has any height: collapsed, it left 24px of empty card under the header. The panel
     // carries its own top padding instead, where it is only paid when there is something to pad.
-    <Card ref={cardRef} className="gap-0">
+    <Card ref={cardRef} className={cn('gap-0', quiet && 'py-0', className)}>
       <Collapsible
         open={open}
         onOpenChange={(next) => {
@@ -174,30 +296,79 @@ export function FaceSection({
 
             `flex-wrap` still applies below that: align-items works per flex line, so chips wrapping
             to a second line does not drag the title down with them either. */}
-        <CardHeader className="relative flex min-h-8 flex-row flex-wrap items-center gap-x-3 gap-y-2">
-          <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-          <CardTitle as="h2" id="filter-card-title">
+        <CardHeader
+          className={cn(
+            'relative flex flex-row flex-wrap items-center gap-y-2',
+            // Quiet, the row is tighter in both directions: `gap-x-2` because the chevron belongs
+            // against its label rather than a lane away from it, and `min-h-6` because 24px is all
+            // that is needed to clear a 22px chip without the label shifting as the chips come and
+            // go — the jitter `min-h-8` was sized for at the louder text size.
+            quiet ? 'min-h-6 gap-x-2' : 'min-h-8 gap-x-3',
+          )}
+        >
+          {/* Quiet, the chevron IS the leading glyph, exactly as it is on Advanced's trigger — so
+              the filter icon would be a second one, and this row is meant to read as one line of
+              the same kind as the disclosure below it. Loud, the icon names the card and the
+              chevron sits at the far end of the row (see below). */}
+          {quiet ? (
+            <ChevronDown
+              data-slot="filter-chevron"
+              aria-hidden="true"
+              // `group-hover/filter:text-foreground` because Advanced's chevron carries no colour
+              // of its own and simply inherits its trigger's, lifting with the label on hover. This
+              // one is coloured explicitly — the whole row is the control, not a button wrapping
+              // both — so it has to be told, or the label lifts and the glyph beside it does not.
+              className="size-4 shrink-0 text-muted-foreground transition-[transform,color] duration-200 group-hover/filter:text-foreground group-data-[state=open]/filter:rotate-180"
+            />
+          ) : (
+            <ListFilter aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          )}
+          <CardTitle
+            as="h2"
+            id="filter-card-title"
+            // Still an <h2> either way — the trigger takes its accessible name from it and
+            // FacePicker's own <h3> hangs off it, so this is only ever a restyle. Quiet, it matches
+            // the Advanced label it sits above: same size, same weight, same colour, and the same
+            // lift on hover, which the whole row triggers because the whole row is the control.
+            className={cn(
+              quiet &&
+                'text-sm font-medium text-muted-foreground transition-colors group-hover/filter:text-foreground',
+            )}
+          >
             Filter
           </CardTitle>
 
           {/* Only while closed. Open, every chip is restating a control the reader can already
               see, a few pixels below where the chip sits. */}
-          {!open && (
-            <div data-slot="filter-summary" className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
-                <Smile aria-hidden="true" className="size-3.5 text-muted-foreground" />
-                {summary.expressions}
-              </Badge>
+          {/* Only while closed. Open, every chip is restating a control the reader can already
+              see, a few pixels below where the chip sits. And only when something is actually
+              constrained: with every filter permissive the row carries no chips rather than an
+              empty box where chips would go. */}
+          {!open && anyConstraint && (
+            <div
+              data-slot="filter-summary"
+              className={cn('flex flex-wrap items-center gap-2', quiet && 'ml-auto')}
+            >
+              {withExpressions && summary.expressions !== undefined && (
+                <Badge variant="secondary" className="gap-1.5 rounded-md font-normal">
+                  {/* No `text-muted-foreground` on the glyph: its bright dots inherit
+                      `currentColor`, so muting the root would flatten it to one tone. */}
+                  <ExpressionsGlyph className="size-3.5" />
+                  {summary.expressions}
+                </Badge>
+              )}
               {summary.twoColor && (
                 <Badge variant="secondary" className="rounded-md font-normal">
-                  two colours
+                  Two-color
                 </Badge>
               )}
               {summary.minMatch !== undefined && (
                 <Badge variant="secondary" className="rounded-md font-normal">
-                  {/* The per-cent sign is what tells this chip apart from the contrast one beside
-                      it, which is otherwise the same shape of number behind the same glyph. */}
-                  <span aria-hidden="true">≥ {summary.minMatch}%</span>
+                  {/* Named, unlike the contrast chip beside it, which carries a swatch to say what
+                      its number is about. This one has no picture available, and a bare "≥ 90%"
+                      next to "≥ 80" leaves two numbers of the same shape with nothing to tell them
+                      apart. */}
+                  <span aria-hidden="true">match ≥ {summary.minMatch}%</span>
                   <span className="sr-only">minimum match {summary.minMatch} percent</span>
                 </Badge>
               )}
@@ -215,6 +386,70 @@ export function FaceSection({
             </div>
           )}
 
+          {/* The row's trailing group, pushed right as ONE unit.
+              
+              One `ml-auto`, on the group, and that is the whole point. Both the reset and the
+              chevron used to carry their own, and two auto margins on one flex line SHARE the free
+              space between them rather than one of them taking it: the reset floated into the middle
+              of the row and read as a heading of its own. Whatever the group holds, a single auto
+              margin puts it at the end.
+
+              The chevron stays outermost. It is the row's own affordance and has always been at that
+              edge; nothing should get between it and the edge.
+
+              No z-index on the group itself, deliberately. The reset carries its own `relative
+              z-20` and the group is `static`, so it creates no stacking context and the reset still
+              wins against the trigger sheet beneath. Lifting the whole group instead would put the
+              chevron above that sheet too, and pressing the chevron would then stop toggling the
+              section, which is the one thing it is for. */}
+          {hasTrailing && (
+            <div className={cn('ml-auto flex items-center', quiet ? 'gap-2' : 'gap-3')}>
+              {/* One press back to the state a first visit starts in, for the reader who has moved
+                three sliders and wants out. In the title row because it acts on the section as a
+                whole, and the row is where this card already puts everything that does.
+
+                `relative z-20` is not decoration. The trigger below is an `absolute inset-0 z-10`
+                sheet over the whole row, so anything placed here sits UNDER it and a press would
+                fold the section instead of resetting it. This has to be the thing the pointer
+                reaches.
+
+                Only while the section is OPEN. Collapsed, the row is a readout and the chips are
+                what it says; a reset belongs beside controls the reader can actually see, and on
+                472px of card the chips and a button this long would not share a line anyway.
+
+                "Reset to defaults", not "Reset": the expressions have a Reset of their own and it
+                means something else there, discarding a staged edit rather than restoring a value.
+
+                Absent rather than disabled with nothing to restore, which is the rule the
+                expressions' own controls already follow. */}
+              {canReset && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="relative z-20 h-auto p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
+                  onClick={() => onFiltersChange(DEFAULT_FACE_FILTERS)}
+                >
+                  Reset to defaults
+                </Button>
+              )}
+
+              {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
+                transition is a turn rather than a cut, and it reads off the Root's data-state
+                because the trigger it belongs to is the invisible sheet above.
+
+                Quiet, this is rendered before the label instead (see above), so the group holds only
+                the reset. */}
+              {!quiet && (
+                <ChevronDown
+                  data-slot="filter-chevron"
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
+                />
+              )}
+            </div>
+          )}
+
           {/* Named by the title rather than by copy of its own: "Filter, button, collapsed" is
               what a screen reader should say, and a second name here would be a second name for
               the same thing. Radix puts aria-expanded and data-state on it. */}
@@ -225,22 +460,15 @@ export function FaceSection({
               className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
           </CollapsibleTrigger>
-
-          {/* Points down closed, up open. Rotated rather than swapped for a second icon so the
-              transition is a turn rather than a cut, and it reads off the Root's data-state
-              because the trigger it belongs to is the invisible sheet above. */}
-          <ChevronDown
-            data-slot="filter-chevron"
-            aria-hidden="true"
-            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/filter:rotate-180"
-          />
         </CardHeader>
 
         {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash: the
             panel keeps its full layout while the box around it grows. The keyframes are in
             globals.css, animating to Radix's measured `--radix-collapsible-content-height`. */}
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <CardContent className="pt-6">
+          {/* Quiet, half the gap: the row above it is a line rather than a card header, so 24px
+              under it reads as a hole. */}
+          <CardContent className={cn(quiet ? 'pt-3' : 'pt-6')}>
             {/* Unlike Configure, this never locks: none of it is an address concern, so all of it
                 stays reachable while mining and the page never unmounts it — do not "fix" this
                 into locking. Collapsing is not locking either: it hides the controls and changes
@@ -250,12 +478,30 @@ export function FaceSection({
                 colour filters re-filter candidates already mined, so they apply on the spot. The
                 expressions are part of the run's identity, so applying one restarts the search and
                 discards the board: those stage behind an Apply button and a warning. */}
-            <FacePicker
-              value={mouths}
-              onChange={onMouthsChange}
-              filters={filters}
-              onFiltersChange={onFiltersChange}
-            />
+            {withExpressions ? (
+              <FacePicker
+                value={mouths}
+                onChange={onMouthsChange}
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                // The card already knows whether a run exists — `mining` is what decides whether
+                // it starts collapsed. The picker needs the same fact for its restart question,
+                // and reading it from here rather than from a prop of its own is what keeps the
+                // two from disagreeing about a page that is idle.
+                //
+                // Boolean, not `mining` raw: the prop is optional, and an omitted one means "no
+                // run" here (it is the idle screen's case, see this component's own doc) while
+                // `undefined` reaching FacePicker would fall to ITS default, which is "there is a
+                // run". Two optionals with opposite defaults meeting in the middle is exactly the
+                // seam to nail shut.
+                live={Boolean(mining)}
+              />
+            ) : (
+              // Colours only. The expressions are a section of Configure in their own right on the
+              // start screen, always visible above this card, so there is no two-column layout left
+              // to compose here — just the three constraints, stacked.
+              <ColorFilters filters={filters} onFiltersChange={onFiltersChange} />
+            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

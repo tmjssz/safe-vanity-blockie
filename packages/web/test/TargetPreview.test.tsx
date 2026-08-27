@@ -12,6 +12,20 @@ function filledAt(container: HTMLElement, row: number, col: number): string | nu
 }
 
 describe('TargetPreview', () => {
+  // The pattern is what a mined blockie will look like, so the frame around it should be what a
+  // blockie sits on: paper. `bg-background` is pure white in light mode and near-black in dark, so
+  // the filled cells — which are `currentColor`, i.e. the foreground — read as ink either way. The
+  // border it replaces was drawing a box around a picture that is already a solid rectangle.
+  it('frames the pattern on the page background rather than in a box', () => {
+    const { container } = render(<TargetPreview mouthName="smile" />)
+
+    const frame = container.firstElementChild as HTMLElement
+    expect(frame.className).toContain('bg-background')
+    // A bare `border` adds a 1px ring on all four sides; nothing here should.
+    expect(frame.className).not.toMatch(/(^|\s)border(\s|$)/)
+    expect(frame.className).not.toContain('bg-muted')
+  })
+
   it('renders 8 rows worth of cells', () => {
     const { container } = render(<TargetPreview mouthName="smile" />)
     expect(container.querySelectorAll('rect')).toHaveLength(64)

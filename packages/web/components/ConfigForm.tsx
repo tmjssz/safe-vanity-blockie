@@ -1,10 +1,11 @@
 'use client'
 
-import { ChevronDown, Plus, X } from 'lucide-react'
+import { Flag, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
 import {
   type ConfigErrors,
+  type FaceFilters,
   isOwnerAddress,
   type MineConfig,
   ownerAddressError,
@@ -15,8 +16,10 @@ import {
 } from '../lib/config'
 import { useWorkerCount } from '../lib/worker-count'
 import { DecorativeBlockie } from './Blockie'
+import { Explains } from './Explains'
+import { ExpressionPicker } from './ExpressionPicker'
+import { FaceSection } from './FaceSection'
 import { Button } from './ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
@@ -44,6 +47,52 @@ export interface ConfigFormProps {
    * and where a search began is not part of the address it found. See RunOptions.
    */
   onSubmit: (config: MineConfig, run: RunOptions) => void
+  /**
+   * Reports what is in the form as it is edited, so the page can keep it in the address bar and a
+   * reload does not cost the reader their work.
+   *
+   * The page writes the URL rather than this form, and there is one writer on purpose: the other
+   * half of what goes in it (the expressions and the colour filters) is page state, and two writers
+   * on one address bar would each drop the other's params unless both knew about all of them.
+   *
+   * `config` is present only when owners, threshold and version actually validate. Everything else
+   * is reported regardless, because everything else is always valid. See `draftSearchPath` for why
+   * a half-typed owner must not reach `config=`.
+   */
+  onDraftChange?: (draft: { config?: MineConfig; start: number }) => void
+  /**
+   * The search itself — which expressions are accepted, and the colour and match floors — rendered
+   * as the Filter card inside the Advanced disclosure below.
+   *
+   * It lives here because the expressions and the floors decide what the miner credits and what the
+   * results grid shows, and until now they were unreachable until a run existed: a resume link's
+   * recipient pressed Start on a search they could not see. Under Advanced they are answerable
+   * before the first nonce is tried, by anyone, link or no link.
+   *
+   * All four together or none: without a value AND a handler the card would be a control that
+   * cannot be used, so `undefined` means "do not offer it" rather than "offer a dead one". Held
+   * by the page, not by this form, because a run keeps them after this card is unmounted.
+   */
+  mouths?: string[]
+  filters?: FaceFilters
+  onMouthsChange?: (mouthNames: string[]) => void
+  onFiltersChange?: (filters: FaceFilters) => void
+  /**
+   * Whether the link this form was seeded from narrowed the search past the app's own defaults.
+   *
+   * It decides one thing: whether the Filter card arrives open. Narrowed, there is something in
+   * there worth reading; not narrowed, there is not — and a link that spells out every default
+   * (which is every link, since `resumeSearchPath` always writes all five params) must read the
+   * same as a visit with no link at all. Otherwise the section opens to present the app's own
+   * defaults as though the sender had chosen them.
+   *
+   * It says nothing about the checkpoint field, which reveals itself on a non-default
+   * `initial.start` alone.
+   *
+   * Named for its provenance rather than folded into `initial`, because it is not a value to
+   * prefill — it is a fact about where the prefill came from.
+   */
+  linkNarrowedFilters?: boolean
 }
 
 /**
@@ -58,12 +107,53 @@ export interface ConfigFormProps {
  */
 type OwnerRow = { id: string; value: string; touched: boolean }
 
+/**
+ * The value with thousands separators, for display only.
+ *
+ * Eleven digits are unreadable in a row, and this number is read far more often than it is typed —
+ * off a status bar, out of a link, into a CLI. Anything that is not a plain run of digits is handed
+ * back untouched: a half-typed or malformed value has to stay exactly as written for the complaint
+ * about it to make sense.
+ *
+ * BigInt, not Number: a saltNonce can exceed 2^53, and grouping a value the format step had already
+ * rounded would present a number nobody entered.
+ */
+function groupDigits(raw: string): string {
+  return /^\d+$/.test(raw) ? BigInt(raw).toLocaleString('en-US') : raw
+}
+
+/**
+ * What the checkpoint field is for, in one place.
+ *
+ * Written once and rendered twice: in the popover behind the info icon, and in an sr-only paragraph
+ * the field points `aria-describedby` at. Two copies of the same sentence would be free to drift,
+ * and the one that drifted would be the invisible one.
+ *
+ * The sr-only copy is not optional. Radix unmounts a popover's content while it is closed, so
+ * `aria-describedby` cannot point at it without dangling most of the time, and a form field losing
+ * its description is a real downgrade rather than a cosmetic one.
+ */
+const CHECKPOINT_EXPLANATION =
+  'Each saltNonce produces one candidate address, and mining tries them in order from 0. Set one ' +
+  'here and it skips straight to that point instead. Paste the Checkpoint from a paused run to ' +
+  'carry that search on from where it stopped; leave it empty to start from the beginning.'
+
 /** Ids are per-form and monotonic, so no row ever inherits a removed row's identity. */
 function makeRows(values: string[], nextId: { current: number }): OwnerRow[] {
   return values.map((value) => ({ id: `row-${nextId.current++}`, value, touched: false }))
 }
 
-export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
+export function ConfigForm({
+  initial,
+  chainId,
+  onSubmit,
+  onDraftChange,
+  mouths,
+  filters,
+  onMouthsChange,
+  onFiltersChange,
+  linkNarrowedFilters,
+}: ConfigFormProps) {
   const nextRowId = useRef(0)
   // Seeded once, from the link's decoded owners — one field per entry, in order. There is always
   // at least one row: `validateMineConfig` requires at least one owner, and a form with no field
@@ -86,10 +176,25 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   const [startNonceInput, setStartNonceInput] = useState(
     initial?.start ? String(initial.start) : '',
   )
-  // Same schedule as an owner row: complain after the field has been left once, then live.
-  const [startNonceTouched, setStartNonceTouched] = useState(false)
-  // Open when there is a seeded value to show. A seeded 0 is the default, so it opens nothing.
-  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.start))
+  // Same schedule as an owner row — complain after the field has been left once, then live —
+  // EXCEPT for a value that was seeded rather than typed, which starts complained-about.
+  //
+  // A seed is not a first draft somebody is halfway through: it is a finished value handed over by
+  // a link or by "Start over", and if this machine cannot take it the submit gate has already
+  // refused it (that gate reads `startNonce.error`, not this touched-gated complaint). Left
+  // untouched, the result was a disabled Start button whose caption points at "the starting
+  // saltNonce under Advanced" and no error at the field it names. `maxStartNonce` falls as cores
+  // rise, so this is not hypothetical: a checkpoint a 4-core machine reached can be over a
+  // 16-core recipient's ceiling.
+  const [startNonceTouched, setStartNonceTouched] = useState(Boolean(initial?.start))
+  // Whether the reader asked for the checkpoint field. Only half the answer: see `revealed`.
+  const [checkpointAsked, setCheckpointAsked] = useState(false)
+  // Whether the caret is in it, which decides whether the value is shown grouped or bare.
+  const [checkpointFocused, setCheckpointFocused] = useState(false)
+  const checkpointRef = useRef<HTMLInputElement>(null)
+  // Set by the reveal, consumed by the effect below. A press should land the caret in the field it
+  // just produced; a value arriving from a link must NOT steal focus from wherever the reader is.
+  const focusOnReveal = useRef(false)
 
   // `initial` does not necessarily exist when this form first renders, and the initialisers above
   // only ever see that first render. page.tsx latches the `?config=` link on FIRST SIGHT rather
@@ -120,48 +225,36 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
     if (initial.safeVersion !== undefined) setSafeVersion(initial.safeVersion)
     if (initial.start) {
       setStartNonceInput(String(initial.start))
-      // Shown, not just filled: a value the user cannot see is one they cannot correct, and this
-      // one silently moves where the search begins.
-      setAdvancedOpen(true)
+      // Nothing to open: a non-empty value reveals the field by itself (see `revealed`), so a
+      // seeded checkpoint is on screen the moment it lands rather than behind a press.
+      // And complained about if this machine cannot take it — see the initialiser above. A link
+      // reaches this form one render late (page.tsx latches `?config=` on first sight, and this
+      // subtree's first render comes through a Suspense bailout), so the effect has to say it too.
+      setStartNonceTouched(true)
     }
   }, [initial])
 
-  // Owner 1, filled in from the connected wallet — the address the user is nearly always mining
-  // for, and the one they would otherwise paste from the header they just clicked.
-  //
-  // It can only ever fill a BLANK. Owners are part of the Safe address, so writing over an answer
-  // already on screen would change which Safe is mined with nothing to say so; the guard lives
-  // inside the updater rather than in this effect body precisely so it judges the rows React
-  // holds, not whatever this closure captured — a value typed between render and effect still
-  // wins. Returning `rows` untouched is a real no-op: React bails out on an identical reference.
-  //
-  // Keyed on the address alone, which settles three cases at once and is why none of them needs
-  // bookkeeping of its own:
-  //
-  //   - Connected before this mounted (wagmi's silent reconnect on load) — the address is simply
-  //     already here on the first pass, and a returning user meets a filled form.
-  //   - The wallet switches account. This re-runs, finds row 0 occupied, and declines. The first
-  //     address stands, as it does against anything else already typed.
-  //   - The user clears the field. The address has NOT changed, so this does not re-run and the
-  //     field stays empty. Watching the field instead would make owner 1 impossible to empty for
-  //     as long as a wallet is connected. Disconnecting and reconnecting is a different address
-  //     value (undefined and back), so that does fill it again — a new connection, a new blank.
+  // Read only to offer "Use connected wallet" inside an empty owner field — see the row below.
+  // Nothing is filled in without being asked for: a form that answers its own first question makes
+  // a connected visitor's owner list look decided before they have looked at it, and the one thing
+  // that field decides is which Safe every result belongs to. The offer is one press, and a press
+  // is an answer.
   const { address } = useAccount()
+
+  // Lands the caret in the field the press just produced. Keyed on the ref rather than on
+  // `revealed`, so a value arriving from a link — which reveals the field too — does not pull focus
+  // out of whatever the reader was doing.
   useEffect(() => {
-    if (!address) return
-    setOwners((rows) => {
-      const first = rows[0]
-      if (!first || first.value.trim().length > 0) return rows
-      return [{ ...first, value: address }, ...rows.slice(1)]
-    })
-  }, [address])
+    if (!focusOnReveal.current) return
+    focusOnReveal.current = false
+    checkpointRef.current?.focus()
+  })
 
   const fieldPrefix = useId()
   const ownerFieldId = (index: number) => `${fieldPrefix}-owner-${index + 1}`
   const ownerErrorId = (index: number) => `${fieldPrefix}-owner-${index + 1}-error`
   const thresholdId = `${fieldPrefix}-threshold`
   const safeVersionId = `${fieldPrefix}-safe-version`
-  const startHintId = `${fieldPrefix}-start-hint`
   const startNonceFieldId = `${fieldPrefix}-start-nonce`
   const startNonceHelpId = `${fieldPrefix}-start-nonce-help`
   const startNonceErrorId = `${fieldPrefix}-start-nonce-error`
@@ -207,24 +300,65 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
   // The pool this machine will run, which is what the ceiling on the field depends on: the last
   // worker's block sits `workers × WORKER_BLOCK` above the start (see maxStartNonce).
   const workers = useWorkerCount()
+  // On screen when asked for, or whenever there is anything in it — see the JSX for why a value
+  // that is already set can never be behind a press.
+  const revealed = checkpointAsked || startNonceInput.trim().length > 0
+
   const startNonce = parseStartNonce(startNonceInput, workers)
   const startNonceComplaint = startNonceTouched ? startNonce.error : undefined
 
   // Note the gate reads `startNonce.error`, not `startNonceComplaint`: the button must never be
   // pressable over a value the submit would reject, whether or not the field has been blurred
   // yet — the same reason the owner rows' gate above reads the value rather than the touched flag.
-  const startBlocker: 'empty' | 'invalid' | 'start-nonce' | undefined =
+  const startBlocker: 'empty' | 'invalid' | 'no-expressions' | 'start-nonce' | undefined =
     filled.length === 0
       ? 'empty'
       : filled.some((owner) => !isOwnerAddress(owner.value))
         ? 'invalid'
-        : startNonce.error !== undefined
-          ? 'start-nonce'
-          : undefined
+        : // Only when the host is managing the expressions at all: undefined means it is not, and a
+          // form that is not offering them cannot be blocked on them. Reachable only defensively
+          // today, since FacePicker refuses to reject the last one and an empty `target=` is a
+          // decode error, but the button must not be pressable over a face with no mouth to score.
+          mouths?.length === 0
+          ? 'no-expressions'
+          : startNonce.error !== undefined
+            ? 'start-nonce'
+            : undefined
+
+  /**
+   * What the primary control says. The reason lives ON the button rather than in a line above it.
+   *
+   * A disabled button with a generic label is a dead control: the press that would have produced an
+   * explanation is exactly what disabling removes. Saying the unmet requirement in the label puts
+   * the reason where the eye already is, and makes the control's accessible NAME the reason too,
+   * which is stronger than a separate sentence tied to it by `aria-describedby`.
+   *
+   * Exactly one at a time, in the order the reader can act on them: an owner is required before the
+   * expressions matter, and both before a checkpoint that is only ever optional.
+   *
+   * The invalid-owner case keeps its own wording rather than folding into "add an owner": there IS
+   * an owner, and telling someone to add one when the row is sitting there malformed sends them to
+   * the wrong control.
+   *
+   * The checkpoint case is not in the specification's list of two and is here anyway, because the
+   * button is disabled over it either way and a disabled control reading "Start mining" explains
+   * nothing. The field's own complaint says what is wrong with the value; this says why the button
+   * will not move.
+   */
+  const startLabel =
+    startBlocker === 'empty'
+      ? 'Add an owner to start'
+      : startBlocker === 'invalid'
+        ? 'Fix the owner address above'
+        : startBlocker === 'no-expressions'
+          ? 'Accept at least one expression'
+          : startBlocker === 'start-nonce'
+            ? 'Fix the checkpoint to start'
+            : 'Start mining'
 
   // Every route by which the USER answers this form marks it answered, and nothing else does —
-  // see `edited` above. The wallet prefill is deliberately not one of them; "Use connected wallet"
-  // is, because that one was asked for.
+  // see `edited` above. "Use connected wallet" is one of them, because that one was asked for;
+  // there is no longer anything that fills a field without being asked.
   const setOwnerValue = (id: string, value: string) => {
     edited.current = true
     setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value } : row)))
@@ -269,21 +403,16 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
     })
   }
 
-  // "Use connected wallet", applied. Distinct from the prefill above in what it is allowed to
-  // touch: the prefill only ever fills a blank owner 1, while this puts the wallet in the first
-  // blank ANYWHERE, and makes a new row when there is no blank to use. Neither overwrites.
-  const useConnectedWallet = () => {
+  // "Use connected wallet", applied to the row that offered it. It used to search for the first
+  // blank row and grow the list when it found none, because one control at the bottom of the card
+  // had to guess which field it meant. The offer lives inside a specific empty field now, so there
+  // is nothing to guess and nothing to overwrite: the row it fills is the row it was rendered in.
+  // Not named `use…`: the offer calls it from inside the row's JSX, and a `use` prefix there reads
+  // to React's own lint rule as a hook called from a nested function.
+  const fillFromConnectedWallet = (id: string) => {
     if (!address) return
     edited.current = true
-    setOwners((rows) => {
-      const blank = rows.findIndex((row) => row.value.trim().length === 0)
-      if (blank >= 0) {
-        return rows.map((row, index) => (index === blank ? { ...row, value: address } : row))
-      }
-      const added = makeRows([address], nextRowId)
-      focusRow.current = added[0].id
-      return [...rows, ...added]
-    })
+    setOwners((rows) => rows.map((row) => (row.id === id ? { ...row, value: address } : row)))
   }
 
   // Offered only when it has something to do. Once the wallet is already an owner the only thing
@@ -293,6 +422,28 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
     address !== undefined &&
     owners.some((row) => row.value.trim().toLowerCase() === address.toLowerCase())
   const canUseConnectedWallet = address !== undefined && !walletIsOwner
+
+  // Reports the form upward as it is edited. Validation runs the same way submit runs it, so the
+  // page never has to guess whether what it is about to put in the URL would be accepted: a config
+  // reaches it only if this exact call would have accepted it too.
+  //
+  // Keyed on the values rather than on the handler, and the handler is expected to be stable. The
+  // rows are mapped to a joined string for the dependency array because `owners` is a fresh array of
+  // fresh objects on every keystroke, which would fire this on renders that changed nothing.
+  const ownerValues = owners.map((owner) => owner.value).join('\u0000')
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `owners` is deliberately read through `ownerValues` above — the array's identity changes on every render and would make this fire for renders that changed nothing.
+  useEffect(() => {
+    if (!onDraftChange) return
+    const { config } = validateMineConfig({
+      owners: owners.map((owner) => owner.value),
+      threshold: effectiveThreshold,
+      safeVersion,
+      chainId,
+    })
+    // An unparseable start is reported as the default rather than withheld: the URL is a draft, and
+    // a value the reader is still typing has no business erasing the rest of it.
+    onDraftChange({ config, start: startNonce.value ?? 0 })
+  }, [ownerValues, effectiveThreshold, safeVersion, chainId, startNonce.value, onDraftChange])
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -330,6 +481,10 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         <div className="flex flex-col gap-2">
           {owners.map((owner, index) => {
             const complaint = ownerComplaint(owner)
+            // Every empty row offers it independently, and none of them once the wallet is already
+            // an owner: see `canUseConnectedWallet`. Emptiness is what keeps the offer from ever
+            // sitting over a value, which is also why it needs no reserved space in the field.
+            const offerWallet = canUseConnectedWallet && owner.value.trim().length === 0
             return (
               <div key={owner.id} className="flex flex-col">
                 <div className="flex items-end gap-2">
@@ -356,22 +511,57 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
                     {/* Each field carries its own name — "Owner 1", "Owner 2" — or the list is a
                         row of identically-named boxes to a screen reader. */}
                     <Label htmlFor={ownerFieldId(index)}>Owner {index + 1}</Label>
-                    <Input
-                      id={ownerFieldId(index)}
-                      ref={(element: HTMLInputElement | null) => {
-                        inputs.current.set(owner.id, element)
-                      }}
-                      value={owner.value}
-                      onChange={(event) => setOwnerValue(owner.id, event.target.value)}
-                      onBlur={() => touchOwner(owner.id)}
-                      // The row says so itself, and says so programmatically: with "Start"
-                      // disabled there is no press left to produce the validator's message, so a
-                      // row that merely looked wrong would leave a screen-reader user with a dead
-                      // button and no reason for it.
-                      aria-invalid={complaint ? true : undefined}
-                      aria-describedby={complaint ? ownerErrorId(index) : undefined}
-                      placeholder="0x…"
-                    />
+                    {/* `relative` for the offer below, and `@container` so it can answer to the
+                        width of this field rather than the width of the window: the same card is
+                        the whole of the start screen and a narrow column beside a run. */}
+                    <div className="@container relative">
+                      <Input
+                        id={ownerFieldId(index)}
+                        ref={(element: HTMLInputElement | null) => {
+                          inputs.current.set(owner.id, element)
+                        }}
+                        value={owner.value}
+                        onChange={(event) => setOwnerValue(owner.id, event.target.value)}
+                        onBlur={() => touchOwner(owner.id)}
+                        // The row says so itself, and says so programmatically: with "Start"
+                        // disabled there is no press left to produce the validator's message, so a
+                        // row that merely looked wrong would leave a screen-reader user with a dead
+                        // button and no reason for it.
+                        aria-invalid={complaint ? true : undefined}
+                        aria-describedby={complaint ? ownerErrorId(index) : undefined}
+                        // Dropped when the field is too narrow to hold both, and only then: the
+                        // offer is the more useful of the two, since "0x…" says what an address
+                        // looks like to someone who already knows and the offer hands them one.
+                        // 11rem is where a ~120px offer inset by the field's own padding meets a
+                        // ~28px placeholder inset by the same, measured at this text size.
+                        className={
+                          offerWallet ? '@max-[11rem]:placeholder:text-transparent' : undefined
+                        }
+                        placeholder="0x…"
+                      />
+                      {/* Inside the field it fills, rather than one control under the whole list.
+                          The old placement had to guess which row it meant (the first blank, or a
+                          new one), and a card with two owner rows gave no clue which would move.
+
+                          After the Input in the DOM, so it is the next stop from the field it
+                          belongs to. A real button, not a value written into the input: a value
+                          would be indistinguishable from a typed one, and the read of it that
+                          matters here is "this field is still empty".
+
+                          Absolutely positioned, so the field's own text has the whole width. It
+                          never shares that width with a value: the first keystroke removes it. */}
+                      {offerWallet && (
+                        <button
+                          type="button"
+                          data-slot="use-connected-wallet"
+                          aria-label={`Use connected wallet ${address}`}
+                          className="absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] text-primary hover:underline"
+                          onClick={() => fillFromConnectedWallet(owner.id)}
+                        >
+                          Use connected wallet
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {/* Absent while there is only one row, rather than present and disabled. There
                       is always at least one owner (validateMineConfig rejects an empty list), and
@@ -439,17 +629,6 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
             <Plus aria-hidden="true" />
             Add another owner
           </Button>
-          {canUseConnectedWallet && (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={useConnectedWallet}
-            >
-              Use connected wallet
-            </Button>
-          )}
         </div>
         {errors.owners && (
           <p role="alert" className="text-sm text-destructive">
@@ -457,18 +636,6 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           </p>
         )}
       </div>
-
-      {/* Whitespace alone was carrying the boundary between the list you build and the two
-          questions that are already answered, and it could not carry it: the owners list grows,
-          so the gap above these two is the one piece of spacing on the card that never looks the
-          same twice. A rule states the split at a fixed weight instead. A bare `<hr>` rather than
-          a styled div: its implicit `separator` role says the same thing to a screen reader that
-          the line says on screen, and there is nothing here to hide from one.
-
-          `my-2` on top of the form's `gap-4` gives the rule 24px of clearance on both sides. A
-          rule needs more room than the gap it replaces: pressed to the form's plain spacing it
-          reads as an underline on the block above it rather than as a divider between two. */}
-      <hr className="my-2 border-t" />
 
       {/* Side by side: two narrow controls that each answer one short question, on a card only
           520px wide. Stacked they read as two more steps than they are.
@@ -554,66 +721,121 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
         </div>
       </div>
 
-      {/* Everything above is a question every run has to answer. This is the one that only a
-          resumed run answers, so it is reachable rather than present: the first screen a new
-          visitor sees stays four controls long, and the returning user pasting an eleven-digit
-          resume point is a click away from the field for it.
+      {/* Which patterns count as a hit, always visible, and above both disclosures.
+          
+          It is the other half of what this card is for. Reachable only by opening the Filter card,
+          the most consequential choice on the screen sat behind the same door as three constraints
+          that cost nothing to change — and a resume link's recipient could press Start without ever
+          seeing it. Out here it is simply one of the questions the card asks, in the order they are
+          asked: owners, threshold, version, what a hit looks like.
+          
+          `live={false}`: there is no run on this screen, so a click applies on the spot rather than
+          staging behind an Apply that would have nothing to restart. */}
+      {mouths && onMouthsChange && (
+        <ExpressionPicker value={mouths} onChange={onMouthsChange} live={false} />
+      )}
 
-          `open` is not simply `advancedOpen`: while the value is invalid the Start button is
-          disabled and its reason lives in here, so collapsing over the complaint would leave a
-          dead button with nothing on screen to fix. */}
-      <Collapsible
-        open={advancedOpen || Boolean(startNonceComplaint)}
-        // A press while a complaint is showing is REFUSED, not deferred: Radix still fires this
-        // with `next = false` (a controlled Collapsible reports what the trigger asked for, not
-        // what `open` ends up being), and recording that refusal would fire it for real the
-        // instant the complaint later clears on its own — unmounting the panel with focus still
-        // inside the input it had just been corrected in, and dropping a keyboard user to <body>.
-        onOpenChange={(next) => {
-          if (next || !startNonceComplaint) setAdvancedOpen(next)
-        }}
-      >
-        <CollapsibleTrigger asChild>
-          {/* Same quiet text-button treatment as "Add another owner": the only filled control on
-              this card is the one that starts the search. */}
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="group/advanced h-auto gap-1 p-0 text-muted-foreground no-underline hover:text-foreground hover:no-underline"
-          >
-            {/* Points down closed, up open. Rotated rather than swapped for a second glyph so the
-                change is a turn rather than a cut.
+      {/* The colour constraints — what to mine for is settled above; these refine it.
 
-                The rotation reads the trigger's data-state through a named GROUP, not off the icon
-                itself. Radix puts `data-state` on the button — `asChild` merges the trigger onto it
-                — and a bare `data-[state=open]:` compiles to a self-selector, so on this SVG it
-                asks the icon about a state the icon never carries and silently never matches. The
-                chevron then points down in both states, which is the only visual cue the disclosure
-                has. Same shape as FaceSection's card chevron, which is where the working version
-                already lived. */}
-            <ChevronDown
-              aria-hidden="true"
-              className="size-4 transition-transform duration-200 group-data-[state=open]/advanced:rotate-180"
-            />
-            Advanced
-          </Button>
-        </CollapsibleTrigger>
-        {/* `overflow-hidden` is what makes the height animation a reveal rather than a squash —
-            same treatment as FaceSection's panel, whose keyframes these are (app/globals.css). */}
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <div className="flex flex-col gap-2 pt-3">
-            <Label htmlFor={startNonceFieldId}>Start from saltNonce</Label>
+          Offered on every visit rather than only for a link: the expressions and the colour and
+          match floors decide what the miner credits and what the results grid shows, and until they
+          were reachable from here nobody could answer them until a run already existed. A resume
+          link's recipient in particular pressed Start on a search they could not see.
+
+          Out in the open rather than behind Advanced, because it is not an advanced question — it
+          is the other half of what the form is for, and a disclosure would hide the very values a
+          link was sent to communicate. It brings its own collapsing header, so it costs one row
+          when nobody wants it (see `defaultOpen`, which is what tells the three arrival states
+          apart).
+
+          `quiet` is what makes its header read as a peer of the checkpoint line below rather than as
+          the more important of the two: the same muted label and the same chevron against it.
+
+          A tint and nothing else. `bg-muted/40` is the same wash the accepted expression tiles just
+          above already sit on, so the two read as one family; and it is background ONLY, because a
+          border inside a bordered card is two outlines a few pixels apart, which says "another box"
+          where the tint says "these rows are one thing".
+
+          The padding moves onto the Card, and the header's and content's own `px-6` is cancelled
+          rather than left: Card carries no horizontal padding itself (see ui/card), so with theirs
+          in place the text would sit 24px in from the tint's own edge on one side and the tint would
+          run to the card edge on the other. Padding here instead wraps the header row too, which is
+          what makes the block visible while collapsed — Radix unmounts a closed panel, so padding
+          living on the content would leave that row sitting on nothing.
+
+          `py-3` over `quiet`'s own `py-0`: that default is for a header that is just a line in the
+          form's flow, and this one is a block with a background that needs room to be one.
+
+          No `mining` passed, and that is load-bearing: it leaves this card's FacePicker applying an
+          expression change immediately rather than asking about restarting a search that does not
+          exist. */}
+      {mouths && filters && onMouthsChange && onFiltersChange && (
+        <FaceSection
+          mouths={mouths}
+          filters={filters}
+          defaultOpen={Boolean(linkNarrowedFilters)}
+          // Colours only: the expressions are their own section above, and two copies of the tiles
+          // on one screen would be two controls for one value.
+          withExpressions={false}
+          quiet
+          className="rounded-lg border-0 bg-muted/40 px-3 py-3 shadow-none [&_[data-slot=card-content]]:px-0 [&_[data-slot=card-header]]:px-0"
+          onMouthsChange={onMouthsChange}
+          onFiltersChange={onFiltersChange}
+        />
+      )}
+
+      {/* Everything above is a question every run has to answer. This is the one only a resumed
+          run answers, so it is one quiet line until it is wanted: the first screen a new visitor
+          meets stays as short as the questions it actually asks, and the returning user pasting a
+          resume point is one press from the field for it.
+
+          An accordion did this before, and was too much furniture for one optional input: a header,
+          a chevron and a section container around a single field. Same weight as "+ Add another
+          owner" instead, which is the other optional thing on this card.
+
+          Blur does NOT collapse an empty field, and that is not an oversight. It did, on the
+          grounds that an empty field has nothing to show — and it took the field away from under
+          whatever the reader clicked next: the info icon beside it blurs the input, so pressing the
+          field's own tooltip unmounted the field and the tooltip with it, mid-click. Once it has
+          been asked for it stays until the x says otherwise, which is the only control whose job
+          that is.
+
+          `revealed`, not `checkpointAsked`: a value that is already set must never be behind a
+          press. It silently moves where the search begins, so a link or a restored session that
+          brings one shows it, whether anybody asked or not. A non-empty field is therefore its own
+          reason to be on screen — which also means invalid text stays put to be corrected rather
+          than vanishing with the complaint that explains it. */}
+      {revealed && (
+        <div className="flex flex-col gap-2">
+          {/* The flag is the status bar's own checkpoint glyph, so the number here and the number
+              there are visibly the same fact. The explanation sits behind the same info control the
+              filter labels use. */}
+          <div className="flex items-center gap-1.5">
+            <Flag aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <Label htmlFor={startNonceFieldId}>Checkpoint</Label>
+            <Explains label="the starting saltNonce">{CHECKPOINT_EXPLANATION}</Explains>
+          </div>
+          <div className="flex items-center gap-2">
             <Input
               id={startNonceFieldId}
-              value={startNonceInput}
+              ref={checkpointRef}
+              // Grouped while the reader is not in it, bare while they are. Eleven digits are
+              // unreadable ungrouped, but separators that appear as you type push the caret around
+              // and have to be deleted twice, so the grouping waits for blur.
+              value={checkpointFocused ? startNonceInput : groupDigits(startNonceInput)}
               onChange={(event) => {
                 // An answer, so the share link must not overwrite it later — the same rule the
                 // owners and the threshold are held to (see `edited`).
                 edited.current = true
-                setStartNonceInput(event.target.value)
+                // Separators are display only. Stripping them here is what lets a grouped number be
+                // pasted straight in from anywhere it was read, this field included.
+                setStartNonceInput(event.target.value.replace(/,/g, ''))
               }}
-              onBlur={() => setStartNonceTouched(true)}
+              onFocus={() => setCheckpointFocused(true)}
+              onBlur={() => {
+                setCheckpointFocused(false)
+                setStartNonceTouched(true)
+              }}
               // `inputMode` rather than `type="number"`: a number input brings spinners nobody
               // wants on an eleven-digit nonce, and silently accepts the exponent notation this
               // field exists to reject. This asks a phone for the digit keypad and nothing else.
@@ -622,25 +844,46 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
               // The value it stands in for, so the field says what leaving it empty means.
               placeholder="0"
               aria-invalid={startNonceComplaint ? true : undefined}
-              // The complaint replaces the help text as the description rather than joining it:
-              // both at once reads the rule and the objection to it in one breath.
+              // The caption is a real description now that it is on screen, so there is no sr-only
+              // copy of the tooltip to keep in step with it any more.
               aria-describedby={startNonceComplaint ? startNonceErrorId : startNonceHelpId}
+              className="font-mono tabular-nums"
             />
-            <p id={startNonceHelpId} className="text-sm text-muted-foreground">
-              first saltNonce to try; leave empty to start at 0, or paste the resume point from a
-              previous run.
-            </p>
-            {/* Always mounted while the disclosure is open, holding its line of space whether or
-                not it has anything to say — the same treatment as an owner row's complaint, and
-                for the same two reasons: a message appearing must not move the control below it,
-                and a live region that is already in the tree is the one screen readers announce
-                reliably. */}
-            <p id={startNonceErrorId} role="alert" className="min-h-5 text-sm text-destructive">
-              {startNonceComplaint}
-            </p>
+            {/* Clears AND collapses, because an empty field left open would be the reveal offering
+                itself again in a shape that looks like an answer. Ghost and icon-sized: undoing an
+                optional extra is the least consequential thing on the card. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Clear the checkpoint"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                edited.current = true
+                setStartNonceInput('')
+                setStartNonceTouched(false)
+                setCheckpointAsked(false)
+              }}
+            >
+              <X aria-hidden="true" />
+            </Button>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+          {/* For the accessibility tree only. What the eye gets is the popover above; this is what
+              `aria-describedby` can safely point at, since it is always in the tree. */}
+          <p id={startNonceHelpId} className="sr-only">
+            {CHECKPOINT_EXPLANATION}
+          </p>
+          {/* Always MOUNTED, so the live region is already in the tree when it speaks, which is the
+              half of this that screen readers are picky about. But `empty:hidden` rather than the
+              reserved `min-h-5` an owner row uses: those sit mid-form with fields below them, where
+              a message appearing must not shove the next control down. This one's only neighbour is
+              the Start button, so the reserved line was 20px of permanent gap directly above the
+              submit, present precisely when the field was revealed and there was nothing wrong. */}
+          <p id={startNonceErrorId} role="alert" className="text-sm text-destructive empty:hidden">
+            {startNonceComplaint}
+          </p>
+        </div>
+      )}
 
       {/* The chain is picked in the header, so there is no field to hang this under — but
           validateMineConfig still judges it (an unsupported or zkSync-family chain), and a config
@@ -666,23 +909,50 @@ export function ConfigForm({ initial, chainId, onSubmit }: ConfigFormProps) {
           run starts, so halting, resuming and discarding all belong to the status bar — the only
           surface on screen while mining. */}
       <div className="flex flex-col gap-2">
-        {startBlocker && (
-          <p id={startHintId} className="text-sm text-muted-foreground">
-            {startBlocker === 'empty'
-              ? 'Add an owner address to start.'
-              : startBlocker === 'invalid'
-                ? 'Fix the owner address marked above to start.'
-                : 'Fix the starting saltNonce under Advanced to start.'}
-          </p>
-        )}
         <Button
           type="submit"
+          data-slot="start-mining"
           className="w-full"
           disabled={startBlocker !== undefined}
-          aria-describedby={startBlocker ? startHintId : undefined}
         >
-          Start mining
+          {startLabel}
         </Button>
+
+        {/* Below the button, not above it, and only while the field is not already on screen.
+            Reading order is the point: the primary thing this card does, then the one alternative to
+            doing it that way. Above the button it was a line the eye had to pass on the way to
+            Start, for something most visits never want.
+
+            And only while Start can actually be pressed. "or" offers an alternative to doing the
+            thing above, which is a false offer when the thing above cannot be done: the button is
+            carrying the unmet requirement as its label, and a second line under it competes with
+            that message while leading somewhere that does not fix it. A checkpoint is where a search
+            BEGINS, so it settles nothing about a missing owner or an unscoreable face. Once the form
+            is answered the offer means what it says, and appears.
+
+            `startBlocker === 'start-nonce'` never reaches this: a bad checkpoint requires a revealed
+            field, and a revealed field has already taken the offer away.
+
+            "or" stays plain muted text and only the action is a link, so what is pressable is
+            exactly what is underlined on hover. Centred under a full-width button because there is
+            no left edge to align to that would not look like a stray. */}
+        {!revealed && startBlocker === undefined && (
+          <p className="text-center text-sm text-muted-foreground">
+            or{' '}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 align-baseline text-sm"
+              onClick={() => {
+                focusOnReveal.current = true
+                setCheckpointAsked(true)
+              }}
+            >
+              continue from a checkpoint
+            </Button>
+          </p>
+        )}
       </div>
     </form>
   )

@@ -19,6 +19,15 @@ function Run({ resultCount, onStartOver }: { resultCount: number; onStartOver: (
   return <p>mining</p>
 }
 
+/**
+ * Stands in for the page's own registration: mounted throughout, and speaking for the idle screen
+ * only while `enabled` says it is the screen on show.
+ */
+function Idle({ enabled, onStartOver }: { enabled: boolean; onStartOver: () => void }) {
+  useRegisterStartOver(0, onStartOver, enabled)
+  return <p>configure</p>
+}
+
 /** The header and the page under one provider, as app/layout.tsx arranges them. */
 function App({ children }: { children?: ReactNode }) {
   return (
@@ -30,9 +39,10 @@ function App({ children }: { children?: ReactNode }) {
 }
 
 describe('AppTitle', () => {
-  // Nothing has been mined, so there is nothing to go back to: a control that does nothing when
-  // pressed is worse than the text it replaced.
-  it('is a plain heading before a run exists', () => {
+  // Nothing registered at all, which is a server render and a bare unit test rather than any screen
+  // of the app: the page registers an idle reset the moment it mounts (see its own suite), so a real
+  // visitor meets a control. With nothing to act on there is nothing for a control to do.
+  it('is a plain heading while nothing is registered', () => {
     render(<App />)
 
     expect(title()).toBeDefined()
@@ -49,8 +59,8 @@ describe('AppTitle', () => {
     expect(titleButton()).toBeDefined()
   })
 
-  // The same question the status bar's Start over asks, put by the same words and the same
-  // number — this is a second door onto one action, not a second action.
+  // The only route back from a run, so the question it puts is the last thing standing between a
+  // full leaderboard and an empty one. It names the count rather than asking in the abstract.
   it('asks before discarding a run, naming what is at stake', async () => {
     const onStartOver = vi.fn()
     render(
@@ -63,6 +73,24 @@ describe('AppTitle', () => {
 
     expect(screen.getByText(/discard 80 results and start over\?/i)).toBeDefined()
     expect(onStartOver).not.toHaveBeenCalled()
+  })
+
+  // The copy has to match what Start over does. It once promised the owners, threshold and Safe
+  // version came back in the form, which stopped being true when this became a full reset, and a
+  // confirmation describing the old behaviour is worse than none because it is read and believed.
+  it('says the reset clears everything, not that the config comes back', async () => {
+    render(
+      <App>
+        <Run resultCount={80} onStartOver={vi.fn()} />
+      </App>,
+    )
+
+    await userEvent.click(titleButton())
+    const body = (await screen.findByRole('dialog')).textContent ?? ''
+
+    expect(body).toMatch(/everything goes back to how it started/i)
+    expect(body).toMatch(/owners, the filters and the checkpoint are all cleared/i)
+    expect(body).not.toMatch(/come back in the form/i)
   })
 
   it('discards the run once the question is answered', async () => {
@@ -93,8 +121,29 @@ describe('AppTitle', () => {
     expect(onStartOver).not.toHaveBeenCalled()
   })
 
-  // Nothing to lose yet, so nothing to ask about — the status bar's rule, shared rather than
-  // reimplemented, so the two doors cannot drift apart.
+  // How the page steps aside for a run without unmounting: it is mounted the whole time, so it
+  // cannot use mounting to say which screen is on show.
+  it('releases the entry when a registrant is disabled', async () => {
+    const resetForm = vi.fn()
+    const { rerender } = render(
+      <App>
+        <Idle enabled onStartOver={resetForm} />
+      </App>,
+    )
+    expect(titleButton()).toBeDefined()
+
+    rerender(
+      <App>
+        <Idle enabled={false} onStartOver={resetForm} />
+      </App>,
+    )
+
+    expect(noTitleButton()).toBeNull()
+    expect(resetForm).not.toHaveBeenCalled()
+  })
+
+  // Nothing to lose yet, so nothing to ask about. The rule lives in the dialog hook rather than
+  // here, which is what kept it identical while the status bar still asked the same question.
   it('discards immediately when there are no results to lose', async () => {
     const onStartOver = vi.fn()
     render(
