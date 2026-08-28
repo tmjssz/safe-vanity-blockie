@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type Candidate, getTemplate, selectReported } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
-import { activeFilterFlags, buildProgressBlock, resolveFaceSpec } from '../src/cli.js'
+import {
+  activeFilterFlags,
+  buildProgressBlock,
+  createInterruptHandler,
+  resolveFaceSpec,
+} from '../src/cli.js'
 import { asciiFor } from '../src/report.js'
 
 function makeCandidate(overrides: Partial<Candidate>): Candidate {
@@ -233,5 +238,61 @@ describe('activeFilterFlags', () => {
 
   it('is empty when nothing is being filtered', () => {
     expect(activeFilterFlags({ twoColor: false, minContrast: 0, minMatch: 0 })).toEqual([])
+  })
+})
+
+describe('createInterruptHandler', () => {
+  /** A handler wired to recording callbacks, with the clock under the test's control. */
+  const setup = (graceMs?: number) => {
+    const calls: string[] = []
+    let clock = 1_000
+    const handler = createInterruptHandler({
+      onStop: () => calls.push('stop'),
+      onForceQuit: () => calls.push('force-quit'),
+      graceMs,
+      now: () => clock,
+    })
+    return { calls, handler, advance: (ms: number) => (clock += ms) }
+  }
+
+  it('stops the run gracefully on the first interrupt', () => {
+    const { calls, handler } = setup()
+    handler()
+    expect(calls).toEqual(['stop'])
+  })
+
+  // One Ctrl+C reaches the CLI twice under `npm run` / `npx`: the terminal signals the whole
+  // foreground process group, and the launcher forwards the signal it received to its child on
+  // top of that. Counting signals read that duplicate as "quit and discard", so a single
+  // keypress threw away the results the same keypress had just promised to keep.
+  it('ignores a duplicate signal from one keypress rather than discarding the results', () => {
+    const { calls, handler, advance } = setup()
+    handler()
+    advance(3)
+    handler()
+    expect(calls).toEqual(['stop'])
+  })
+
+  it('force-quits when a second interrupt follows the notice deliberately', () => {
+    const { calls, handler, advance } = setup()
+    handler()
+    advance(2_000)
+    handler()
+    expect(calls).toEqual(['stop', 'force-quit'])
+  })
+
+  // The window is measured from the first interrupt, so a stream of duplicates cannot keep
+  // pushing the force-quit out of reach of someone escaping a wedged run.
+  it('measures the window from the first interrupt, not the last ignored one', () => {
+    const { calls, handler, advance } = setup(1_000)
+    handler()
+    for (let i = 0; i < 5; i++) {
+      advance(150)
+      handler()
+    }
+    expect(calls).toEqual(['stop'])
+    advance(300)
+    handler()
+    expect(calls).toEqual(['stop', 'force-quit'])
   })
 })

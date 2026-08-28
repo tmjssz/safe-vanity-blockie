@@ -136,6 +136,47 @@ function columnsFor(stream: NodeJS.WriteStream): number {
 /** How long, in ms, a non-TTY progress log may go without a new line while the run continues. */
 const PROGRESS_LOG_INTERVAL_MS = 30_000
 
+/**
+ * How long after the first interrupt a further SIGINT is treated as a duplicate of the same
+ * keypress rather than a second Ctrl+C.
+ *
+ * One keypress reaches the CLI twice under a launcher that forwards signals (`npm run`, `npx`,
+ * `pnpm run`): the terminal signals every process in the foreground group, which includes this
+ * one, and the launcher then forwards the signal it received to its child on top of that. The
+ * two arrive milliseconds apart, so counting signals read the duplicate as "quit and discard"
+ * and threw away the very results the same keypress had just promised to keep. Nobody can read
+ * the notice and decide to abandon the run inside a second, so a signal this soon is not a
+ * decision -- while a deliberate second Ctrl+C still gets through and still force-quits.
+ */
+const FORCE_QUIT_GRACE_MS = 1000
+
+/**
+ * SIGINT handling for a mine run: the first interrupt stops the workers and keeps their results,
+ * a deliberate second one force-quits a run that will not stop. Duplicate deliveries of one
+ * keypress are ignored (see `FORCE_QUIT_GRACE_MS`).
+ */
+export function createInterruptHandler(options: {
+  onStop: () => void
+  onForceQuit: () => void
+  graceMs?: number
+  now?: () => number
+}): () => void {
+  const graceMs = options.graceMs ?? FORCE_QUIT_GRACE_MS
+  const now = options.now ?? Date.now
+  let interruptedAt: number | undefined
+  return () => {
+    if (interruptedAt === undefined) {
+      interruptedAt = now()
+      options.onStop()
+      return
+    }
+    // Measured from the first interrupt, not from the last signal seen, so a run that keeps
+    // receiving duplicates cannot push the force-quit out of reach.
+    if (now() - interruptedAt < graceMs) return
+    options.onForceQuit()
+  }
+}
+
 export async function runMine(options: MineArgs): Promise<number> {
   const faceSpec = resolveFaceSpec(options.target)
   const maxScore = compileFace(faceSpec).maxScore
@@ -236,24 +277,23 @@ export async function runMine(options: MineArgs): Promise<number> {
   process.stderr.on('resize', onResize)
 
   // Installing a handler suppresses Node's default terminate, so Ctrl+C alone can no longer kill
-  // a wedged run. Honour the first interrupt as a graceful stop and let the second one through.
-  let interrupted = false
-  const onSigint = () => {
-    if (interrupted) {
+  // a wedged run. Honour the first interrupt as a graceful stop and let a later one through.
+  const onSigint = createInterruptHandler({
+    onStop: () => {
+      // Erase the live block before writing beneath it. Otherwise these lines land between the
+      // cursor and the block, and every later cursor-up count is short by that many rows --
+      // leaving stale block rows stranded above the final report.
+      eraseLiveBlock()
+      process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
+      process.stderr.write('Press Ctrl+C again to quit immediately and discard them.\n')
+      pool.stop()
+    },
+    onForceQuit: () => {
       process.stderr.write('\nInterrupted again; exiting without saving results.\n')
       process.off('SIGINT', onSigint)
       process.kill(process.pid, 'SIGINT')
-      return
-    }
-    interrupted = true
-    // Erase the live block before writing beneath it. Otherwise these lines land between the
-    // cursor and the block, and every later cursor-up count is short by that many rows --
-    // leaving stale block rows stranded above the final report.
-    eraseLiveBlock()
-    process.stderr.write('\nStopping workers, keeping the best results found so far…\n')
-    process.stderr.write('Press Ctrl+C again to quit immediately and discard them.\n')
-    pool.stop()
-  }
+    },
+  })
   process.on('SIGINT', onSigint)
 
   let result: PoolResult
