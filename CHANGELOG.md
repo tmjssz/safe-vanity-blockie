@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/tmjssz/safe-vanity-blockie/compare/v0.4.1...v0.5.0) (2026-08-28)
+
+
+### Features
+
+* **miner:** default --out to a timestamped results file ([#46](https://github.com/tmjssz/safe-vanity-blockie/issues/46)) ([0c7cb92](https://github.com/tmjssz/safe-vanity-blockie/commit/0c7cb92ff537f25b9fa449723d0b370a7f77b344))
+* **web:** let the user choose the saltNonce to start mining from ([#40](https://github.com/tmjssz/safe-vanity-blockie/issues/40)) ([7779670](https://github.com/tmjssz/safe-vanity-blockie/commit/7779670874b4b6f81c4c096175263236e3fb7604))
+* **web:** redesign the mining status bar ([#42](https://github.com/tmjssz/safe-vanity-blockie/issues/42)) ([1954d46](https://github.com/tmjssz/safe-vanity-blockie/commit/1954d46dcd7f39bb0b7f0d52849f91b6c39578f7))
+* **web:** resume a paused search from a shared link ([#44](https://github.com/tmjssz/safe-vanity-blockie/issues/44)) ([905fe86](https://github.com/tmjssz/safe-vanity-blockie/commit/905fe86eab27588e0da20f43c984598bedaea15c))
+
+
+### Bug Fixes
+
+* **miner:** stop one Ctrl+C from discarding the results it just kept ([#45](https://github.com/tmjssz/safe-vanity-blockie/issues/45)) ([231878a](https://github.com/tmjssz/safe-vanity-blockie/commit/231878a9b0f8411117e6d3166eb1d258ce5ade50))
+* **web:** stop a remembered wallet from breaking hydration ([#47](https://github.com/tmjssz/safe-vanity-blockie/issues/47)) ([af45f83](https://github.com/tmjssz/safe-vanity-blockie/commit/af45f8303693d6748691614dc09a10827841d312))
+
 ## [0.4.1](https://github.com/tmjssz/safe-vanity-blockie/compare/v0.4.0...v0.4.1) (2026-08-23)
 
 
