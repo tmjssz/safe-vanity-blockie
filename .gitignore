@@ -3,6 +3,8 @@ dist/
 *.tsbuildinfo
 .DS_Store
 results*.json
+# The default --out name, so a run started from a checkout leaves nothing to commit.
+safe-vanity-blockie-*.json
 gallery*.html
 .superpowers/
 .next/

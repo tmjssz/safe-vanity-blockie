@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { type Candidate, getTemplate, selectReported } from '@safe-vanity-blockie/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,6 +8,7 @@ import {
   buildProgressBlock,
   createInterruptHandler,
   resolveFaceSpec,
+  writeOutputFile,
 } from '../src/cli.js'
 import { asciiFor } from '../src/report.js'
 
@@ -294,5 +295,44 @@ describe('createInterruptHandler', () => {
     advance(300)
     handler()
     expect(calls).toEqual(['stop', 'force-quit'])
+  })
+})
+
+describe('writeOutputFile', () => {
+  // The default --out is a bare filename, and a run is often started from a directory the reader
+  // is no longer in by the time they go looking (or from a launcher that chose the cwd for them).
+  // A relative name in the report leaves them guessing which directory it was relative to.
+  it('reports the absolute path even when written to a relative one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'svb-out-'))
+    const previous = process.cwd()
+    process.chdir(dir)
+    try {
+      const result = writeOutputFile('safe-vanity-blockie-20260828-113042Z.json', '{"ok":true}')
+      expect(result.ok).toBe(true)
+      expect(isAbsolute(result.message.replace('Wrote ', ''))).toBe(true)
+      expect(result.message).toBe(
+        `Wrote ${join(process.cwd(), 'safe-vanity-blockie-20260828-113042Z.json')}`,
+      )
+      expect(readFileSync('safe-vanity-blockie-20260828-113042Z.json', 'utf8')).toBe('{"ok":true}')
+    } finally {
+      process.chdir(previous)
+    }
+  })
+
+  it('leaves an absolute path as given', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'svb-out-'))
+    const path = join(dir, 'results.json')
+    expect(writeOutputFile(path, '{}').message).toBe(`Wrote ${path}`)
+  })
+
+  // A bad --out must not cost a multi-hour run its report, so a failure is reported rather than
+  // thrown -- and it names the absolute path too, since that is what makes the reason obvious.
+  it('reports a failed write without throwing, naming the absolute path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'svb-out-'))
+    const path = join(dir, 'no-such-directory', 'results.json')
+    const result = writeOutputFile(path, '{}')
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain(`could not write ${path}`)
+    expect(result.message).toMatch(/ENOENT/)
   })
 })

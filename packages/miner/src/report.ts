@@ -79,6 +79,25 @@ export function formatLeaderboard(candidates: Candidate[], limit: number): strin
   return [header, '-'.repeat(header.length), ...rows].join('\n') + '\n'
 }
 
+/**
+ * Where a mine run writes its results when `--out` is not given: `safe-vanity-blockie-<UTC>.json`
+ * in the working directory.
+ *
+ * A mine run is long and its results only ever reach stdout, so a closed terminal or a scrolled
+ * buffer used to be enough to lose them. Naming the file after the run's start time keeps
+ * successive runs beside each other rather than overwriting one another, sorts them
+ * chronologically, and globs as one set (`safe-vanity-blockie-*.json`).
+ *
+ * The ISO stamp is reduced to digits: a colon is legal in a POSIX filename but breaks on Windows
+ * and needs quoting in a shell. Resolution is seconds -- two runs started within the same second
+ * would collide, which is a trade for a readable name, and anything scripted tightly enough to
+ * hit it is passing `--out` anyway.
+ */
+export function defaultOutPath(at: Date): string {
+  const stamp = at.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+  return `safe-vanity-blockie-${stamp}Z.json`
+}
+
 export function buildResultsJson(config: ResultConfig, candidates: Candidate[]): string {
   return (
     JSON.stringify(

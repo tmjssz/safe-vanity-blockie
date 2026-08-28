@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   type Candidate,
@@ -18,6 +19,7 @@ import {
   buildGalleryHtml,
   buildResultStrip,
   buildResultsJson,
+  defaultOutPath,
   formatDuration,
   formatLeaderboard,
   type ResultConfig,
@@ -174,6 +176,29 @@ export function createInterruptHandler(options: {
     // receiving duplicates cannot push the force-quit out of reach.
     if (now() - interruptedAt < graceMs) return
     options.onForceQuit()
+  }
+}
+
+/**
+ * Writes one output file and reports where it landed, by absolute path.
+ *
+ * Absolute because the reader is frequently not standing where the run started: the default
+ * `--out` is a bare filename, `npm run` moves the cwd to the package root, and a run stopped
+ * with Ctrl+C hours later is read in whatever directory the terminal is in now. A relative name
+ * leaves them guessing which directory it was relative to.
+ *
+ * A bad path must not cost a multi-hour run its report, so a failure comes back as a message for
+ * the caller to print rather than as a throw. The failure names the absolute path too -- that is
+ * usually what makes the reason obvious.
+ */
+export function writeOutputFile(path: string, contents: string): { ok: boolean; message: string } {
+  const absolute = resolve(path)
+  try {
+    writeFileSync(absolute, contents)
+    return { ok: true, message: `Wrote ${absolute}` }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { ok: false, message: `Warning: could not write ${absolute} (${reason}).` }
   }
 }
 
@@ -400,14 +425,9 @@ export async function runMine(options: MineArgs): Promise<number> {
   // A bad --out path must not cost a multi-hour run its gallery, deploy command and --start
   // resume line. Report the failure and keep going; the results are already on stdout.
   const writeOutput = (path: string, contents: string): void => {
-    try {
-      writeFileSync(path, contents)
-      process.stdout.write(`Wrote ${path}\n`)
-    } catch (error) {
-      process.stderr.write(
-        `Warning: could not write ${path} (${error instanceof Error ? error.message : String(error)}).\n`,
-      )
-    }
+    const { ok, message } = writeOutputFile(path, contents)
+    const stream = ok ? process.stdout : process.stderr
+    stream.write(`${message}\n`)
   }
 
   if (options.out || options.gallery) process.stdout.write('\n')
@@ -443,6 +463,9 @@ export async function main(argv: string[]): Promise<number> {
   const defaults = {
     workers: Math.max(1, availableParallelism() - 1),
     deployerKey: process.env.SAFE_VANITY_DEPLOYER_KEY || undefined,
+    // Stamped at launch, not when the file is written, so the name marks when the run began --
+    // and so the whole run has one name, whatever it does or does not find.
+    out: defaultOutPath(new Date()),
   }
   const command = parseArgs(argv, defaults)
 

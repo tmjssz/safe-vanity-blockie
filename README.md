@@ -145,6 +145,11 @@ review signal by eye. Check it semantically instead:
 Run `npx safe-vanity-blockie --help` for every flag. `Ctrl+C` stops the workers and keeps the best
 results found so far.
 
+Results are written to `safe-vanity-blockie-<UTC>.json` in the working directory unless you name a
+file with `--out` or suppress it with `--no-out` — so a run you stopped, or a terminal you closed,
+does not take its results with it. The name marks when the run started, so successive runs sit
+beside each other rather than overwriting one another.
+
 ### Targets
 
 `--target` accepts a builtin name (`faces`, `smile`, `frown`, `neutral`, `open`, `small`), a
