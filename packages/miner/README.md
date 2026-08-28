@@ -55,7 +55,8 @@ resume where you left off.
 | `--max-iterations <n>` | unbounded | total nonces to scan |
 | `--start <n>` | `0` | first `saltNonce`; use the printed `nextStart` to resume |
 | `--keep <n>` | `20` | leaderboard size |
-| `--out <file.json>` | | machine-readable results |
+| `--out <file.json>` | `safe-vanity-blockie-<UTC>.json` | machine-readable results; written even when the run is stopped with `Ctrl+C` |
+| `--no-out` | | do not write the results file |
 | `--gallery <file.html>` | | self-contained HTML gallery of real `blo` SVGs |
 | `--l1-singleton` | | force the L1 Safe singleton on an L2 chain |
 

@@ -233,3 +233,41 @@ describe('parseArgs', () => {
     expect(withYes.kind === 'deploy' && withYes.options.yes).toBe(true)
   })
 })
+
+describe('parseArgs --out defaulting', () => {
+  // The caller injects the path (cli.ts builds it from the clock), so parseArgs stays a pure
+  // function of its arguments and these tests never depend on the current time.
+  const DEFAULT_OUT = 'safe-vanity-blockie-20260828-113042Z.json'
+  const WITH_DEFAULT = { ...DEFAULTS, out: DEFAULT_OUT }
+
+  const mineWithDefault = (extra: string[] = []) => {
+    const command = parseArgs([...REQUIRED, ...extra], WITH_DEFAULT)
+    if (command.kind !== 'mine') throw new Error(`expected a mine command, got ${command.kind}`)
+    return command.options
+  }
+
+  // The point of the default: a run stopped with Ctrl+C leaves its results on disk even when
+  // nobody remembered to pass --out before starting a search that then ran for hours.
+  it('falls back to the injected default when no --out is given', () => {
+    expect(mineWithDefault().out).toBe(DEFAULT_OUT)
+  })
+
+  it('prefers an explicit --out over the default', () => {
+    expect(mineWithDefault(['--out', 'chosen.json']).out).toBe('chosen.json')
+  })
+
+  it('writes nothing when --no-out is given', () => {
+    expect(mineWithDefault(['--no-out']).out).toBeUndefined()
+  })
+
+  // Contradictory flags: the named destination wins. An unwanted file costs the user one `rm`,
+  // while honouring --no-out here would throw away the results of the run they just sat through.
+  it('keeps an explicit --out even alongside --no-out', () => {
+    expect(mineWithDefault(['--out', 'chosen.json', '--no-out']).out).toBe('chosen.json')
+  })
+
+  // --gallery is unchanged: still opt-in, still nothing without the flag.
+  it('leaves --gallery opt-in', () => {
+    expect(mineWithDefault().gallery).toBeUndefined()
+  })
+})

@@ -61,7 +61,9 @@ Mine options:
   --max-iterations <n>   unbounded  total nonces to scan; omit to run until Ctrl+C
   --start <n>            0          first saltNonce; use the printed nextStart to resume
   --keep <n>             20         leaderboard size
-  --out <file.json>                 machine-readable results
+  --out <file.json>      timestamp  machine-readable results; defaults to
+                                     safe-vanity-blockie-<UTC>.json in the working directory
+  --no-out                          do not write the results file
   --gallery <file.html>             self-contained HTML gallery of real blo SVGs
   --l1-singleton                    force the L1 Safe singleton on an L2 chain
   -h, --help                        show this help
@@ -144,7 +146,12 @@ function saltNonceString(raw: string): string {
 
 export function parseArgs(
   argv: string[],
-  defaults: { workers: number; deployerKey?: string },
+  /**
+   * Everything parseArgs cannot read off `argv`. `out` is the results path used when `--out` is
+   * absent -- injected rather than built here (see `defaultOutPath`) so parsing stays a pure
+   * function of its arguments and never reads the clock.
+   */
+  defaults: { workers: number; deployerKey?: string; out?: string },
 ): Command {
   if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) return { kind: 'help' }
 
@@ -157,7 +164,13 @@ export function parseArgs(
 
   const values = new Map<string, string>()
   const flags = new Set<string>()
-  const BOOLEAN_FLAGS = new Set(['--two-color', '--no-two-color', '--l1-singleton', '--yes'])
+  const BOOLEAN_FLAGS = new Set([
+    '--two-color',
+    '--no-two-color',
+    '--no-out',
+    '--l1-singleton',
+    '--yes',
+  ])
   const VALUE_FLAGS = new Set([
     '--owners',
     '--threshold',
@@ -266,7 +279,9 @@ export function parseArgs(
           : positiveInteger(maxIterationsRaw, '--max-iterations'),
       start: startRaw === undefined ? 0 : nonNegativeInteger(startRaw, '--start'),
       keep: keepRaw === undefined ? 20 : positiveInteger(keepRaw, '--keep'),
-      out: values.get('--out'),
+      // An explicit path wins even against --no-out: an unwanted file costs one `rm`, while
+      // reading a contradictory pair as "write nothing" would discard the whole run's results.
+      out: values.get('--out') ?? (flags.has('--no-out') ? undefined : defaults.out),
       gallery: values.get('--gallery'),
       isL1SafeSingleton,
     },

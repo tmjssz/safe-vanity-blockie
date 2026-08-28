@@ -18,6 +18,7 @@ import {
   buildGalleryHtml,
   buildResultStrip,
   buildResultsJson,
+  defaultOutPath,
   formatDuration,
   formatLeaderboard,
   type ResultConfig,
@@ -443,6 +444,9 @@ export async function main(argv: string[]): Promise<number> {
   const defaults = {
     workers: Math.max(1, availableParallelism() - 1),
     deployerKey: process.env.SAFE_VANITY_DEPLOYER_KEY || undefined,
+    // Stamped at launch, not when the file is written, so the name marks when the run began --
+    // and so the whole run has one name, whatever it does or does not find.
+    out: defaultOutPath(new Date()),
   }
   const command = parseArgs(argv, defaults)
 

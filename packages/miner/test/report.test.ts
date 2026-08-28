@@ -5,6 +5,7 @@ import {
   buildGalleryHtml,
   buildResultStrip,
   buildResultsJson,
+  defaultOutPath,
   formatDuration,
   formatLeaderboard,
   type ResultConfig,
@@ -344,5 +345,22 @@ describe('percentage display', () => {
     expect(parsed.results[0].score).toBe(120)
     expect(parsed.results[0].max).toBe(133)
     expect(parsed.results[0].percent).toBe(90.2)
+  })
+})
+
+describe('defaultOutPath', () => {
+  // A colon is legal in a POSIX filename but breaks on Windows and needs quoting in a shell, so
+  // the ISO stamp is reduced to digits. Fixed prefix and second-resolution UTC, so a directory
+  // of runs sorts chronologically and globs as one set.
+  it('names the file after the UTC start time, with nothing a shell has to quote', () => {
+    expect(defaultOutPath(new Date('2026-08-28T11:30:42.123Z'))).toBe(
+      'safe-vanity-blockie-20260828-113042Z.json',
+    )
+  })
+
+  it('reads the clock as UTC, so the name does not shift with the local time zone', () => {
+    expect(defaultOutPath(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)))).toBe(
+      'safe-vanity-blockie-20260102-030405Z.json',
+    )
   })
 })
