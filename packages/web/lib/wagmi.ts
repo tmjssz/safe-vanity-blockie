@@ -59,9 +59,19 @@ export function explorerFor(chainId: number): ChainExplorer | undefined {
  *
  * Transports use each chain's default public RPC (no API key) — mining reads it before any
  * wallet connects, so it must work unauthenticated.
+ *
+ * `ssr: true` is not optional here, because the header is rendered on the server. Wagmi restores
+ * the previous connection from localStorage, which only the browser has; left at the default it
+ * does so while this module loads, so React's first client render already knows about an account
+ * the server's HTML could not — the header comes back as a wallet chip where the server sent a
+ * "Connect MetaMask" button, and React discards and re-renders the whole tree with a hydration
+ * error. This defers the restore to a mount effect, so the first client render matches the server
+ * and the chip appears a frame later. Same deferral applies to the EIP-6963 connectors wagmi
+ * discovers from the browser, which are added on mount rather than at config creation.
  */
 export const wagmiConfig = createConfig({
   chains: CHAIN_LIST,
   connectors: [injected({ target: 'metaMask' })],
   transports: Object.fromEntries(CHAIN_LIST.map((chain) => [chain.id, http()])) as never,
+  ssr: true,
 })
