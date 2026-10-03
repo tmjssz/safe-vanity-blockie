@@ -44,7 +44,7 @@
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
-    "viem": "^2.56.8"
+    "viem": "^2.56.9"
   },
   "devDependencies": {
     "@types/node": "^26.6.2"
