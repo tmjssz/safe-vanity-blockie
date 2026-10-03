@@ -46,6 +46,6 @@
     "@safe-global/protocol-kit": "^8.0.7",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
-    "viem": "^2.56.8"
+    "viem": "^2.56.9"
   }
 }
