@@ -48,7 +48,8 @@ const { loadSafeConstantsMock } = vi.hoisted(() => ({ loadSafeConstantsMock: vi.
 // The real useSafeConstants runs; only the RPC read underneath it is faked. Every call resolves
 // to a freshly built SafeSetup — never a shared literal — because "a new object each time" is
 // exactly the condition under test.
-vi.mock('@safe-vanity-blockie/safe-config', () => ({
+vi.mock('@safe-vanity-blockie/safe-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-vanity-blockie/safe-config')>()),
   loadSafeConstants: loadSafeConstantsMock,
   ZKSYNC_CHAIN_IDS: new Set(),
 }))

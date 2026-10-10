@@ -33,8 +33,9 @@ export interface SafeSetup {
  * These are the chain IDs protocol-kit itself gates its zkSync formula on internally
  * (ZKSYNC_MAINNET = 324, ZKSYNC_TESTNET = 300, ZKSYNC_LENS = 232), per the installed
  * @safe-global/protocol-kit@8.0.5 source. protocol-kit additionally gates on
- * `safeVersion <= 1.4.1`, which covers every version this CLI supports (1.4.1 and 1.3.0),
- * so a plain set membership check on chain ID is sufficient here.
+ * `safeVersion <= 1.4.1`, so for 1.5.0 it would predict with the standard EVM formula instead.
+ * This tool has not verified that against a live zkSync deployment, so every version is
+ * rejected on these chains alike: a plain set membership check on chain ID.
  */
 export const ZKSYNC_CHAIN_IDS: ReadonlySet<bigint> = new Set([324n, 300n, 232n])
 

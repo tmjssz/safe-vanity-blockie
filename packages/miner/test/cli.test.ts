@@ -8,6 +8,8 @@ import {
   buildProgressBlock,
   createInterruptHandler,
   resolveFaceSpec,
+  resumeFlags,
+  resumeVersionNote,
   writeOutputFile,
 } from '../src/cli.js'
 import { asciiFor } from '../src/report.js'
@@ -239,6 +241,45 @@ describe('activeFilterFlags', () => {
 
   it('is empty when nothing is being filtered', () => {
     expect(activeFilterFlags({ twoColor: false, minContrast: 0, minMatch: 0 })).toEqual([])
+  })
+})
+
+describe('resumeFlags', () => {
+  it('names the Safe version, so a resume cannot drift onto a different default', () => {
+    expect(resumeFlags({ safeVersion: '1.4.1', workers: 8 }, 8_400_000_000)).toBe(
+      '--start 8400000000 --workers 8 --safe-version 1.4.1',
+    )
+  })
+
+  it('names --l1-singleton when the run forced it, since it is part of the address too', () => {
+    expect(resumeFlags({ safeVersion: '1.5.0', workers: 8, isL1SafeSingleton: true }, 1_000)).toBe(
+      '--start 1000 --workers 8 --safe-version 1.5.0 --l1-singleton',
+    )
+  })
+})
+
+describe('resumeVersionNote', () => {
+  it('warns when a resumed run left the Safe version to the default', () => {
+    const note = resumeVersionNote({
+      start: 8_400_000_000,
+      safeVersion: '1.5.0',
+      safeVersionDefaulted: true,
+    })
+    expect(note).toMatch(/--safe-version/)
+    expect(note).toMatch(/1\.5\.0/)
+  })
+
+  it('says nothing for a fresh run, or when the version was given explicitly', () => {
+    expect(
+      resumeVersionNote({ start: 0, safeVersion: '1.5.0', safeVersionDefaulted: true }),
+    ).toBeUndefined()
+    expect(
+      resumeVersionNote({
+        start: 8_400_000_000,
+        safeVersion: '1.4.1',
+        safeVersionDefaulted: false,
+      }),
+    ).toBeUndefined()
   })
 })
 

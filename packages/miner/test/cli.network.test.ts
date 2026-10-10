@@ -35,7 +35,7 @@ describe('safe-vanity-blockie end to end', () => {
     ])
 
     expect(stdout).toMatch(/self-check passed/)
-    expect(stdout).toMatch(/--start \d+/)
+    expect(stdout).toMatch(/--start \d+ --workers \d+ --safe-version 1\.5\.0/)
 
     const results = JSON.parse(readFileSync(out, 'utf8'))
     expect(results.config.chainId).toBe('1')

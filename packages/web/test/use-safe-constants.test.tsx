@@ -5,7 +5,8 @@ import { useSafeConstants } from '../lib/use-safe-constants'
 
 const { loadSafeConstantsMock } = vi.hoisted(() => ({ loadSafeConstantsMock: vi.fn() }))
 
-vi.mock('@safe-vanity-blockie/safe-config', () => ({
+vi.mock('@safe-vanity-blockie/safe-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-vanity-blockie/safe-config')>()),
   loadSafeConstants: loadSafeConstantsMock,
   ZKSYNC_CHAIN_IDS: new Set(),
 }))

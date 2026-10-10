@@ -1,3 +1,4 @@
+import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import {
   chainSwitchDiscardsResults,
@@ -55,6 +56,12 @@ describe('validateMineConfig', () => {
 
   it('rejects a threshold below one', () => {
     expect(validateMineConfig(input({ threshold: 0 })).errors.threshold).toMatch(/at least 1/)
+  })
+
+  it('accepts every supported Safe version', () => {
+    for (const safeVersion of SUPPORTED_SAFE_VERSIONS) {
+      expect(validateMineConfig(input({ safeVersion })).errors).toEqual({})
+    }
   })
 
   it('rejects an unsupported Safe version', () => {

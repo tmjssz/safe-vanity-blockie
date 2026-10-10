@@ -269,7 +269,7 @@ describe('reporting the draft upward', () => {
     await user.type(ownerField(1), OWNER)
 
     const last = onDraftChange.mock.calls.at(-1)?.[0]
-    expect(last.config).toEqual({ owners: [OWNER], threshold: 1, safeVersion: '1.4.1', chainId: 1 })
+    expect(last.config).toEqual({ owners: [OWNER], threshold: 1, safeVersion: '1.5.0', chainId: 1 })
   })
 
   it('reports the checkpoint, and the default for one still being typed', async () => {
@@ -773,7 +773,7 @@ describe('ConfigForm', () => {
       {
         owners: [OWNER],
         threshold: 1,
-        safeVersion: '1.4.1',
+        safeVersion: '1.5.0',
         chainId: 1,
       },
       { start: 0 },

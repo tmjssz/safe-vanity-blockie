@@ -164,10 +164,12 @@ a native run searches exactly the target the browser was searching:
 
 ### Resuming and merging runs
 
-Each run prints a resume line. Start the next run there, with the same `--workers`, and merge the
-JSON files by deduping on `address`:
+Each run prints a resume line. Start the next run there, with the same `--workers` and the same
+`--safe-version` (and `--l1-singleton`, if used), since both are part of the address, and merge the
+JSON files by deduping on `address`. Resume lines printed before Safe 1.5.0 became the default do
+not name the version; add `--safe-version 1.4.1` to those:
 
-    npx safe-vanity-blockie … --start 8400000000 --workers 8 --out results-2.json
+    npx safe-vanity-blockie … --start 8400000000 --workers 8 --safe-version 1.5.0 --out results-2.json
 
 ### What score to expect
 
@@ -197,7 +199,7 @@ history or `ps` output:
 
     export SAFE_VANITY_DEPLOYER_KEY=0xYourDeployerKey
     npx safe-vanity-blockie deploy \
-      --salt 5254976178 --owners 0xYourOwner --threshold 1 \
+      --salt 5254976178 --owners 0xYourOwner --threshold 1 --safe-version 1.5.0 \
       --rpc https://…
 
 `deploy` prints the plan (address, chain, saltNonce, owners, threshold) and, when run at an

@@ -1,5 +1,6 @@
 'use client'
 
+import { DEFAULT_SAFE_VERSION, SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { Flag, Plus, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
@@ -11,7 +12,6 @@ import {
   ownerAddressError,
   parseStartNonce,
   type RunOptions,
-  SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
 } from '../lib/config'
 import { useWorkerCount } from '../lib/worker-count'
@@ -167,7 +167,7 @@ export function ConfigForm({
   // fix a typo) would otherwise silently leave a 3-of-3 Safe as 3-of-2 → clamped to 2, and the
   // threshold is part of the address, so that is a different Safe with nothing on screen to say so.
   const [threshold, setThreshold] = useState(initial?.threshold ?? 1)
-  const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? '1.4.1')
+  const [safeVersion, setSafeVersion] = useState(initial?.safeVersion ?? DEFAULT_SAFE_VERSION)
   const [errors, setErrors] = useState<ConfigErrors>({})
 
   // The field's RAW TEXT, not a parsed number. The complaint has to be able to quote what was
