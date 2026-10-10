@@ -25,7 +25,13 @@ describe('ChainSelector', () => {
   it('switches straight away between two chains that share a Safe singleton', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        onSelect={onSelect}
+      />,
+    )
 
     await choose(user, /polygon/i)
 
@@ -38,7 +44,13 @@ describe('ChainSelector', () => {
   it('asks before a switch that crosses the mainnet boundary, and does not switch until confirmed', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        onSelect={onSelect}
+      />,
+    )
 
     await choose(user, /ethereum/i)
 
@@ -57,10 +69,36 @@ describe('ChainSelector', () => {
     expect(onSelect).toHaveBeenCalledWith(MAINNET)
   })
 
+  // On 1.3.0 the six L2s are not one class: Polygon carries the canonical deployment and Base the
+  // eip155 one, so the factory, initializer and singleton all differ and so does every address.
+  it('asks before a 1.3.0 switch between L2s that use different deployments', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ChainSelector
+        chainId={POLYGON}
+        run={{ chainId: POLYGON, safeVersion: '1.3.0' }}
+        onSelect={onSelect}
+      />,
+    )
+
+    await choose(user, /base/i)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/every result found for Polygon is discarded/i)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
   it('keeps the current chain when the confirmation is dismissed', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        onSelect={onSelect}
+      />,
+    )
 
     await choose(user, /ethereum/i)
     // Named rather than "Keep mining": this dialog is also shown to a share-link recipient with
@@ -98,7 +136,13 @@ describe('ChainSelector', () => {
   it('asks about the chain the results were mined for, not the one the header happens to show', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={MAINNET} onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: MAINNET, safeVersion: '1.4.1' }}
+        onSelect={onSelect}
+      />,
+    )
 
     await choose(user, /polygon/i)
 
@@ -114,7 +158,13 @@ describe('ChainSelector', () => {
   it('does not ask about a switch the run makes free, whatever the header shows', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={MAINNET} runChainId={SEPOLIA} onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={MAINNET}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        onSelect={onSelect}
+      />,
+    )
 
     await choose(user, /polygon/i)
 
@@ -128,7 +178,14 @@ describe('ChainSelector', () => {
   // wrong-chain gate would follow the header away from the transaction the user confirmed.
   it('is held still while a deploy is in flight', async () => {
     const onSelect = vi.fn()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} disabled onSelect={onSelect} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        disabled
+        onSelect={onSelect}
+      />,
+    )
 
     expect((trigger() as HTMLButtonElement).disabled).toBe(true)
     // Not merely styled as unavailable: the menu does not open, so nothing can be chosen.
@@ -139,7 +196,13 @@ describe('ChainSelector', () => {
 
   it('names both chains in the question, so it is clear what is being left and for what', async () => {
     const user = userEvent.setup()
-    render(<ChainSelector chainId={MAINNET} runChainId={MAINNET} onSelect={vi.fn()} />)
+    render(
+      <ChainSelector
+        chainId={MAINNET}
+        run={{ chainId: MAINNET, safeVersion: '1.4.1' }}
+        onSelect={vi.fn()}
+      />,
+    )
 
     await choose(user, /sepolia/i)
 
@@ -173,7 +236,13 @@ describe('ChainSelector', () => {
 
   it('marks both chains in the switch confirmation', async () => {
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} runChainId={SEPOLIA} onSelect={vi.fn()} />)
+    render(
+      <ChainSelector
+        chainId={SEPOLIA}
+        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        onSelect={vi.fn()}
+      />,
+    )
 
     await choose(user, /ethereum/i)
     const dialog = await screen.findByRole('dialog')

@@ -307,6 +307,15 @@ vi.mock('../components/ConfigForm', () => ({
         >
           submit-config-with-start
         </button>
+        {/* A submit with Safe 1.3.0 picked, whose address classes split the six L2s in two (see
+          lib/config.ts) — so a test can check the page measures a switch against the run's own
+          version rather than assuming 1.4.1's classes. */}
+        <button
+          type="button"
+          onClick={() => onSubmit({ ...CONFIG, safeVersion: '1.3.0', chainId }, { start: 0 })}
+        >
+          submit-config-v1.3.0
+        </button>
       </>
     )
   },
@@ -2638,6 +2647,25 @@ describe('Page', () => {
     await traverse(() => window.history.back())
     expect(window.location.href).toBe(opened)
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // On 1.3.0, Polygon and Base use different deployments (canonical and eip155), so a switch that
+  // is free on 1.4.1 changes every address here. The page must measure it against the RUN's version.
+  it('asks before a 1.3.0 switch between L2s that use different deployments', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /polygon/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config-v1.3.0' }))
+    const view = screen.getByTestId('mining-view')
+
+    await chooseChain(user, /base/i)
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /^stay on polygon$/i }))
+
+    // Declined: the run is untouched, still on Polygon.
+    expect(shownChain()).toContain('Polygon')
+    expect(screen.getByTestId('mining-view')).toBe(view)
   })
 
   it('resets the run on a confirmed mainnet crossing, exactly as "Start over" does', async () => {

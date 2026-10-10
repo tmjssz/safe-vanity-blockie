@@ -280,7 +280,7 @@ function HomeContent() {
   // One thing does survive it, and deliberately: the chain the header is ON. The header follows
   // the link only until it is dismissed or the user picks something (see `picked` below), and
   // "Start over" pins it where it stands rather than letting this drop it back to the default —
-  // which would be a silent move to the other singleton class the moment everything else on
+  // which would be a silent move to the other address class the moment everything else on
   // screen emptied. Nothing of the link's is reachable through it: it is a number in the chrome
   // the user can change at will, not the decoded config.
   const [linkDismissed, setLinkDismissed] = useState(false)
@@ -325,7 +325,7 @@ function HomeContent() {
   // bailout above with a useSearchParams() that may still be empty — which is exactly why the link
   // is LATCHED on first sight rather than captured on the first render (see `linkParamsRef`). The
   // form's fields follow that latch, so a late link leaves an obviously blank owners field that a
-  // recipient fills in; a chain that missed it read "Ethereum" instead, the other singleton class
+  // recipient fills in; a chain that missed it read "Ethereum" instead, the other address class
   // from every link that names one of the six, and a recipient who submitted then mined a different
   // address family from the one they were sent with nothing on screen to say so. Reading `linked`
   // where it is used removes the schedule question rather than answering it: whenever the link
@@ -708,8 +708,8 @@ function HomeContent() {
   // address is derived from that cannot be changed without invalidating every result on screen.
   // So the only way back is this — an explicit, confirmed reset that throws the run away rather
   // than pretending it survived. The fourth such input, the chain, is the exception that now lives
-  // in the header: it reaches the address only through which Safe singleton it deploys through, so
-  // most switches change nothing and are free, and the one that does change it comes through
+  // in the header: it reaches the address only through which Safe deployment it uses (its address
+  // class in lib/config.ts), so most switches change nothing and are free, and the one that does change it comes through
   // `changeChain` below — which asks first, and then calls exactly this.
   const startOver = useCallback(() => {
     setConfig(undefined)
@@ -736,7 +736,7 @@ function HomeContent() {
     // not one of Configure's fields: this reset throws away the run, the form and the link, and
     // since the header FOLLOWS the link until the user picks something (see `picked` above),
     // dismissing the link would otherwise drop an untouched header back to the default — which,
-    // for a link naming any of the six, is the singleton class the recipient was not on, arriving
+    // for a link naming any of the six, is the address class the recipient was not on, arriving
     // unasked in the same instant as everything else disappearing.
     //
     // Functional, and that matters: `changeChain` calls this immediately after `setPicked(next)` on
@@ -936,15 +936,17 @@ function HomeContent() {
   // spoken for: the address about to appear is derived from it. The resolving overlay takes the
   // pointer route to the header and deliberately not the keyboard one, so this is reachable by
   // tabbing to the selector mid-resolution — and without this term nothing would be asked, the
-  // header would land on the other singleton class, and the candidate would arrive a moment later
+  // header would land on the other address class, and the candidate would arrive a moment later
   // paired with a config for the class the header has just left. Everything downstream then has a
   // `selection` whose chain disagrees with the run in a way no later question can catch. Held only
   // while `awaitingLinkCandidate`: once the attempt settles either way, `selection` (or nothing at
   // all) is the truth, and a link that failed to reconstruct has nothing at stake.
-  const stakedChainId =
-    config?.chainId ??
-    selection?.config.chainId ??
-    (awaitingLinkCandidate ? linkMineConfig?.chainId : undefined)
+  //
+  // Held as the whole config rather than its chain alone because the version decides where the
+  // address-class boundaries are (see `addressClassFor`), and the chain and version a switch is
+  // measured against must come from the same config.
+  const stakedConfig =
+    config ?? selection?.config ?? (awaitingLinkCandidate ? linkMineConfig : undefined)
 
   // The header's chain picker, applied. It has already asked the user where asking was required —
   // ChainSelector holds a switch that costs results behind a confirmation, exactly as Configure
@@ -952,7 +954,7 @@ function HomeContent() {
   // happen; what is left is making the page agree with it.
   //
   // The confirmation and the reset are decided from the SAME value, `config.chainId`: the selector
-  // is handed it as `runChainId` (it is not the header's chain, which is what it used to ask
+  // is handed it as `run` (it is not the header's chain, which is what it used to ask
   // about), and the branch below reads it again from the same submitted config. What that rules
   // out is the two disagreeing — a run discarded by a branch here that the user was never asked
   // about, because the question had been put to a different chain.
@@ -960,15 +962,15 @@ function HomeContent() {
   // Three cases, and the middle one is the whole feature:
   //
   //   - Nothing submitted. There is no run and no results, so the chain is just a setting.
-  //   - A run, and the new chain shares its Safe singleton (any two of the six non-mainnet
-  //     chains). The factory, the initializer hash and the initCodeHash are byte-identical there,
+  //   - A run, and the new chain is in the same address class for the run's version (on 1.4.1,
+  //     any two of the six non-mainnet chains; on 1.3.0 the six split in two). The factory, the initializer hash and the initCodeHash are byte-identical there,
   //     so every address already on the leaderboard is still that Safe's address on the new chain:
   //     the run continues, the board is kept, and only the chain the config NAMES moves. That new
   //     config object makes useSafeConstants re-read — an honest read, against the new chain's own
   //     RPC — and MiningView keys its restart on the constants' VALUES, so the answer coming back
   //     equal leaves the worker pool untouched (see the comment there; it is the whole hazard).
-  //   - A run, and the new chain crosses the mainnet boundary. Different singleton, different
-  //     address for every candidate found, so the run cannot come along: this is a reset, and the
+  //   - A run, and the new chain crosses a class boundary (the mainnet one, or on 1.3.0 also the
+  //     canonical/eip155 one). Different contracts, different address for every candidate found, so the run cannot come along: this is a reset, and the
   //     same reset "Start over" performs — history entries retired, the link put out of reach, the
   //     dialog closed and the address bar cleared with it.
   //
@@ -981,9 +983,9 @@ function HomeContent() {
   // to avoid, on the one screen where money is spent.
   //
   // Carrying it is safe for exactly the reason the same-class switch above is: the Safe address
-  // does not depend on the chain. Factory and initializer hash are identical everywhere and the
-  // initCodeHash takes one of two values, decided by which singleton protocol-kit picks — measured
-  // on live RPCs across all seven supported chains (lib/config.ts). So among the six the carried
+  // does not depend on the chain within a class. Factory, initializer hash and initCodeHash are
+  // identical across a class — measured per version on live RPCs across all seven supported chains
+  // (lib/config.ts). So within a class the carried
   // config still derives EXACTLY the address on screen, which is the whole content of the
   // `{ candidate, config }` pairing: the config is not "close enough", it is still the one that
   // produces that candidate. Nothing the dialog shows changes but the chain it names — the
@@ -1001,14 +1003,17 @@ function HomeContent() {
   const changeChain = useCallback(
     (next: number) => {
       setPicked(next)
-      if (stakedChainId !== undefined && chainSwitchDiscardsResults(stakedChainId, next)) {
+      if (
+        stakedConfig !== undefined &&
+        chainSwitchDiscardsResults(stakedConfig.chainId, next, stakedConfig.safeVersion)
+      ) {
         startOver()
         return
       }
       // The carry is allowed only where the measurement that licenses it holds — between two
-      // chains of the same singleton class — and it is asked about the OPEN SELECTION's chain
+      // chains of the same address class — and it is asked about the OPEN SELECTION's chain
       // rather than the one above, because that is the config being repointed. The two can only
-      // differ if a selection and a run ever ended up in different classes, which `stakedChainId`
+      // differ if a selection and a run ever ended up in different classes, which `stakedConfig`
       // is what prevents: every route that could set one is either same-class by construction (a
       // card click pairs with the submitted config; the carry moves both together; a restored
       // entry belongs to the current generation, and a crossing bumps it) or goes through the
@@ -1018,7 +1023,10 @@ function HomeContent() {
       // carrying would leave the dialog offering a share link that reproduces a DIFFERENT address
       // for whoever opens it. That is worse than losing the dialog, and much worse than leaving it
       // to the deploy handler's refusal, which only fires once someone tries to spend gas.
-      if (selection && chainSwitchDiscardsResults(selection.config.chainId, next)) {
+      if (
+        selection &&
+        chainSwitchDiscardsResults(selection.config.chainId, next, selection.config.safeVersion)
+      ) {
         startOver()
         return
       }
@@ -1035,7 +1043,7 @@ function HomeContent() {
       }
       if (config) setConfig({ ...config, chainId: next })
     },
-    [config, selection, stakedChainId, startOver, replaceSelectionUrl],
+    [config, selection, stakedConfig, startOver, replaceSelectionUrl],
   )
 
   // Where the selector is rendered: an element the layout puts in the sticky header. Resolved
@@ -1052,7 +1060,7 @@ function HomeContent() {
   const chainSelector = (
     <ChainSelector
       chainId={chainId}
-      runChainId={stakedChainId}
+      run={stakedConfig}
       // Held still for exactly as long as a transaction is in the wallet's hands — see
       // `changeChain`. The same window MiningView is paused for, and for the same reason: the one
       // moment a user must read an address, and the chain it is being deployed on, against a
