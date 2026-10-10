@@ -1,108 +1,88 @@
 import {
+  getCompatibilityFallbackHandlerDeployment,
+  getProxyFactoryDeployment,
+  getSafeL2SingletonDeployment,
+  getSafeSingletonDeployment,
+  type SingletonDeployment,
+} from '@safe-global/safe-deployments'
+import {
   SUPPORTED_SAFE_VERSIONS,
   type SupportedSafeVersion,
   ZKSYNC_CHAIN_IDS,
 } from '@safe-vanity-blockie/safe-config'
+import { arbitrum, base, gnosis, mainnet, optimism, polygon, sepolia } from 'viem/chains'
 import { WORKER_BLOCK } from './worker-protocol'
 
 /**
- * Chains with canonical Safe deployments that this app offers.
- *
- * `safeShortName` is the EIP-3770 prefix Safe itself uses to name a chain in an address — the
- * `sep:` in `sep:0x…` — and it is what app.safe.global's own links are built from. Carried on
- * these entries rather than in a map of its own so it cannot drift out of step with the list it
- * describes; test/config.test.ts pins one per chain.
+ * Chains with canonical Safe deployments that this app offers, as viem defines them — the same
+ * objects lib/wagmi hands to wagmi, so the picker, the wallet and the explorer links read one list.
  */
 export const SUPPORTED_CHAINS = [
-  { id: 1, name: 'Ethereum', safeShortName: 'eth' },
-  { id: 11155111, name: 'Sepolia', safeShortName: 'sep' },
-  { id: 137, name: 'Polygon', safeShortName: 'matic' },
-  { id: 42161, name: 'Arbitrum One', safeShortName: 'arb1' },
-  { id: 10, name: 'OP Mainnet', safeShortName: 'oeth' },
-  { id: 8453, name: 'Base', safeShortName: 'base' },
-  { id: 100, name: 'Gnosis', safeShortName: 'gno' },
+  mainnet,
+  sepolia,
+  polygon,
+  arbitrum,
+  optimism,
+  base,
+  gnosis,
 ] as const
 
 /** The chain the header starts on, and what an unseeded config is mined for. */
 export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
 
 /**
- * Which chains give a Safe the same address, per Safe version — the ONLY thing about a chain that
- * reaches the Safe address, and therefore the only reason a chain switch can cost results. Two
- * chains in the same class share the proxy factory, the initializerHash and the initCodeHash, so
- * every saltNonce lands on the same address on both.
- *
- * These are MEASURED, chain by chain and version by version, against live RPCs — not a rule with
- * mainnet special-cased, and deliberately not derived from one.
- *
- * 1.4.1 and 1.5.0, on all seven chains below:
- *
- *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 for 1.4.1,
- *     0x14F2982D601c9458F93bd70B218933A6f8165e7b for 1.5.0
- *   - the initializerHash is identical (it is owners, threshold and version, and nothing else)
- *   - both singletons are deployed at identical addresses everywhere
- *   - the initCodeHash takes exactly two values: on mainnet 0x76733d70… (1.4.1) / 0x9dd695a8…
- *     (1.5.0), and on sepolia, polygon, arbitrum, optimism, base and gnosis 0xe298282c… (1.4.1)
- *     / 0xc00f8ed2… (1.5.0)
- *
- *   The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
- *   exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the
- *   singleton protocol-kit picks that splits them, and the per-chain default is kept precisely so
- *   every chain gets its conventional, properly-indexed deployment.
- *
- * 1.3.0 is deployed twice — a canonical and an eip155 deployment, at different addresses — and
- * protocol-kit picks whichever safe-deployments lists first for the chain. That splits the six L2s:
- *
- *   - mainnet: factory 0xa6B71E26…, initCodeHash 0x56e3081a… (canonical, Safe.sol)
- *   - polygon, arbitrum, gnosis: factory 0xa6B71E26…, initCodeHash 0xcaf2dc2f… (canonical, SafeL2.sol)
- *   - sepolia, optimism, base: factory 0xC2283458…, initCodeHash 0xea577b31…, and a different
- *     initializerHash too, through the eip155 fallback handler (eip155, SafeL2.sol)
- *
- * A chain or version missing from this table has not been measured, and `addressClassFor` says so
- * by returning undefined rather than guessing — see `chainSwitchDiscardsResults`, which then treats
- * a switch involving it as one that costs results. Adding a chain to SUPPORTED_CHAINS or a version
- * to SUPPORTED_SAFE_VERSIONS without adding it here fails test/config.test.ts (and, for a version,
- * the typecheck), which is the point: the entry belongs to whoever measured it.
+ * Chains on which protocol-kit defaults to the L1 singleton (Safe.sol) rather than SafeL2.sol.
+ * Mirrors protocol-kit's own `safeDeploymentsL1ChainIds`, which it does not export.
  */
-const L1_L2_SPLIT: Readonly<Record<number, string>> = {
-  1: 'Safe.sol', // Ethereum
-  11155111: 'SafeL2.sol', // Sepolia
-  137: 'SafeL2.sol', // Polygon
-  42161: 'SafeL2.sol', // Arbitrum One
-  10: 'SafeL2.sol', // OP Mainnet
-  8453: 'SafeL2.sol', // Base
-  100: 'SafeL2.sol', // Gnosis
+const L1_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([1])
+
+/** The address protocol-kit resolves for a deployment on a chain: the first one listed. */
+function deployedAddress(
+  deployment: SingletonDeployment | undefined,
+  chainId: number,
+): string | undefined {
+  const addresses = deployment?.networkAddresses[String(chainId)]
+  return (Array.isArray(addresses) ? addresses[0] : addresses)?.toLowerCase()
 }
 
-const ADDRESS_CLASSES: Record<SupportedSafeVersion, Readonly<Record<number, string>>> = {
-  '1.5.0': L1_L2_SPLIT,
-  '1.4.1': L1_L2_SPLIT,
-  '1.3.0': {
-    1: 'canonical Safe.sol', // Ethereum
-    137: 'canonical SafeL2.sol', // Polygon
-    42161: 'canonical SafeL2.sol', // Arbitrum One
-    100: 'canonical SafeL2.sol', // Gnosis
-    11155111: 'eip155 SafeL2.sol', // Sepolia
-    10: 'eip155 SafeL2.sol', // OP Mainnet
-    8453: 'eip155 SafeL2.sol', // Base
-  },
-}
-
-/** The measured address class of a chain on a version, or undefined for one nobody has measured. */
+/**
+ * Which chains give a Safe the same address, per Safe version — the ONLY thing about a chain that
+ * reaches the Safe address, and therefore the only reason a chain switch can cost results.
+ *
+ * Read from safe-deployments the way protocol-kit resolves it (packages/safe-config's
+ * `loadSafeConstants`): the proxy factory, the singleton (L1 on mainnet, L2 elsewhere) and the
+ * compatibility fallback handler, each the first address listed for the chain. Those three are
+ * everything chain-specific in a CREATE2 Safe address — the factory directly, the singleton through
+ * the initCodeHash, and the handler through the initializerHash — so two chains that agree on all
+ * three give every saltNonce the same address. test/config.test.ts pins the resulting partition
+ * against what was measured on live RPCs.
+ *
+ * Undefined for a chain safe-deployments has no deployment for, and `chainSwitchDiscardsResults`
+ * then treats a switch involving it as one that costs results.
+ */
 export function addressClassFor(
   chainId: number,
   safeVersion: SupportedSafeVersion,
 ): string | undefined {
-  return ADDRESS_CLASSES[safeVersion][chainId]
+  const filter = { version: safeVersion, network: String(chainId), released: true }
+  const singleton = L1_SINGLETON_CHAIN_IDS.has(chainId)
+    ? getSafeSingletonDeployment(filter)
+    : getSafeL2SingletonDeployment(filter)
+  const parts = [
+    deployedAddress(getProxyFactoryDeployment(filter), chainId),
+    deployedAddress(singleton, chainId),
+    deployedAddress(getCompatibilityFallbackHandlerDeployment(filter), chainId),
+  ]
+  return parts.every((part) => part !== undefined) ? parts.join(' ') : undefined
 }
 
 /**
  * Whether moving a search from one chain to another changes the addresses it has already found —
  * i.e. whether the results on screen have to be discarded rather than carried across.
  *
- * False only when both chains are measured and share an address class for the search's version,
+ * False only when both chains have a known class and share an address class for the search's version,
  * so switching within a class is free and every mined address stays exactly as valid as it was.
- * Anything else — a class boundary, or a chain nobody has measured — is true, which costs a
+ * Anything else — a class boundary, or a chain safe-deployments does not cover — is true, which costs a
  * confirmation and a reset. That asymmetry is the safe one: asking about a switch that would in
  * fact have been free is a dialog, while not asking about one that is not is a leaderboard
  * silently invalidated.

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@safe-global/protocol-kit": "^8.0.7",
+    "@safe-global/safe-deployments": "^1.37.63",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
