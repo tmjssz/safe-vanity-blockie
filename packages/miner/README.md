@@ -45,7 +45,7 @@ resume where you left off.
 | --- | --- | --- |
 | `--owners <0x..,0x..>` | required | comma-separated Safe owners |
 | `--threshold <n>` | `1` | signatures required |
-| `--safe-version <v>` | `1.4.1` | Safe contract version |
+| `--safe-version <v>` | `1.5.0` | Safe contract version: `1.5.0`, `1.4.1` or `1.3.0` |
 | `--rpc <url>` | required | used once, for chainId and canonical contract addresses |
 | `--target <name\|file>` | `faces` | builtin template (`faces`, or one expression), a comma-separated list of expressions (`smile,open`), or a FaceSpec JSON file |
 | `--two-color` / `--no-two-color` | on | only report blockies using exactly two colours |

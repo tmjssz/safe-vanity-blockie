@@ -1,8 +1,9 @@
-import { ZKSYNC_CHAIN_IDS } from '@safe-vanity-blockie/safe-config'
+import {
+  SUPPORTED_SAFE_VERSIONS,
+  type SupportedSafeVersion,
+  ZKSYNC_CHAIN_IDS,
+} from '@safe-vanity-blockie/safe-config'
 import { WORKER_BLOCK } from './worker-protocol'
-
-export const SUPPORTED_SAFE_VERSIONS = ['1.4.1', '1.3.0'] as const
-export type SupportedSafeVersion = (typeof SUPPORTED_SAFE_VERSIONS)[number]
 
 /**
  * Chains with canonical Safe deployments that this app offers.
@@ -30,13 +31,18 @@ export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
  * reaches the Safe address, and therefore the only reason a chain switch can cost results.
  *
  * These are MEASURED, chain by chain, against live RPCs — not a rule with mainnet special-cased,
- * and deliberately not derived from one. For all seven chains below:
+ * and deliberately not derived from one. For all seven chains below, and for 1.4.1 and 1.5.0 alike:
  *
- *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+ *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 for 1.4.1,
+ *     0x14F2982D601c9458F93bd70B218933A6f8165e7b for 1.5.0
  *   - the initializerHash is identical (it is owners, threshold and version, and nothing else)
  *   - both singletons are deployed at identical addresses everywhere
- *   - the initCodeHash takes exactly two values: 0x76733d70… on mainnet, and 0xe298282c… on
- *     sepolia, polygon, arbitrum, optimism, base and gnosis
+ *   - the initCodeHash takes exactly two values: on mainnet 0x76733d70… (1.4.1) / 0x9dd695a8…
+ *     (1.5.0), and on sepolia, polygon, arbitrum, optimism, base and gnosis 0xe298282c… (1.4.1)
+ *     / 0xc00f8ed2… (1.5.0)
+ *
+ * So the split below holds for both versions, and the map needs no version key. A version that
+ * splits differently would need one.
  *
  * The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
  * exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the

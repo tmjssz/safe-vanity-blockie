@@ -19,7 +19,7 @@ describe('parseArgs', () => {
   it('defaults to the mine command with the documented defaults', () => {
     const options = mine()
     expect(options.threshold).toBe(1)
-    expect(options.safeVersion).toBe('1.4.1')
+    expect(options.safeVersion).toBe('1.5.0')
     expect(options.target).toBe('faces')
     expect(options.twoColor).toBe(true)
     expect(options.minContrast).toBe(0)
@@ -115,6 +115,12 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['deploy', ...REQUIRED, '--pk', '0x1'], DEFAULTS)).toThrow(
       /--salt is required/,
     )
+  })
+
+  it('accepts every supported --safe-version', () => {
+    for (const version of ['1.5.0', '1.4.1', '1.3.0']) {
+      expect(mine(['--safe-version', version]).safeVersion).toBe(version)
+    }
   })
 
   it('rejects malformed values with actionable messages', () => {

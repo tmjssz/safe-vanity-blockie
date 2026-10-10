@@ -57,6 +57,12 @@ describe('validateMineConfig', () => {
     expect(validateMineConfig(input({ threshold: 0 })).errors.threshold).toMatch(/at least 1/)
   })
 
+  it('accepts every supported Safe version', () => {
+    for (const safeVersion of ['1.5.0', '1.4.1', '1.3.0']) {
+      expect(validateMineConfig(input({ safeVersion })).errors).toEqual({})
+    }
+  })
+
   it('rejects an unsupported Safe version', () => {
     expect(validateMineConfig(input({ safeVersion: '1.2.0' })).errors.safeVersion).toMatch(
       /unsupported/i,

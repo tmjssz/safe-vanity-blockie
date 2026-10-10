@@ -166,7 +166,8 @@ vi.mock('wagmi', () => ({
   http: vi.fn(() => ({})),
 }))
 
-vi.mock('@safe-vanity-blockie/safe-config', () => ({
+vi.mock('@safe-vanity-blockie/safe-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-vanity-blockie/safe-config')>()),
   loadSafeConstants: loadSafeConstantsMock,
   // `../lib/config`'s validateMineConfig (exercised by decodeConfigParam, in the NEW-1 test
   // below) reads this directly — an empty set means nothing this suite's chain IDs collide with.
