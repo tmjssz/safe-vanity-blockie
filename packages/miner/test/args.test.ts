@@ -124,6 +124,11 @@ describe('parseArgs', () => {
     }
   })
 
+  it('records whether --safe-version was given or left to the default', () => {
+    expect(mine().safeVersionDefaulted).toBe(true)
+    expect(mine(['--safe-version', '1.5.0']).safeVersionDefaulted).toBe(false)
+  })
+
   it('rejects malformed values with actionable messages', () => {
     expect(() => mine(['--threshold', '0'])).toThrow(/--threshold must be a positive integer/)
     expect(() => mine(['--threshold', '9'])).toThrow(/threshold 9 exceeds the 1 owner/)

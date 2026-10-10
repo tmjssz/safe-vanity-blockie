@@ -24,6 +24,8 @@ export interface MineArgs {
   out?: string
   gallery?: string
   isL1SafeSingleton?: boolean
+  /** True when --safe-version was omitted, so `safeVersion` is the default rather than a choice. */
+  safeVersionDefaulted: boolean
 }
 
 export interface DeployArgs {
@@ -268,6 +270,7 @@ export function parseArgs(
       owners,
       threshold,
       safeVersion,
+      safeVersionDefaulted: !values.has('--safe-version'),
       rpcUrl,
       target: values.get('--target') ?? 'faces',
       twoColor: !flags.has('--no-two-color'),
