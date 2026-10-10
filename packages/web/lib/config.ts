@@ -1,8 +1,9 @@
-import { ZKSYNC_CHAIN_IDS } from '@safe-vanity-blockie/safe-config'
+import {
+  SUPPORTED_SAFE_VERSIONS,
+  type SupportedSafeVersion,
+  ZKSYNC_CHAIN_IDS,
+} from '@safe-vanity-blockie/safe-config'
 import { WORKER_BLOCK } from './worker-protocol'
-
-export const SUPPORTED_SAFE_VERSIONS = ['1.4.1', '1.3.0'] as const
-export type SupportedSafeVersion = (typeof SUPPORTED_SAFE_VERSIONS)[number]
 
 /**
  * Chains with canonical Safe deployments that this app offers.
@@ -34,13 +35,15 @@ export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
  * These are MEASURED, chain by chain and version by version, against live RPCs — not a rule with
  * mainnet special-cased, and deliberately not derived from one.
  *
- * 1.4.1, on all seven chains below:
+ * 1.4.1 and 1.5.0, on all seven chains below:
  *
- *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+ *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 for 1.4.1,
+ *     0x14F2982D601c9458F93bd70B218933A6f8165e7b for 1.5.0
  *   - the initializerHash is identical (it is owners, threshold and version, and nothing else)
  *   - both singletons are deployed at identical addresses everywhere
- *   - the initCodeHash takes exactly two values: 0x76733d70… on mainnet, and 0xe298282c… on
- *     sepolia, polygon, arbitrum, optimism, base and gnosis
+ *   - the initCodeHash takes exactly two values: on mainnet 0x76733d70… (1.4.1) / 0x9dd695a8…
+ *     (1.5.0), and on sepolia, polygon, arbitrum, optimism, base and gnosis 0xe298282c… (1.4.1)
+ *     / 0xc00f8ed2… (1.5.0)
  *
  *   The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
  *   exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the
@@ -58,19 +61,22 @@ export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
  * A chain or version missing from this table has not been measured, and `addressClassFor` says so
  * by returning undefined rather than guessing — see `chainSwitchDiscardsResults`, which then treats
  * a switch involving it as one that costs results. Adding a chain to SUPPORTED_CHAINS or a version
- * to SUPPORTED_SAFE_VERSIONS without adding it here fails test/config.test.ts, which is the point:
- * the entry belongs to whoever measured it.
+ * to SUPPORTED_SAFE_VERSIONS without adding it here fails test/config.test.ts (and, for a version,
+ * the typecheck), which is the point: the entry belongs to whoever measured it.
  */
+const L1_L2_SPLIT: Readonly<Record<number, string>> = {
+  1: 'Safe.sol', // Ethereum
+  11155111: 'SafeL2.sol', // Sepolia
+  137: 'SafeL2.sol', // Polygon
+  42161: 'SafeL2.sol', // Arbitrum One
+  10: 'SafeL2.sol', // OP Mainnet
+  8453: 'SafeL2.sol', // Base
+  100: 'SafeL2.sol', // Gnosis
+}
+
 const ADDRESS_CLASSES: Record<SupportedSafeVersion, Readonly<Record<number, string>>> = {
-  '1.4.1': {
-    1: 'Safe.sol', // Ethereum
-    11155111: 'SafeL2.sol', // Sepolia
-    137: 'SafeL2.sol', // Polygon
-    42161: 'SafeL2.sol', // Arbitrum One
-    10: 'SafeL2.sol', // OP Mainnet
-    8453: 'SafeL2.sol', // Base
-    100: 'SafeL2.sol', // Gnosis
-  },
+  '1.5.0': L1_L2_SPLIT,
+  '1.4.1': L1_L2_SPLIT,
   '1.3.0': {
     1: 'canonical Safe.sol', // Ethereum
     137: 'canonical SafeL2.sol', // Polygon

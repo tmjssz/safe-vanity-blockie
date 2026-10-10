@@ -1,7 +1,10 @@
-export class CliError extends Error {}
+import {
+  DEFAULT_SAFE_VERSION,
+  SUPPORTED_SAFE_VERSIONS,
+  type SupportedSafeVersion,
+} from '@safe-vanity-blockie/safe-config'
 
-export const SUPPORTED_SAFE_VERSIONS = ['1.4.1', '1.3.0'] as const
-export type SupportedSafeVersion = (typeof SUPPORTED_SAFE_VERSIONS)[number]
+export class CliError extends Error {}
 
 export interface MineArgs {
   owners: string[]
@@ -21,6 +24,8 @@ export interface MineArgs {
   out?: string
   gallery?: string
   isL1SafeSingleton?: boolean
+  /** True when --safe-version was omitted, so `safeVersion` is the default rather than a choice. */
+  safeVersionDefaulted: boolean
 }
 
 export interface DeployArgs {
@@ -48,7 +53,7 @@ Usage:
 Mine options:
   --owners <0x..,0x..>   required   comma-separated Safe owners
   --threshold <n>        1          signatures required
-  --safe-version <v>     1.4.1      one of: ${SUPPORTED_SAFE_VERSIONS.join(', ')}
+  --safe-version <v>     ${DEFAULT_SAFE_VERSION}      one of: ${SUPPORTED_SAFE_VERSIONS.join(', ')}
   --rpc <url>            required   used once, for chainId and canonical contract addresses
   --target <name|file>   faces      builtin template (faces, or one expression: smile, frown,
                                      neutral, open, small), a comma-separated list of expressions
@@ -221,7 +226,7 @@ export function parseArgs(
     )
   }
 
-  const safeVersionRaw = values.get('--safe-version') ?? '1.4.1'
+  const safeVersionRaw = values.get('--safe-version') ?? DEFAULT_SAFE_VERSION
   if (!SUPPORTED_SAFE_VERSIONS.includes(safeVersionRaw as SupportedSafeVersion)) {
     throw new CliError(
       `unsupported --safe-version "${safeVersionRaw}"; supported: ${SUPPORTED_SAFE_VERSIONS.join(', ')}`,
@@ -265,6 +270,7 @@ export function parseArgs(
       owners,
       threshold,
       safeVersion,
+      safeVersionDefaulted: !values.has('--safe-version'),
       rpcUrl,
       target: values.get('--target') ?? 'faces',
       twoColor: !flags.has('--no-two-color'),

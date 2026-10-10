@@ -1,3 +1,4 @@
+import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import {
   addressClassFor,
@@ -8,7 +9,6 @@ import {
   ownerAddressError,
   parseStartNonce,
   SUPPORTED_CHAINS,
-  SUPPORTED_SAFE_VERSIONS,
   validateMineConfig,
 } from '../lib/config'
 import { WORKER_BLOCK } from '../lib/worker-protocol'
@@ -58,6 +58,12 @@ describe('validateMineConfig', () => {
     expect(validateMineConfig(input({ threshold: 0 })).errors.threshold).toMatch(/at least 1/)
   })
 
+  it('accepts every supported Safe version', () => {
+    for (const safeVersion of SUPPORTED_SAFE_VERSIONS) {
+      expect(validateMineConfig(input({ safeVersion })).errors).toEqual({})
+    }
+  })
+
   it('rejects an unsupported Safe version', () => {
     expect(validateMineConfig(input({ safeVersion: '1.2.0' })).errors.safeVersion).toMatch(
       /unsupported/i,
@@ -73,15 +79,18 @@ describe('validateMineConfig', () => {
   // is the assumption under test. A rule-shaped assertion would pass automatically for a chain or
   // version nobody had measured, and the app would then ask nothing before a switch that silently
   // invalidated the whole leaderboard.
-  it('names the measured address class for each supported chain on 1.4.1, one by one', () => {
-    expect(addressClassFor(1, '1.4.1')).toBe('Safe.sol') // Ethereum
-    expect(addressClassFor(11155111, '1.4.1')).toBe('SafeL2.sol') // Sepolia
-    expect(addressClassFor(137, '1.4.1')).toBe('SafeL2.sol') // Polygon
-    expect(addressClassFor(42161, '1.4.1')).toBe('SafeL2.sol') // Arbitrum One
-    expect(addressClassFor(10, '1.4.1')).toBe('SafeL2.sol') // OP Mainnet
-    expect(addressClassFor(8453, '1.4.1')).toBe('SafeL2.sol') // Base
-    expect(addressClassFor(100, '1.4.1')).toBe('SafeL2.sol') // Gnosis
-  })
+  it.each(['1.5.0', '1.4.1'] as const)(
+    'names the measured address class for each supported chain on %s, one by one',
+    (safeVersion) => {
+      expect(addressClassFor(1, safeVersion)).toBe('Safe.sol') // Ethereum
+      expect(addressClassFor(11155111, safeVersion)).toBe('SafeL2.sol') // Sepolia
+      expect(addressClassFor(137, safeVersion)).toBe('SafeL2.sol') // Polygon
+      expect(addressClassFor(42161, safeVersion)).toBe('SafeL2.sol') // Arbitrum One
+      expect(addressClassFor(10, safeVersion)).toBe('SafeL2.sol') // OP Mainnet
+      expect(addressClassFor(8453, safeVersion)).toBe('SafeL2.sol') // Base
+      expect(addressClassFor(100, safeVersion)).toBe('SafeL2.sol') // Gnosis
+    },
+  )
 
   // 1.3.0 predates the singleton factory being everywhere: some chains carry its canonical
   // deployment and others the eip155 one, and protocol-kit resolves a different factory,
@@ -114,16 +123,19 @@ describe('validateMineConfig', () => {
     }
   })
 
-  it('discards results on 1.4.1 only when a chain switch crosses the mainnet boundary', () => {
-    const others = SUPPORTED_CHAINS.filter((chain) => chain.id !== 1)
-    for (const from of others) {
-      expect(chainSwitchDiscardsResults(from.id, 1, '1.4.1')).toBe(true)
-      expect(chainSwitchDiscardsResults(1, from.id, '1.4.1')).toBe(true)
-      for (const to of others) {
-        expect(chainSwitchDiscardsResults(from.id, to.id, '1.4.1')).toBe(false)
+  it.each(['1.5.0', '1.4.1'] as const)(
+    'discards results on %s only when a chain switch crosses the mainnet boundary',
+    (safeVersion) => {
+      const others = SUPPORTED_CHAINS.filter((chain) => chain.id !== 1)
+      for (const from of others) {
+        expect(chainSwitchDiscardsResults(from.id, 1, safeVersion)).toBe(true)
+        expect(chainSwitchDiscardsResults(1, from.id, safeVersion)).toBe(true)
+        for (const to of others) {
+          expect(chainSwitchDiscardsResults(from.id, to.id, safeVersion)).toBe(false)
+        }
       }
-    }
-  })
+    },
+  )
 
   it('discards results on 1.3.0 when a switch moves between the canonical and eip155 L2s', () => {
     const POLYGON = 137

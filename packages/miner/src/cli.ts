@@ -87,6 +87,38 @@ export function activeFilterFlags(options: {
   ].filter((flag): flag is string => flag !== undefined)
 }
 
+/**
+ * The flags that continue this run where it stopped. `--safe-version` is part of the address, so it
+ * is named even when it was the default: a resume run by a later CLI with a different default would
+ * otherwise quietly mine a different Safe from `--start` on.
+ */
+export function resumeFlags(
+  options: { safeVersion: string; workers: number; isL1SafeSingleton?: boolean },
+  nextStart: number,
+): string {
+  const flags = `--start ${nextStart} --workers ${options.workers} --safe-version ${options.safeVersion}`
+  return options.isL1SafeSingleton ? `${flags} --l1-singleton` : flags
+}
+
+/**
+ * A note for a resumed run (`--start` past zero) that left `--safe-version` to the default. Resume
+ * lines printed before 1.5.0 became the default do not name the version, so pasting one into this
+ * CLI quietly continues a 1.4.1 search as a 1.5.0 one — different addresses from that nonce on.
+ * Undefined when there is nothing to say.
+ */
+export function resumeVersionNote(options: {
+  start: number
+  safeVersion: string
+  safeVersionDefaulted: boolean
+}): string | undefined {
+  if (options.start === 0 || !options.safeVersionDefaulted) return undefined
+  return (
+    `Note: resuming at --start ${options.start} with no --safe-version, so this mines Safe ` +
+    `${options.safeVersion} (the default). If the run you are continuing was mined with another ` +
+    'version, pass that --safe-version: it is part of the address.'
+  )
+}
+
 /** ANSI: move the cursor up `lines` rows and clear everything from there down. */
 function cursorUpAndClear(lines: number): string {
   return lines > 0 ? `\u001b[${lines}A\u001b[0J` : ''
@@ -206,6 +238,8 @@ export async function runMine(options: MineArgs): Promise<number> {
   const faceSpec = resolveFaceSpec(options.target)
   const maxScore = compileFace(faceSpec).maxScore
 
+  const versionNote = resumeVersionNote(options)
+  if (versionNote) process.stderr.write(`${versionNote}\n`)
   process.stderr.write(`Reading Safe constants from ${options.rpcUrl}…\n`)
   const setup = await loadSafeConstants({
     rpcUrl: options.rpcUrl,
@@ -451,7 +485,7 @@ export async function runMine(options: MineArgs): Promise<number> {
   )
 
   process.stdout.write(
-    `\nResume without rescanning:\n  --start ${result.nextStart} --workers ${options.workers}\n`,
+    `\nResume without rescanning:\n  ${resumeFlags(options, result.nextStart)}\n`,
   )
   process.stdout.write(
     '\nReminder: a matching identicon is cosmetic. Never trust it as proof of an address.\n',

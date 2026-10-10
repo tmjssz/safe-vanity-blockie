@@ -82,13 +82,30 @@ export async function buildDeploymentPlan(options: DeployArgs): Promise<Deployme
   }
 }
 
+/**
+ * The plan as read before the "yes" prompt. Names everything that reaches the address — the Safe
+ * version and a forced L1 singleton included, since a deploy that omits either targets a different
+ * Safe than the one mined, and this is the last place to notice.
+ */
+export function formatDeployPlan(
+  plan: Pick<DeploymentPlan, 'address' | 'chainId'>,
+  options: Pick<
+    DeployArgs,
+    'saltNonce' | 'owners' | 'threshold' | 'safeVersion' | 'isL1SafeSingleton'
+  >,
+): string {
+  return (
+    `Deploying Safe ${plan.address} on chain ${plan.chainId} with saltNonce ${options.saltNonce}\n` +
+    `  owners: ${options.owners.join(', ')}\n` +
+    `  threshold: ${options.threshold}\n` +
+    `  safe version: ${options.safeVersion}\n` +
+    (options.isL1SafeSingleton ? '  L1 singleton: forced\n' : '')
+  )
+}
+
 export async function runDeploy(options: DeployArgs): Promise<number> {
   const plan = await buildDeploymentPlan(options)
-  process.stdout.write(
-    `Deploying Safe ${plan.address} on chain ${plan.chainId} with saltNonce ${options.saltNonce}\n` +
-      `  owners: ${options.owners.join(', ')}\n` +
-      `  threshold: ${options.threshold}\n`,
-  )
+  process.stdout.write(formatDeployPlan(plan, options))
 
   if (process.stdin.isTTY && !options.yes) {
     const rl = createInterface({ input: process.stdin, output: process.stdout })

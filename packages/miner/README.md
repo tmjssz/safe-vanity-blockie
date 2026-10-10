@@ -45,7 +45,7 @@ resume where you left off.
 | --- | --- | --- |
 | `--owners <0x..,0x..>` | required | comma-separated Safe owners |
 | `--threshold <n>` | `1` | signatures required |
-| `--safe-version <v>` | `1.4.1` | Safe contract version |
+| `--safe-version <v>` | `1.5.0` | Safe contract version: `1.5.0`, `1.4.1` or `1.3.0` |
 | `--rpc <url>` | required | used once, for chainId and canonical contract addresses |
 | `--target <name\|file>` | `faces` | builtin template (`faces`, or one expression), a comma-separated list of expressions (`smile,open`), or a FaceSpec JSON file |
 | `--two-color` / `--no-two-color` | on | only report blockies using exactly two colours |
@@ -63,8 +63,12 @@ resume where you left off.
 ## Deploy
 
 ```
-safe-vanity-blockie deploy --salt <n> --owners 0xAbC... --rpc <url>
+safe-vanity-blockie deploy --salt <n> --owners 0xAbC... --safe-version <v> --rpc <url>
 ```
+
+Pass the same `--safe-version` the run was mined with: it is part of the address, and leaving it
+out deploys the default version's Safe, which is a different address. The deploy command a mining
+run prints always names it.
 
 > [!IMPORTANT]
 > `deploy` needs a private key. Prefer the `SAFE_VANITY_DEPLOYER_KEY` environment variable over

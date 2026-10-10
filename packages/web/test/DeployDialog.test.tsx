@@ -32,7 +32,8 @@ vi.mock('wagmi', () => ({
 // Fails fast, before any network or wallet call, so the tests that click "Deploy this Safe"
 // never reach sendTransaction or any real RPC — they only exercise the pause/resume callbacks
 // and the catch/alert path.
-vi.mock('@safe-vanity-blockie/safe-config', () => ({
+vi.mock('@safe-vanity-blockie/safe-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-vanity-blockie/safe-config')>()),
   loadSafeConstants: vi.fn().mockRejectedValue(new Error('Could not read Safe constants (test).')),
   // Read directly by ../lib/config's validateMineConfig, which the share-link round-trip test
   // below reaches through the real decodeConfigParam. An empty set collides with nothing here.

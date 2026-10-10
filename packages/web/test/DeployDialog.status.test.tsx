@@ -30,7 +30,8 @@ vi.mock('wagmi', () => ({
   http: vi.fn(() => ({})),
 }))
 
-vi.mock('@safe-vanity-blockie/safe-config', () => ({
+vi.mock('@safe-vanity-blockie/safe-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-vanity-blockie/safe-config')>()),
   loadSafeConstants: vi.fn().mockResolvedValue({}),
   ZKSYNC_CHAIN_IDS: new Set(),
 }))
