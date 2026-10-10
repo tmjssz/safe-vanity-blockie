@@ -1,11 +1,5 @@
 import {
-  getCompatibilityFallbackHandlerDeployment,
-  getProxyFactoryDeployment,
-  getSafeL2SingletonDeployment,
-  getSafeSingletonDeployment,
-  type SingletonDeployment,
-} from '@safe-global/safe-deployments'
-import {
+  addressClassFor,
   SUPPORTED_SAFE_VERSIONS,
   type SupportedSafeVersion,
   ZKSYNC_CHAIN_IDS,
@@ -31,59 +25,13 @@ export const SUPPORTED_CHAINS = [
 export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
 
 /**
- * Chains on which protocol-kit defaults to the L1 singleton (Safe.sol) rather than SafeL2.sol.
- * Mirrors protocol-kit's own `safeDeploymentsL1ChainIds`, which it does not export.
- */
-const L1_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([1])
-
-/** The address protocol-kit resolves for a deployment on a chain: the first one listed. */
-function deployedAddress(
-  deployment: SingletonDeployment | undefined,
-  chainId: number,
-): string | undefined {
-  const addresses = deployment?.networkAddresses[String(chainId)]
-  return (Array.isArray(addresses) ? addresses[0] : addresses)?.toLowerCase()
-}
-
-/**
- * Which chains give a Safe the same address, per Safe version — the ONLY thing about a chain that
- * reaches the Safe address, and therefore the only reason a chain switch can cost results.
- *
- * Read from safe-deployments the way protocol-kit resolves it (packages/safe-config's
- * `loadSafeConstants`): the proxy factory, the singleton (L1 on mainnet, L2 elsewhere) and the
- * compatibility fallback handler, each the first address listed for the chain. Those three are
- * everything chain-specific in a CREATE2 Safe address — the factory directly, the singleton through
- * the initCodeHash, and the handler through the initializerHash — so two chains that agree on all
- * three give every saltNonce the same address. test/config.test.ts pins the resulting partition
- * against what was measured on live RPCs.
- *
- * Undefined for a chain safe-deployments has no deployment for, and `chainSwitchDiscardsResults`
- * then treats a switch involving it as one that costs results.
- */
-export function addressClassFor(
-  chainId: number,
-  safeVersion: SupportedSafeVersion,
-): string | undefined {
-  const filter = { version: safeVersion, network: String(chainId), released: true }
-  const singleton = L1_SINGLETON_CHAIN_IDS.has(chainId)
-    ? getSafeSingletonDeployment(filter)
-    : getSafeL2SingletonDeployment(filter)
-  const parts = [
-    deployedAddress(getProxyFactoryDeployment(filter), chainId),
-    deployedAddress(singleton, chainId),
-    deployedAddress(getCompatibilityFallbackHandlerDeployment(filter), chainId),
-  ]
-  return parts.every((part) => part !== undefined) ? parts.join(' ') : undefined
-}
-
-/**
  * Whether moving a search from one chain to another changes the addresses it has already found —
  * i.e. whether the results on screen have to be discarded rather than carried across.
  *
- * False only when both chains have a known class and share an address class for the search's version,
- * so switching within a class is free and every mined address stays exactly as valid as it was.
- * Anything else — a class boundary, or a chain safe-deployments does not cover — is true, which costs a
- * confirmation and a reset. That asymmetry is the safe one: asking about a switch that would in
+ * False only when both chains have a known address class (safe-config's `addressClassFor`) and
+ * share it for the search's version, so switching within a class is free and every mined address
+ * stays exactly as valid as it was. Anything else — a class boundary, or a chain without a class —
+ * is true, which costs a confirmation and a reset. That asymmetry is the safe one: asking about a switch that would in
  * fact have been free is a dialog, while not asking about one that is not is a leaderboard
  * silently invalidated.
  */
@@ -97,6 +45,22 @@ export function chainSwitchDiscardsResults(
   const after = addressClassFor(to, safeVersion)
   if (before === undefined || after === undefined) return true
   return before !== after
+}
+
+/** The chain and Safe version a config's addresses were derived for. */
+export type ChainBinding = Pick<MineConfig, 'chainId' | 'safeVersion'>
+
+/**
+ * Whether switching to `to` discards results for ANY of the configs on screen. The page can hold
+ * two at once — a submitted run and an open share-link result — and they can differ in version, so
+ * a switch that is free for one can cross a class boundary for the other. The header's question
+ * and the page's reset both go through this, with the same list, so the reset never happens on a
+ * switch nobody was asked about.
+ */
+export function chainSwitchDiscardsAny(staked: readonly ChainBinding[], to: number): boolean {
+  return staked.some((binding) =>
+    chainSwitchDiscardsResults(binding.chainId, to, binding.safeVersion),
+  )
 }
 
 export interface MineConfig {

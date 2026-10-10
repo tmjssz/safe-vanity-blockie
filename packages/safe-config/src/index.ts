@@ -1,3 +1,4 @@
+export { addressClassFor } from './address-class.js'
 export {
   loadSafeConstants,
   type SafeSetup,

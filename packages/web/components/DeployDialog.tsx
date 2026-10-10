@@ -560,8 +560,8 @@ export function DeployDialog({
                       <dd className="font-mono">{config.safeVersion}</dd>
                       {/* No chain row. These three are what the ADDRESS is derived from and what a user
                     cannot change without invalidating it; the chain is not one of them — the same
-                    address is this Safe's address on all six non-mainnet chains (measured; see
-                    lib/config.ts), and it is a live control in the header that can move while this
+                    address is this Safe's address on every chain in its address class (see
+                    safe-config's addressClassFor), and it is a live control in the header that can move while this
                     dialog is open. Listing it here as though it were a property of the config would
                     have made it the one line in this block that changes under the reader. Where the
                     gas goes is still named, once, in the description above — which is the sentence

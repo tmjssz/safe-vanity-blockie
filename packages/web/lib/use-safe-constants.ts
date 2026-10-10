@@ -11,8 +11,8 @@ import { chainById } from './wagmi'
  *
  * Keyed on the config OBJECT, so a caller that rebuilds it re-reads. The one config change that
  * happens under a live search is the header's chain picker, and for that the read is genuine — the
- * new chain's own RPC, its own singleton — while the answer, for the six chains that share a
- * singleton, comes back identical in value. Which is why what is already in hand is kept for the
+ * new chain's own RPC, its own singleton — while the answer, for chains in the same address class
+ * (safe-config's `addressClassFor`), comes back identical in value. Which is why what is already in hand is kept for the
  * length of the read (below) rather than being replaced by a loading state: the caller keeps
  * mining on constants that are still true instead of watching its worker pool torn down and the
  * grid replaced by a placeholder for an RPC round trip. What it must NOT do is outlive a failure —

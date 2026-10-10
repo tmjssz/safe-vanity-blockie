@@ -16,7 +16,7 @@ import { MINING_STATUS_BAR_SLOT_ID } from '../components/MiningStatusBar'
 import { MiningView } from '../components/MiningView'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import {
-  chainSwitchDiscardsResults,
+  chainSwitchDiscardsAny,
   DEFAULT_CHAIN_ID,
   DEFAULT_FACE_FILTERS,
   type FaceFilters,
@@ -317,16 +317,16 @@ function HomeContent() {
   // The chain no longer travels with the other three: those are Configure's fields, this is the
   // header's control, so it is answered here instead of in the form. A share link puts the whole
   // config on screen, chain included, or none of it. (A recipient meets the sender's chain, which
-  // is the chain the sender's dialog and CLI command name; the address itself would survive any of
-  // the six, but nothing here should quietly answer a question the link already answered.)
+  // is the chain the sender's dialog and CLI command name; the address itself would survive any
+  // chain in its address class, but nothing here should quietly answer a question the link already answered.)
   //
   // DERIVED from the link, not seeded from it into state. `useState(() => linked?.chainId ?? …)`
   // could only ever see the FIRST client render, and this subtree reaches that through the Suspense
   // bailout above with a useSearchParams() that may still be empty — which is exactly why the link
   // is LATCHED on first sight rather than captured on the first render (see `linkParamsRef`). The
   // form's fields follow that latch, so a late link leaves an obviously blank owners field that a
-  // recipient fills in; a chain that missed it read "Ethereum" instead, the other address class
-  // from every link that names one of the six, and a recipient who submitted then mined a different
+  // recipient fills in; a chain that missed it read "Ethereum" instead, a different address class
+  // from every link that names an L2, and a recipient who submitted then mined a different
   // address family from the one they were sent with nothing on screen to say so. Reading `linked`
   // where it is used removes the schedule question rather than answering it: whenever the link
   // lands, all four fields land together.
@@ -736,7 +736,7 @@ function HomeContent() {
     // not one of Configure's fields: this reset throws away the run, the form and the link, and
     // since the header FOLLOWS the link until the user picks something (see `picked` above),
     // dismissing the link would otherwise drop an untouched header back to the default — which,
-    // for a link naming any of the six, is the address class the recipient was not on, arriving
+    // for a link naming an L2, is an address class the recipient was not on, arriving
     // unasked in the same instant as everything else disappearing.
     //
     // Functional, and that matters: `changeChain` calls this immediately after `setPicked(next)` on
@@ -924,12 +924,12 @@ function HomeContent() {
   // What a chain switch is measured against: the chain whose addresses are at stake. Normally the
   // submitted config's — the run on screen is what a crossing costs — but before anything is
   // submitted there can still be something to lose, because a share link opens its dialog with no
-  // run at all. That result is as chain-bound as any mined one (its address holds on the six and
-  // not across the boundary), and now that the header is reachable from an open dialog it can be
-  // switched out from under it. So it is the fallback, and there is exactly one such value: it is
-  // handed to ChainSelector as the thing to ask about AND read back by `changeChain` as the thing
-  // to act on, which is the rule that comment establishes — a question put about one chain must
-  // never authorise a reset carried out against another.
+  // run at all. That result is as chain-bound as any mined one (its address holds within its
+  // address class and not across one), and now that the header is reachable from an open dialog it
+  // can be switched out from under it. So it is the fallback. With the open selection it makes up
+  // `stakedConfigs` below, which is handed to ChainSelector as the thing to ask about AND read back
+  // by `changeChain` as the thing to act on — a question put about one config must never authorise
+  // a reset carried out against another.
   //
   // The third term covers the window before either exists. While a link's saltNonce is still being
   // reconstructed there is no `config` and no `selection` yet, but the link's chain is already
@@ -948,29 +948,44 @@ function HomeContent() {
   const stakedConfig =
     config ?? selection?.config ?? (awaitingLinkCandidate ? linkMineConfig : undefined)
 
+  // Every config whose addresses are on screen, for the question AND the reset. The run and an open
+  // result are normally the same class, but not necessarily the same version: a share-link result
+  // for 1.3.0 can be open over a submitted 1.4.1 run, and a switch free for one can cross a class
+  // for the other. Both are listed so the selector asks whenever `changeChain` would reset.
+  const stakedConfigs = useMemo(
+    () =>
+      [stakedConfig, selection?.config].filter(
+        (entry, index, all): entry is MineConfig =>
+          entry !== undefined && all.indexOf(entry) === index,
+      ),
+    [stakedConfig, selection],
+  )
+
   // The header's chain picker, applied. It has already asked the user where asking was required —
   // ChainSelector holds a switch that costs results behind a confirmation, exactly as Configure
   // holds its fields behind "Start over" — so by the time this runs the switch is allowed to
   // happen; what is left is making the page agree with it.
   //
-  // The confirmation and the reset are decided from the SAME value, `config.chainId`: the selector
-  // is handed it as `run` (it is not the header's chain, which is what it used to ask
-  // about), and the branch below reads it again from the same submitted config. What that rules
-  // out is the two disagreeing — a run discarded by a branch here that the user was never asked
-  // about, because the question had been put to a different chain.
+  // The confirmation and the reset are decided from the SAME list, `stakedConfigs`: the selector
+  // is handed it as `staked` (not the header's chain, which is what it used to ask about), and the
+  // branch below reads it again through the same `chainSwitchDiscardsAny`. What that rules out is
+  // the two disagreeing — a run discarded by a branch here that the user was never asked about,
+  // because the question had been put to a different chain or version.
   //
   // Three cases, and the middle one is the whole feature:
   //
   //   - Nothing submitted. There is no run and no results, so the chain is just a setting.
-  //   - A run, and the new chain is in the same address class for the run's version (on 1.4.1,
-  //     any two of the six non-mainnet chains; on 1.3.0 the six split in two). The factory, the initializer hash and the initCodeHash are byte-identical there,
-  //     so every address already on the leaderboard is still that Safe's address on the new chain:
+  //   - A run, and the new chain is in the same address class for the run's version (on 1.4.1
+  //     and 1.5.0, any two of the six non-mainnet chains; on 1.3.0 the six split in two). The
+  //     factory, the initializer hash and the initCodeHash are byte-identical there, so every
+  //     address already on the leaderboard is still that Safe's address on the new chain:
   //     the run continues, the board is kept, and only the chain the config NAMES moves. That new
   //     config object makes useSafeConstants re-read — an honest read, against the new chain's own
   //     RPC — and MiningView keys its restart on the constants' VALUES, so the answer coming back
   //     equal leaves the worker pool untouched (see the comment there; it is the whole hazard).
-  //   - A run, and the new chain crosses a class boundary (the mainnet one, or on 1.3.0 also the
-  //     canonical/eip155 one). Different contracts, different address for every candidate found, so the run cannot come along: this is a reset, and the
+  //   - A run, and the new chain crosses a class boundary for it or for the open selection (the
+  //     mainnet one, or on 1.3.0 also the canonical/eip155 one). Different contracts, a different
+  //     address for every candidate found, so the run cannot come along: this is a reset, and the
   //     same reset "Start over" performs — history entries retired, the link put out of reach, the
   //     dialog closed and the address bar cleared with it.
   //
@@ -984,9 +999,9 @@ function HomeContent() {
   //
   // Carrying it is safe for exactly the reason the same-class switch above is: the Safe address
   // does not depend on the chain within a class. Factory, initializer hash and initCodeHash are
-  // identical across a class — measured per version on live RPCs across all seven supported chains
-  // (lib/config.ts). So within a class the carried
-  // config still derives EXACTLY the address on screen, which is the whole content of the
+  // identical across a class — derived per version from safe-deployments and pinned against live-RPC
+  // measurements (safe-config's `addressClassFor`). So within a class the carried config still
+  // derives EXACTLY the address on screen, which is the whole content of the
   // `{ candidate, config }` pairing: the config is not "close enough", it is still the one that
   // produces that candidate. Nothing the dialog shows changes but the chain it names — the
   // address, the saltNonce and the owners are all untouched — and DeployDialog's independent
@@ -1003,33 +1018,12 @@ function HomeContent() {
   const changeChain = useCallback(
     (next: number) => {
       setPicked(next)
-      if (
-        stakedConfig !== undefined &&
-        chainSwitchDiscardsResults(stakedConfig.chainId, next, stakedConfig.safeVersion)
-      ) {
+      if (chainSwitchDiscardsAny(stakedConfigs, next)) {
         startOver()
         return
       }
-      // The carry is allowed only where the measurement that licenses it holds — between two
-      // chains of the same address class — and it is asked about the OPEN SELECTION's chain
-      // rather than the one above, because that is the config being repointed. The two can only
-      // differ if a selection and a run ever ended up in different classes, which `stakedConfig`
-      // is what prevents: every route that could set one is either same-class by construction (a
-      // card click pairs with the submitted config; the carry moves both together; a restored
-      // entry belongs to the current generation, and a crossing bumps it) or goes through the
-      // question above. So this is defence in depth of the same kind as the dialog's `key` — and
-      // if it is ever reached, refusing to carry and resetting is the only honest answer: an
-      // address derived under `Safe.sol` is simply not that Safe's address under `SafeL2.sol`, so
-      // carrying would leave the dialog offering a share link that reproduces a DIFFERENT address
-      // for whoever opens it. That is worse than losing the dialog, and much worse than leaving it
-      // to the deploy handler's refusal, which only fires once someone tries to spend gas.
-      if (
-        selection &&
-        chainSwitchDiscardsResults(selection.config.chainId, next, selection.config.safeVersion)
-      ) {
-        startOver()
-        return
-      }
+      // Past the check above, the switch is free for the run AND for the open selection (it is in
+      // `stakedConfigs`), so a carried selection still derives exactly the address on screen.
       if (selection && selection.config.chainId !== next) {
         const carried = {
           candidate: selection.candidate,
@@ -1043,7 +1037,7 @@ function HomeContent() {
       }
       if (config) setConfig({ ...config, chainId: next })
     },
-    [config, selection, stakedConfig, startOver, replaceSelectionUrl],
+    [config, selection, stakedConfigs, startOver, replaceSelectionUrl],
   )
 
   // Where the selector is rendered: an element the layout puts in the sticky header. Resolved
@@ -1060,7 +1054,7 @@ function HomeContent() {
   const chainSelector = (
     <ChainSelector
       chainId={chainId}
-      run={stakedConfig}
+      staked={stakedConfigs}
       // Held still for exactly as long as a transaction is in the wallet's hands — see
       // `changeChain`. The same window MiningView is paused for, and for the same reason: the one
       // moment a user must read an address, and the chain it is being deployed on, against a

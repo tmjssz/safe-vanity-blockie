@@ -28,7 +28,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         onSelect={onSelect}
       />,
     )
@@ -47,7 +47,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         onSelect={onSelect}
       />,
     )
@@ -77,7 +77,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={POLYGON}
-        run={{ chainId: POLYGON, safeVersion: '1.3.0' }}
+        staked={[{ chainId: POLYGON, safeVersion: '1.3.0' }]}
         onSelect={onSelect}
       />,
     )
@@ -89,13 +89,35 @@ describe('ChainSelector', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
+  // A 1.4.1 run with a 1.3.0 share-link result open over it: Polygon → Base is free for the run but
+  // crosses a class for the result, and the page resets on either, so the question must too.
+  it('asks when a switch is free for the run but not for another staked config', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ChainSelector
+        chainId={POLYGON}
+        staked={[
+          { chainId: POLYGON, safeVersion: '1.4.1' },
+          { chainId: POLYGON, safeVersion: '1.3.0' },
+        ]}
+        onSelect={onSelect}
+      />,
+    )
+
+    await choose(user, /base/i)
+
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
   it('keeps the current chain when the confirmation is dismissed', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         onSelect={onSelect}
       />,
     )
@@ -118,7 +140,7 @@ describe('ChainSelector', () => {
   it('switches to mainnet with no questions when there is no run to lose', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    render(<ChainSelector chainId={SEPOLIA} onSelect={onSelect} />)
+    render(<ChainSelector chainId={SEPOLIA} staked={[]} onSelect={onSelect} />)
 
     await choose(user, /ethereum/i)
 
@@ -139,7 +161,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: MAINNET, safeVersion: '1.4.1' }}
+        staked={[{ chainId: MAINNET, safeVersion: '1.4.1' }]}
         onSelect={onSelect}
       />,
     )
@@ -161,7 +183,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={MAINNET}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         onSelect={onSelect}
       />,
     )
@@ -181,7 +203,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         disabled
         onSelect={onSelect}
       />,
@@ -199,7 +221,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={MAINNET}
-        run={{ chainId: MAINNET, safeVersion: '1.4.1' }}
+        staked={[{ chainId: MAINNET, safeVersion: '1.4.1' }]}
         onSelect={vi.fn()}
       />,
     )
@@ -212,7 +234,7 @@ describe('ChainSelector', () => {
   })
 
   it('marks the selected chain on the trigger', async () => {
-    render(<ChainSelector chainId={POLYGON} onSelect={vi.fn()} />)
+    render(<ChainSelector chainId={POLYGON} staked={[]} onSelect={vi.fn()} />)
 
     // The header shows a chain name in a small control among several others. The mark is what
     // makes which chain you are on answerable at a glance rather than by reading.
@@ -221,7 +243,7 @@ describe('ChainSelector', () => {
 
   it('marks every chain in the list', async () => {
     const user = userEvent.setup()
-    render(<ChainSelector chainId={MAINNET} onSelect={vi.fn()} />)
+    render(<ChainSelector chainId={MAINNET} staked={[]} onSelect={vi.fn()} />)
     await user.click(trigger())
 
     // Every option, not most: a list where some rows have a mark and others do not is harder to
@@ -239,7 +261,7 @@ describe('ChainSelector', () => {
     render(
       <ChainSelector
         chainId={SEPOLIA}
-        run={{ chainId: SEPOLIA, safeVersion: '1.4.1' }}
+        staked={[{ chainId: SEPOLIA, safeVersion: '1.4.1' }]}
         onSelect={vi.fn()}
       />,
     )

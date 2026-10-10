@@ -310,7 +310,7 @@ vi.mock('../components/ConfigForm', () => ({
           submit-config-with-start
         </button>
         {/* A submit with Safe 1.3.0 picked, whose address classes split the six L2s in two (see
-          lib/config.ts) — so a test can check the page measures a switch against the run's own
+          safe-config's addressClassFor) — so a test can check the page measures a switch against the run's own
           version rather than assuming 1.4.1's classes. */}
         <button
           type="button"
@@ -2668,6 +2668,40 @@ describe('Page', () => {
     // Declined: the run is untouched, still on Polygon.
     expect(shownChain()).toContain('Polygon')
     expect(screen.getByTestId('mining-view')).toBe(view)
+  })
+
+  // A 1.3.0 share-link result open over the recipient's own 1.4.1 run, both on Polygon. Polygon →
+  // Base is free for the run but crosses a class for the result, and the page would reset for the
+  // result — so the header must ask, measuring every config on screen, not just the run.
+  it('asks before a switch that is free for the run but crosses a class for the open link result', async () => {
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: ['0x' + '33'.repeat(20)],
+        threshold: 1,
+        safeVersion: '1.3.0',
+        chainId: 137,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+    const address = (await screen.findByRole('dialog')).textContent
+    expect(shownChain()).toContain('Polygon')
+
+    fireEvent.click(screen.getByText('submit-config'))
+    await waitFor(() => expect(screen.getByTestId('mining-view')).toBeDefined())
+    const view = screen.getByTestId('mining-view')
+    expect(view.getAttribute('data-chain')).toBe('137')
+
+    await chooseChain(user, /base/i)
+    expect(await screen.findByText(/switch to base\?/i)).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /^stay on polygon$/i }))
+
+    // Declined: the run and the open result are both untouched.
+    expect(shownChain()).toContain('Polygon')
+    expect(screen.getByTestId('mining-view')).toBe(view)
+    expect(screen.getByRole('dialog').textContent).toBe(address)
   })
 
   it('resets the run on a confirmed mainnet crossing, exactly as "Start over" does', async () => {

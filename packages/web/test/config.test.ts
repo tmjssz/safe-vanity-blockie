@@ -1,7 +1,6 @@
-import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
+import { addressClassFor, SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import {
-  addressClassFor,
   chainSwitchDiscardsResults,
   DEFAULT_FACE_FILTERS,
   isOwnerAddress,
@@ -70,42 +69,25 @@ describe('validateMineConfig', () => {
     )
   })
 
-  // The chain reaches the address through the canonical Safe deployment protocol-kit picks for it:
-  // factory, initializer (via the fallback handler) and singleton. addressClassFor reads those from
-  // safe-deployments; these pin the partition it must produce to what was MEASURED against live
-  // RPCs, chain by chain — so a safe-deployments bump that reorders a chain's deployments fails
-  // here instead of silently carrying a leaderboard across a switch that changed every address.
-  const ETHEREUM = 1
-  const SEPOLIA = 11155111
+  // The partition itself is pinned in packages/safe-config (test/address-class.test.ts). This is
+  // the gate on the app's own list: offer a chain without a class and every switch to or from it
+  // costs a reset.
+  it('has an address class for every chain the app offers, on every version', () => {
+    for (const safeVersion of SUPPORTED_SAFE_VERSIONS) {
+      for (const chain of SUPPORTED_CHAINS) {
+        expect({
+          safeVersion,
+          chain: chain.name,
+          cls: addressClassFor(chain.id, safeVersion),
+        }).toEqual({ safeVersion, chain: chain.name, cls: expect.any(String) })
+      }
+    }
+  })
+
   const POLYGON = 137
   const ARBITRUM = 42161
   const OPTIMISM = 10
   const BASE = 8453
-  const GNOSIS = 100
-  const MEASURED_CLASSES: Record<string, number[][]> = {
-    // 1.4.1 / 1.5.0: one factory everywhere; mainnet alone defaults to the L1 singleton.
-    '1.5.0': [[ETHEREUM], [SEPOLIA, POLYGON, ARBITRUM, OPTIMISM, BASE, GNOSIS]],
-    '1.4.1': [[ETHEREUM], [SEPOLIA, POLYGON, ARBITRUM, OPTIMISM, BASE, GNOSIS]],
-    // 1.3.0 is deployed twice, canonical and eip155, and protocol-kit takes whichever is listed
-    // first for the chain — which splits the L2s in two.
-    '1.3.0': [[ETHEREUM], [POLYGON, ARBITRUM, GNOSIS], [SEPOLIA, OPTIMISM, BASE]],
-  }
-
-  it.each(SUPPORTED_SAFE_VERSIONS)(
-    'partitions the supported chains on %s exactly as measured',
-    (safeVersion) => {
-      const groups = MEASURED_CLASSES[safeVersion]
-      expect(groups.flat().sort()).toEqual(SUPPORTED_CHAINS.map((chain) => chain.id).sort())
-      const classes = groups.map((group) => {
-        const inGroup = new Set(group.map((chainId) => addressClassFor(chainId, safeVersion)))
-        expect(inGroup.size).toBe(1)
-        const [only] = inGroup
-        expect(only).toEqual(expect.any(String))
-        return only
-      })
-      expect(new Set(classes).size).toBe(groups.length)
-    },
-  )
 
   it.each(['1.5.0', '1.4.1'] as const)(
     'discards results on %s only when a chain switch crosses the mainnet boundary',
@@ -134,7 +116,6 @@ describe('validateMineConfig', () => {
   // direction the fallback takes rather than a live path: ask and reset, never assume and discard.
   it('treats a chain without a Safe deployment as a class of its own', () => {
     const UNDEPLOYED = 999_999
-    expect(addressClassFor(UNDEPLOYED, '1.4.1')).toBeUndefined()
     expect(chainSwitchDiscardsResults(137, UNDEPLOYED, '1.4.1')).toBe(true)
     expect(chainSwitchDiscardsResults(UNDEPLOYED, 137, '1.4.1')).toBe(true)
     // …but a "switch" to the chain already in use is still not a switch.
