@@ -63,8 +63,12 @@ resume where you left off.
 ## Deploy
 
 ```
-safe-vanity-blockie deploy --salt <n> --owners 0xAbC... --rpc <url>
+safe-vanity-blockie deploy --salt <n> --owners 0xAbC... --safe-version <v> --rpc <url>
 ```
+
+Pass the same `--safe-version` the run was mined with: it is part of the address, and leaving it
+out deploys the default version's Safe, which is a different address. The deploy command a mining
+run prints always names it.
 
 > [!IMPORTANT]
 > `deploy` needs a private key. Prefer the `SAFE_VANITY_DEPLOYER_KEY` environment variable over

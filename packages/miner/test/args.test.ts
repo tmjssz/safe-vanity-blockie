@@ -1,3 +1,4 @@
+import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import { CliError, parseArgs } from '../src/args.js'
 
@@ -118,7 +119,7 @@ describe('parseArgs', () => {
   })
 
   it('accepts every supported --safe-version', () => {
-    for (const version of ['1.5.0', '1.4.1', '1.3.0']) {
+    for (const version of SUPPORTED_SAFE_VERSIONS) {
       expect(mine(['--safe-version', version]).safeVersion).toBe(version)
     }
   })

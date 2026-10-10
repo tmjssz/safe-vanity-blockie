@@ -41,8 +41,11 @@ export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
  *     (1.5.0), and on sepolia, polygon, arbitrum, optimism, base and gnosis 0xe298282c… (1.4.1)
  *     / 0xc00f8ed2… (1.5.0)
  *
- * So the split below holds for both versions, and the map needs no version key. A version that
- * splits differently would need one.
+ * So the split below holds for 1.4.1 and 1.5.0. It does NOT hold for 1.3.0, whose deployments are
+ * canonical on some of these chains and eip155 on others: polygon, arbitrum and gnosis share one
+ * factory/initializer/initCodeHash, sepolia, optimism and base another, and mainnet a third. This
+ * map is not keyed by version yet, so a 1.3.0 switch between those two L2 groups is wrongly treated
+ * as free.
  *
  * The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
  * exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the

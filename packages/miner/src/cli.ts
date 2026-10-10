@@ -87,6 +87,18 @@ export function activeFilterFlags(options: {
   ].filter((flag): flag is string => flag !== undefined)
 }
 
+/**
+ * The flags that continue this run where it stopped. `--safe-version` is part of the address, so it
+ * is named even when it was the default: a resume run by a later CLI with a different default would
+ * otherwise quietly mine a different Safe from `--start` on.
+ */
+export function resumeFlags(
+  options: { safeVersion: string; workers: number },
+  nextStart: number,
+): string {
+  return `--start ${nextStart} --workers ${options.workers} --safe-version ${options.safeVersion}`
+}
+
 /** ANSI: move the cursor up `lines` rows and clear everything from there down. */
 function cursorUpAndClear(lines: number): string {
   return lines > 0 ? `\u001b[${lines}A\u001b[0J` : ''
@@ -451,7 +463,7 @@ export async function runMine(options: MineArgs): Promise<number> {
   )
 
   process.stdout.write(
-    `\nResume without rescanning:\n  --start ${result.nextStart} --workers ${options.workers}\n`,
+    `\nResume without rescanning:\n  ${resumeFlags(options, result.nextStart)}\n`,
   )
   process.stdout.write(
     '\nReminder: a matching identicon is cosmetic. Never trust it as proof of an address.\n',

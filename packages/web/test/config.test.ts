@@ -1,3 +1,4 @@
+import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import {
   chainSwitchDiscardsResults,
@@ -58,7 +59,7 @@ describe('validateMineConfig', () => {
   })
 
   it('accepts every supported Safe version', () => {
-    for (const safeVersion of ['1.5.0', '1.4.1', '1.3.0']) {
+    for (const safeVersion of SUPPORTED_SAFE_VERSIONS) {
       expect(validateMineConfig(input({ safeVersion })).errors).toEqual({})
     }
   })

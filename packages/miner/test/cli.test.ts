@@ -8,6 +8,7 @@ import {
   buildProgressBlock,
   createInterruptHandler,
   resolveFaceSpec,
+  resumeFlags,
   writeOutputFile,
 } from '../src/cli.js'
 import { asciiFor } from '../src/report.js'
@@ -239,6 +240,14 @@ describe('activeFilterFlags', () => {
 
   it('is empty when nothing is being filtered', () => {
     expect(activeFilterFlags({ twoColor: false, minContrast: 0, minMatch: 0 })).toEqual([])
+  })
+})
+
+describe('resumeFlags', () => {
+  it('names the Safe version, so a resume cannot drift onto a different default', () => {
+    expect(resumeFlags({ safeVersion: '1.4.1', workers: 8 }, 8_400_000_000)).toBe(
+      '--start 8400000000 --workers 8 --safe-version 1.4.1',
+    )
   })
 })
 
