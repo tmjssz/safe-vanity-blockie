@@ -14,10 +14,20 @@ describe('safeWalletUrl', () => {
     expect(safeWalletUrl(1, ADDRESS)).toBe(`https://app.safe.global/home?safe=eth:${ADDRESS}`)
   })
 
+  // Pinned per chain, so a protocol-kit bump that renames a prefix fails here, not in production.
   it('builds a link for every chain this app can deploy on', () => {
+    const prefixes: Record<number, string> = {
+      1: 'eth',
+      11155111: 'sep',
+      137: 'matic',
+      42161: 'arb1',
+      10: 'oeth',
+      8453: 'base',
+      100: 'gno',
+    }
     for (const chain of SUPPORTED_CHAINS) {
       const url = safeWalletUrl(chain.id, ADDRESS)
-      expect(url).toBe(`https://app.safe.global/home?safe=${chain.safeShortName}:${ADDRESS}`)
+      expect(url).toBe(`https://app.safe.global/home?safe=${prefixes[chain.id]}:${ADDRESS}`)
     }
   })
 

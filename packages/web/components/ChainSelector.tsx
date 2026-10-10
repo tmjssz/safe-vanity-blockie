@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { chainSwitchDiscardsResults, SUPPORTED_CHAINS } from '../lib/config'
+import { type ChainBinding, chainSwitchDiscardsAny, SUPPORTED_CHAINS } from '../lib/config'
 import { ChainIcon, ChainLabel } from './ChainIcon'
 import { Button } from './ui/button'
 import {
@@ -32,20 +32,20 @@ export interface ChainSelectorProps {
   /** The chain the header shows, and the one a pick is compared against for being a no-op. */
   chainId: number
   /**
-   * The chain whose addresses a switch is measured against: the run on screen, if there is one,
-   * and otherwise the open result's — a share link opens a dialog with no run behind it, and that
-   * result is as chain-bound as any mined one. Undefined when there is neither, and so nothing a
-   * switch could cost. The page decides which it is (see `stakedChainId` there); this control only
-   * asks about it.
+   * Every config whose addresses are on screen, each with the chain and Safe version it was derived
+   * for: the run, if there is one, and the open result, if that is a different config — a share
+   * link opens a dialog with no run behind it, and that result is as chain-bound as any mined one.
+   * Empty when there is neither, and so nothing a switch could cost. The page decides what is in
+   * it (see `stakedConfigs` there); this control only asks about it. The first entry is the chain
+   * the question names as the one being left.
    *
-   * This, and NOT the chain above, is what the question is asked about, because it is what the
-   * answer acts on: the page discards the run when the submitted config's chain and the new one
-   * take different singletons. The two agree today only by the invariant that the form submits
-   * whatever the header shows, so asking about the header meant the decision was read from one
-   * value and carried out against another — and the half that fails quietly is a reset performed
-   * without ever asking. One value, read once, decides both.
+   * A list, and NOT the chain above, because it is what the answer acts on: the page discards
+   * results when the new chain crosses an address-class boundary for ANY of these, and that
+   * boundary depends on each one's own version. The page's reset reads the same list through the
+   * same `chainSwitchDiscardsAny`, so a reset is never carried out on a switch nobody was asked
+   * about.
    */
-  runChainId?: number
+  staked: readonly ChainBinding[]
   /**
    * Called with the chosen chain once it is allowed to happen — immediately for a switch that
    * keeps every result valid, and only after the user confirms for one that does not. What the
@@ -64,7 +64,7 @@ export interface ChainSelectorProps {
   disabled?: boolean
 }
 
-export function ChainSelector({ chainId, runChainId, disabled, onSelect }: ChainSelectorProps) {
+export function ChainSelector({ chainId, staked, disabled, onSelect }: ChainSelectorProps) {
   // The chain the user picked that is waiting on a confirmation, and the dialog's own open state:
   // one value, because a pending switch and an open dialog are the same fact.
   const [pending, setPending] = useState<number | undefined>()
@@ -72,21 +72,21 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
   const choose = (value: string) => {
     const next = Number(value)
     if (next === chainId) return
-    // A switch among the six non-mainnet chains keeps the constants byte-identical, so nothing on
-    // screen stops being true and there is nothing to ask about. Crossing the mainnet boundary
-    // changes the singleton, and with it every address already found — the same loss "Start over"
-    // asks about, so it is asked about the same way rather than done silently.
-    if (runChainId !== undefined && chainSwitchDiscardsResults(runChainId, next)) {
+    // A switch within one address class keeps the constants byte-identical, so nothing on screen
+    // stops being true and there is nothing to ask about. Crossing a class boundary changes every
+    // address already found — the same loss "Start over" asks about, so it is asked about the same
+    // way rather than done silently.
+    if (chainSwitchDiscardsAny(staked, next)) {
       setPending(next)
       return
     }
     onSelect(next)
   }
 
-  // The chain being left, as the question names it: the run's, which is the one whose results are
-  // at stake. `?? chainId` is narrowing and nothing more — the dialog below only ever opens on the
-  // branch above, which requires `runChainId`.
-  const leaving = runChainId ?? chainId
+  // The chain being left, as the question names it: the first staked config's, which is the run's
+  // when there is one. `?? chainId` is narrowing and nothing more — the dialog below only ever opens
+  // on the branch above, which requires something staked.
+  const leaving = staked[0]?.chainId ?? chainId
 
   return (
     <>
@@ -114,7 +114,7 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
           overlay, the decline button — drops the pending chain, so the select stays exactly where
           it was and nothing is switched by walking away from the question.
 
-          The copy does not assume a search is running. It asks about `runChainId`, which is the
+          The copy does not assume a search is running. It asks about `staked`, which is the
           chain whose addresses are at stake, and that is a mined run in the ordinary case but a
           single open result in another: a share-link recipient meets this dialog with nothing
           mining and nothing found, and "discard every result found so far" over a button reading
@@ -135,7 +135,7 @@ export function ChainSelector({ chainId, runChainId, disabled, onSelect }: Chain
             </DialogTitle>
             <DialogDescription>
               {chainName(leaving)} and {pending === undefined ? '' : chainName(pending)} deploy
-              through different Safe singletons, so a Safe with the same owners, threshold and
+              through different Safe contracts, so a Safe with the same owners, threshold and
               version lands on a different address on each. Switching starts over: every result
               found for {chainName(leaving)} is discarded, and any result open in front of you
               closes.

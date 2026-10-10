@@ -1,97 +1,66 @@
 import {
+  addressClassFor,
   SUPPORTED_SAFE_VERSIONS,
   type SupportedSafeVersion,
   ZKSYNC_CHAIN_IDS,
 } from '@safe-vanity-blockie/safe-config'
+import { arbitrum, base, gnosis, mainnet, optimism, polygon, sepolia } from 'viem/chains'
 import { WORKER_BLOCK } from './worker-protocol'
 
 /**
- * Chains with canonical Safe deployments that this app offers.
- *
- * `safeShortName` is the EIP-3770 prefix Safe itself uses to name a chain in an address — the
- * `sep:` in `sep:0x…` — and it is what app.safe.global's own links are built from. Carried on
- * these entries rather than in a map of its own so it cannot drift out of step with the list it
- * describes; test/config.test.ts pins one per chain.
+ * Chains with canonical Safe deployments that this app offers, as viem defines them — the same
+ * objects lib/wagmi hands to wagmi, so the picker, the wallet and the explorer links read one list.
  */
 export const SUPPORTED_CHAINS = [
-  { id: 1, name: 'Ethereum', safeShortName: 'eth' },
-  { id: 11155111, name: 'Sepolia', safeShortName: 'sep' },
-  { id: 137, name: 'Polygon', safeShortName: 'matic' },
-  { id: 42161, name: 'Arbitrum One', safeShortName: 'arb1' },
-  { id: 10, name: 'OP Mainnet', safeShortName: 'oeth' },
-  { id: 8453, name: 'Base', safeShortName: 'base' },
-  { id: 100, name: 'Gnosis', safeShortName: 'gno' },
+  mainnet,
+  sepolia,
+  polygon,
+  arbitrum,
+  optimism,
+  base,
+  gnosis,
 ] as const
 
 /** The chain the header starts on, and what an unseeded config is mined for. */
 export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
 
 /**
- * Which Safe singleton protocol-kit deploys through, per chain — the ONLY thing about a chain that
- * reaches the Safe address, and therefore the only reason a chain switch can cost results.
- *
- * These are MEASURED, chain by chain, against live RPCs — not a rule with mainnet special-cased,
- * and deliberately not derived from one. For all seven chains below, and for 1.4.1 and 1.5.0 alike:
- *
- *   - the proxy factory is identical: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 for 1.4.1,
- *     0x14F2982D601c9458F93bd70B218933A6f8165e7b for 1.5.0
- *   - the initializerHash is identical (it is owners, threshold and version, and nothing else)
- *   - both singletons are deployed at identical addresses everywhere
- *   - the initCodeHash takes exactly two values: on mainnet 0x76733d70… (1.4.1) / 0x9dd695a8…
- *     (1.5.0), and on sepolia, polygon, arbitrum, optimism, base and gnosis 0xe298282c… (1.4.1)
- *     / 0xc00f8ed2… (1.5.0)
- *
- * So the split below holds for 1.4.1 and 1.5.0. It does NOT hold for 1.3.0, whose deployments are
- * canonical on some of these chains and eip155 on others: polygon, arbitrum and gnosis share one
- * factory/initializer/initCodeHash, sepolia, optimism and base another, and mainnet a third. This
- * map is not keyed by version yet, so a 1.3.0 switch between those two L2 groups is wrongly treated
- * as free.
- *
- * The cause was isolated by forcing `isL1SafeSingleton` both ways: mainnet with it false produces
- * exactly polygon's hash, and polygon with it true produces exactly mainnet's. So it is the
- * singleton protocol-kit picks that splits them, and the per-chain default is kept precisely so
- * every chain gets its conventional, properly-indexed deployment.
- *
- * A chain that is not in either set has not been measured, and `safeSingletonFor` says so by
- * returning undefined rather than guessing — see `chainSwitchDiscardsResults`, which then treats a
- * switch involving it as one that costs results. Adding a chain to SUPPORTED_CHAINS without adding
- * it here fails test/config.test.ts, which is the point: the entry belongs to whoever measured it.
- */
-const L1_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([
-  1, // Ethereum
-])
-const L2_SINGLETON_CHAIN_IDS: ReadonlySet<number> = new Set([
-  11155111, // Sepolia
-  137, // Polygon
-  42161, // Arbitrum One
-  10, // OP Mainnet
-  8453, // Base
-  100, // Gnosis
-])
-
-/** The measured singleton for a chain, or undefined for one nobody has measured. */
-export function safeSingletonFor(chainId: number): 'Safe.sol' | 'SafeL2.sol' | undefined {
-  if (L1_SINGLETON_CHAIN_IDS.has(chainId)) return 'Safe.sol'
-  if (L2_SINGLETON_CHAIN_IDS.has(chainId)) return 'SafeL2.sol'
-  return undefined
-}
-
-/**
  * Whether moving a search from one chain to another changes the addresses it has already found —
  * i.e. whether the results on screen have to be discarded rather than carried across.
  *
- * False only when both chains are measured and share a singleton, so switching among the six is
- * free and every mined address stays exactly as valid as it was. Anything else — the mainnet
- * boundary, or a chain nobody has measured — is true, which costs a confirmation and a reset. That
- * asymmetry is the safe one: asking about a switch that would in fact have been free is a dialog,
- * while not asking about one that is not is a leaderboard silently invalidated.
+ * False only when both chains have a known address class (safe-config's `addressClassFor`) and
+ * share it for the search's version, so switching within a class is free and every mined address
+ * stays exactly as valid as it was. Anything else — a class boundary, or a chain without a class —
+ * is true, which costs a confirmation and a reset. That asymmetry is the safe one: asking about a switch that would in
+ * fact have been free is a dialog, while not asking about one that is not is a leaderboard
+ * silently invalidated.
  */
-export function chainSwitchDiscardsResults(from: number, to: number): boolean {
+export function chainSwitchDiscardsResults(
+  from: number,
+  to: number,
+  safeVersion: SupportedSafeVersion,
+): boolean {
   if (from === to) return false
-  const before = safeSingletonFor(from)
-  const after = safeSingletonFor(to)
+  const before = addressClassFor(from, safeVersion)
+  const after = addressClassFor(to, safeVersion)
   if (before === undefined || after === undefined) return true
   return before !== after
+}
+
+/** The chain and Safe version a config's addresses were derived for. */
+export type ChainBinding = Pick<MineConfig, 'chainId' | 'safeVersion'>
+
+/**
+ * Whether switching to `to` discards results for ANY of the configs on screen. The page can hold
+ * two at once — a submitted run and an open share-link result — and they can differ in version, so
+ * a switch that is free for one can cross a class boundary for the other. The header's question
+ * and the page's reset both go through this, with the same list, so the reset never happens on a
+ * switch nobody was asked about.
+ */
+export function chainSwitchDiscardsAny(staked: readonly ChainBinding[], to: number): boolean {
+  return staked.some((binding) =>
+    chainSwitchDiscardsResults(binding.chainId, to, binding.safeVersion),
+  )
 }
 
 export interface MineConfig {

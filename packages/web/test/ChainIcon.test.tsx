@@ -11,8 +11,8 @@ function mark(chainId: number): SVGSVGElement | null {
 
 describe('ChainIcon', () => {
   // A loop rather than seven cases on purpose: adding a chain to SUPPORTED_CHAINS without drawing
-  // its mark then fails here, the same way test/config.test.ts makes an entry without a
-  // safeShortName or a measured singleton fail. The list is the source of truth; this is the guard
+  // its mark then fails here, the same way test/config.test.ts makes a chain without a measured
+  // address class fail. The list is the source of truth; this is the guard
   // that keeps the marks in step with it.
   it.each(SUPPORTED_CHAINS.map((chain) => [chain.name, chain.id] as const))(
     'draws a mark for %s',

@@ -56,7 +56,8 @@ vi.mock('viem', () => ({
   }),
 }))
 
-vi.mock('@safe-global/protocol-kit', () => ({
+vi.mock('@safe-global/protocol-kit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-global/protocol-kit')>()),
   getSafeAddressFromDeploymentTx: () => ADDRESS,
 }))
 

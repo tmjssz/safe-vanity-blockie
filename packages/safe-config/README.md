@@ -21,6 +21,7 @@ npm install @safe-vanity-blockie/safe-config
 | Export | Purpose |
 | --- | --- |
 | `loadSafeConstants` | resolve proxy factory, singleton and init code hash for a chain |
+| `addressClassFor` | which chains give a Safe the same address on a version, offline from safe-deployments |
 | `verifyWithProtocolKit` | cross-check a derived address against the official Safe Protocol Kit |
 | `ZKSYNC_CHAIN_IDS` | chains whose CREATE2 derivation differs, so an address is not portable |
 | `SafeSetup`, `SetupInput` | the setup shape and its input form |

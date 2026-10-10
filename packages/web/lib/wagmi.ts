@@ -1,14 +1,11 @@
 import type { Chain } from 'viem'
 import { createConfig, http } from 'wagmi'
-import { arbitrum, base, gnosis, mainnet, optimism, polygon, sepolia } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
+import { SUPPORTED_CHAINS } from './config'
 
-/** Chains this app offers, in order — must stay in sync with `SUPPORTED_CHAINS`. */
-const CHAIN_LIST = [mainnet, sepolia, polygon, arbitrum, optimism, base, gnosis] as const
-
-/** Chains this app offers, keyed by chain ID — must stay in sync with `SUPPORTED_CHAINS`. */
+/** Chains this app offers, keyed by chain ID. */
 const CHAINS: Record<number, Chain> = Object.fromEntries(
-  CHAIN_LIST.map((chain) => [chain.id, chain]),
+  SUPPORTED_CHAINS.map((chain) => [chain.id, chain]),
 )
 
 /** Looks up a supported chain by ID. Throws for anything not in `SUPPORTED_CHAINS`. */
@@ -30,8 +27,7 @@ export interface ChainExplorer {
  *
  * Read off viem's own chain definition rather than from a table here: all seven supported chains
  * carry one, and a hand-maintained list of explorer hosts is a list that goes stale silently. It is
- * also why these links go to a block explorer rather than to app.safe.global, which would need a
- * per-chain short-name prefix (`eth:`, `matic:`, …) that no data this app already has can supply.
+ * also why these links go to a block explorer: lib/safe-app builds the app.safe.global link.
  *
  * Undefined when a chain has no explorer, so a caller degrades to plain text rather than to a
  * link that goes nowhere.
@@ -70,8 +66,8 @@ export function explorerFor(chainId: number): ChainExplorer | undefined {
  * discovers from the browser, which are added on mount rather than at config creation.
  */
 export const wagmiConfig = createConfig({
-  chains: CHAIN_LIST,
+  chains: SUPPORTED_CHAINS,
   connectors: [injected({ target: 'metaMask' })],
-  transports: Object.fromEntries(CHAIN_LIST.map((chain) => [chain.id, http()])) as never,
+  transports: Object.fromEntries(SUPPORTED_CHAINS.map((chain) => [chain.id, http()])) as never,
   ssr: true,
 })

@@ -64,6 +64,9 @@ importers:
       '@safe-global/protocol-kit':
         specifier: ^8.0.7
         version: 8.0.7(typescript@7.0.2)
+      '@safe-global/safe-deployments':
+        specifier: ^1.37.63
+        version: 1.37.63
       '@safe-global/types-kit':
         specifier: ^4.0.1
         version: 4.0.1(typescript@7.0.2)

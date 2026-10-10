@@ -1,4 +1,4 @@
-import { SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
+import { addressClassFor, SUPPORTED_SAFE_VERSIONS } from '@safe-vanity-blockie/safe-config'
 import { describe, expect, it } from 'vitest'
 import {
   chainSwitchDiscardsResults,
@@ -8,7 +8,6 @@ import {
   ownerAddressError,
   parseStartNonce,
   SUPPORTED_CHAINS,
-  safeSingletonFor,
   validateMineConfig,
 } from '../lib/config'
 import { WORKER_BLOCK } from '../lib/worker-protocol'
@@ -70,57 +69,57 @@ describe('validateMineConfig', () => {
     )
   })
 
-  // The chain reaches the address through exactly one thing: which Safe singleton protocol-kit
-  // deploys through. That is what makes a switch among the six free and a crossing of the mainnet
-  // boundary a reset, so it is pinned here rather than left implicit in whichever component
-  // happens to ask.
-  //
-  // Chain by chain, by ID, against the measurement — NOT by re-deriving "mainnet is special", which
-  // is the assumption under test. A rule-shaped assertion would pass automatically for a chain
-  // nobody had measured, and the app would then ask nothing before a switch that silently
-  // invalidated the whole leaderboard.
-  it('names the measured singleton for each supported chain, one by one', () => {
-    expect(safeSingletonFor(1)).toBe('Safe.sol') // Ethereum
-    expect(safeSingletonFor(11155111)).toBe('SafeL2.sol') // Sepolia
-    expect(safeSingletonFor(137)).toBe('SafeL2.sol') // Polygon
-    expect(safeSingletonFor(42161)).toBe('SafeL2.sol') // Arbitrum One
-    expect(safeSingletonFor(10)).toBe('SafeL2.sol') // OP Mainnet
-    expect(safeSingletonFor(8453)).toBe('SafeL2.sol') // Base
-    expect(safeSingletonFor(100)).toBe('SafeL2.sol') // Gnosis
-  })
-
-  // The gate on adding a chain: offer one the app has not measured and this fails, rather than the
-  // app quietly assuming it behaves like the others.
-  it('has a measured singleton for every chain the app offers', () => {
-    for (const chain of SUPPORTED_CHAINS) {
-      expect({ chain: chain.name, singleton: safeSingletonFor(chain.id) }).toEqual({
-        chain: chain.name,
-        singleton: expect.stringMatching(/^Safe(L2)?\.sol$/),
-      })
-    }
-  })
-
-  it('discards results only when a chain switch crosses the mainnet boundary', () => {
-    const others = SUPPORTED_CHAINS.filter((chain) => chain.id !== 1)
-    for (const from of others) {
-      expect(chainSwitchDiscardsResults(from.id, 1)).toBe(true)
-      expect(chainSwitchDiscardsResults(1, from.id)).toBe(true)
-      for (const to of others) {
-        expect(chainSwitchDiscardsResults(from.id, to.id)).toBe(false)
+  // The partition itself is pinned in packages/safe-config (test/address-class.test.ts). This is
+  // the gate on the app's own list: offer a chain without a class and every switch to or from it
+  // costs a reset.
+  it('has an address class for every chain the app offers, on every version', () => {
+    for (const safeVersion of SUPPORTED_SAFE_VERSIONS) {
+      for (const chain of SUPPORTED_CHAINS) {
+        expect({
+          safeVersion,
+          chain: chain.name,
+          cls: addressClassFor(chain.id, safeVersion),
+        }).toEqual({ safeVersion, chain: chain.name, cls: expect.any(String) })
       }
     }
   })
 
-  // An unmeasured chain is not assumed to be like the six. It cannot be reached from the header
-  // today (the picker only offers SUPPORTED_CHAINS), so this pins the direction the fallback
-  // takes rather than a live path: ask and reset, never assume and discard.
-  it('treats a chain nobody has measured as a class of its own', () => {
-    const LINEA = 59144
-    expect(safeSingletonFor(LINEA)).toBeUndefined()
-    expect(chainSwitchDiscardsResults(137, LINEA)).toBe(true)
-    expect(chainSwitchDiscardsResults(LINEA, 137)).toBe(true)
+  const POLYGON = 137
+  const ARBITRUM = 42161
+  const OPTIMISM = 10
+  const BASE = 8453
+
+  it.each(['1.5.0', '1.4.1'] as const)(
+    'discards results on %s only when a chain switch crosses the mainnet boundary',
+    (safeVersion) => {
+      const others = SUPPORTED_CHAINS.filter((chain) => chain.id !== 1)
+      for (const from of others) {
+        expect(chainSwitchDiscardsResults(from.id, 1, safeVersion)).toBe(true)
+        expect(chainSwitchDiscardsResults(1, from.id, safeVersion)).toBe(true)
+        for (const to of others) {
+          expect(chainSwitchDiscardsResults(from.id, to.id, safeVersion)).toBe(false)
+        }
+      }
+    },
+  )
+
+  it('discards results on 1.3.0 when a switch moves between the canonical and eip155 L2s', () => {
+    expect(chainSwitchDiscardsResults(POLYGON, BASE, '1.3.0')).toBe(true)
+    expect(chainSwitchDiscardsResults(BASE, POLYGON, '1.3.0')).toBe(true)
+    expect(chainSwitchDiscardsResults(POLYGON, ARBITRUM, '1.3.0')).toBe(false)
+    expect(chainSwitchDiscardsResults(BASE, OPTIMISM, '1.3.0')).toBe(false)
+    expect(chainSwitchDiscardsResults(1, POLYGON, '1.3.0')).toBe(true)
+  })
+
+  // A chain safe-deployments does not cover is not assumed to be like the others. It cannot be
+  // reached from the header today (the picker only offers SUPPORTED_CHAINS), so this pins the
+  // direction the fallback takes rather than a live path: ask and reset, never assume and discard.
+  it('treats a chain without a Safe deployment as a class of its own', () => {
+    const UNDEPLOYED = 999_999
+    expect(chainSwitchDiscardsResults(137, UNDEPLOYED, '1.4.1')).toBe(true)
+    expect(chainSwitchDiscardsResults(UNDEPLOYED, 137, '1.4.1')).toBe(true)
     // …but a "switch" to the chain already in use is still not a switch.
-    expect(chainSwitchDiscardsResults(LINEA, LINEA)).toBe(false)
+    expect(chainSwitchDiscardsResults(UNDEPLOYED, UNDEPLOYED, '1.4.1')).toBe(false)
   })
 
   it('rejects a chain the app does not support', () => {

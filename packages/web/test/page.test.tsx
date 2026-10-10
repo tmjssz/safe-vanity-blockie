@@ -193,7 +193,8 @@ vi.mock('viem', () => ({
   http: vi.fn(() => ({})),
 }))
 
-vi.mock('@safe-global/protocol-kit', () => ({
+vi.mock('@safe-global/protocol-kit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@safe-global/protocol-kit')>()),
   getSafeAddressFromDeploymentTx: getSafeAddressFromDeploymentTxMock,
 }))
 
@@ -307,6 +308,15 @@ vi.mock('../components/ConfigForm', () => ({
           onClick={() => onSubmit({ ...CONFIG, chainId }, { start: 41_200_000_000 })}
         >
           submit-config-with-start
+        </button>
+        {/* A submit with Safe 1.3.0 picked, whose address classes split the six L2s in two (see
+          safe-config's addressClassFor) — so a test can check the page measures a switch against the run's own
+          version rather than assuming 1.4.1's classes. */}
+        <button
+          type="button"
+          onClick={() => onSubmit({ ...CONFIG, safeVersion: '1.3.0', chainId }, { start: 0 })}
+        >
+          submit-config-v1.3.0
         </button>
       </>
     )
@@ -2639,6 +2649,59 @@ describe('Page', () => {
     await traverse(() => window.history.back())
     expect(window.location.href).toBe(opened)
     expect(screen.getByRole('dialog').textContent).toContain(CANDIDATE_A.address)
+  })
+
+  // On 1.3.0, Polygon and Base use different deployments (canonical and eip155), so a switch that
+  // is free on 1.4.1 changes every address here. The page must measure it against the RUN's version.
+  it('asks before a 1.3.0 switch between L2s that use different deployments', async () => {
+    render(<Page />)
+    const user = userEvent.setup()
+
+    await chooseChain(user, /polygon/i)
+    await user.click(screen.getByRole('button', { name: 'submit-config-v1.3.0' }))
+    const view = screen.getByTestId('mining-view')
+
+    await chooseChain(user, /base/i)
+    expect(await screen.findByRole('dialog')).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /^stay on polygon$/i }))
+
+    // Declined: the run is untouched, still on Polygon.
+    expect(shownChain()).toContain('Polygon')
+    expect(screen.getByTestId('mining-view')).toBe(view)
+  })
+
+  // A 1.3.0 share-link result open over the recipient's own 1.4.1 run, both on Polygon. Polygon →
+  // Base is free for the run but crosses a class for the result, and the page would reset for the
+  // result — so the header must ask, measuring every config on screen, not just the run.
+  it('asks before a switch that is free for the run but crosses a class for the open link result', async () => {
+    searchParamsRef.current = new URLSearchParams({
+      config: encodeConfigParam({
+        owners: ['0x' + '33'.repeat(20)],
+        threshold: 1,
+        safeVersion: '1.3.0',
+        chainId: 137,
+        saltNonce: '12345',
+      }),
+    })
+
+    render(<Page />)
+    const user = userEvent.setup()
+    const address = (await screen.findByRole('dialog')).textContent
+    expect(shownChain()).toContain('Polygon')
+
+    fireEvent.click(screen.getByText('submit-config'))
+    await waitFor(() => expect(screen.getByTestId('mining-view')).toBeDefined())
+    const view = screen.getByTestId('mining-view')
+    expect(view.getAttribute('data-chain')).toBe('137')
+
+    await chooseChain(user, /base/i)
+    expect(await screen.findByText(/switch to base\?/i)).toBeDefined()
+    await user.click(screen.getByRole('button', { name: /^stay on polygon$/i }))
+
+    // Declined: the run and the open result are both untouched.
+    expect(shownChain()).toContain('Polygon')
+    expect(screen.getByTestId('mining-view')).toBe(view)
+    expect(screen.getByRole('dialog').textContent).toBe(address)
   })
 
   it('resets the run on a confirmed mainnet crossing, exactly as "Start over" does', async () => {

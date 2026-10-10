@@ -155,7 +155,7 @@ export function MiningView({
   // rather than off `constants.data`, and that is the whole reason a chain switch is free.
   //
   // `useSafeConstants` re-reads whenever the config object changes, which the header's chain
-  // picker does under a live search; for the six chains that share a Safe singleton the read
+  // picker does under a live search; for chains in the same address class the read
   // comes back EQUAL IN VALUE but as a new object. Keyed on the object, the effect below would
   // treat that as a different run, tear the pool down and empty a leaderboard whose addresses are
   // every bit as valid as they were — the exact opposite of what switching chains promises. Keyed
