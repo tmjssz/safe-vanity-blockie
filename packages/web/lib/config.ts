@@ -21,7 +21,15 @@ export const SUPPORTED_CHAINS = [
   gnosis,
 ] as const
 
-/** The chain the header starts on, and what an unseeded config is mined for. */
+/**
+ * Whether `chainId` is one of `SUPPORTED_CHAINS`. Takes `undefined` so a disconnected wallet's
+ * chain can be asked about directly.
+ */
+export function isSupportedChain(chainId: number | undefined): chainId is number {
+  return SUPPORTED_CHAINS.some((chain) => chain.id === chainId)
+}
+
+/** The chain the header starts on when no link or wallet names one, and what an unseeded config is mined for. */
 export const DEFAULT_CHAIN_ID: number = SUPPORTED_CHAINS[0].id
 
 /**
@@ -181,7 +189,7 @@ export function validateMineConfig(input: {
     errors.chainId = `Chain ${input.chainId} is not supported.`
   } else if (ZKSYNC_CHAIN_IDS.has(BigInt(input.chainId))) {
     errors.chainId = 'zkSync-based chains derive addresses with a different formula.'
-  } else if (!SUPPORTED_CHAINS.some((chain) => chain.id === input.chainId)) {
+  } else if (!isSupportedChain(input.chainId)) {
     errors.chainId = `Chain ${input.chainId} is not supported.`
   }
 

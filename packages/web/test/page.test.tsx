@@ -2159,6 +2159,131 @@ describe('Page', () => {
     expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
   })
 
+  // The connected wallet's chain is the header's default, ranked below the user's pick and a
+  // link's chain, and above the app's own. It is a default only while nothing is at stake: a run
+  // latches the chain it was submitted on, so the wallet moving afterwards can never repoint a
+  // search without going through the selector's crossing check.
+  describe('defaulting to the wallet chain', () => {
+    /** Points the wallet at `chainId`, or disconnects it with `undefined`, for every later render. */
+    function walletOn(chainId: number | undefined) {
+      // Cast because the hoisted mock's type is inferred from its connected default.
+      useAccountMock.mockImplementation(
+        () =>
+          (chainId === undefined
+            ? { isConnected: false, address: undefined, chainId: undefined }
+            : { isConnected: true, address: '0x' + 'cc'.repeat(20), chainId }) as never,
+      )
+    }
+
+    it('starts the header on the wallet chain and mines for it', async () => {
+      walletOn(137)
+      render(<Page />)
+
+      expect(shownChain()).toContain('Polygon')
+      await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+      expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
+    })
+
+    it('follows the wallet while idle', () => {
+      walletOn(137)
+      const { rerender } = render(<Page />)
+      expect(shownChain()).toContain('Polygon')
+
+      walletOn(8453)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Base')
+    })
+
+    // Disconnecting says nothing about which chain the user wants, so the header keeps the last
+    // one the wallet named rather than dropping back to Ethereum. The same goes for a hop to a
+    // chain this app does not offer.
+    it('stays on the last wallet chain when the wallet disconnects or leaves the supported chains', () => {
+      walletOn(11155111)
+      const { rerender } = render(<Page />)
+      expect(shownChain()).toContain('Sepolia')
+
+      walletOn(undefined)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Sepolia')
+
+      walletOn(324)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Sepolia')
+
+      // And a reconnect onto another chain is followed as before.
+      walletOn(137)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Polygon')
+    })
+
+    // zkSync is the case that matters: it is a chain a wallet can be on and this app refuses.
+    it.each([
+      ['zkSync', 324],
+      ['an unlisted chain', 56],
+    ])('ignores a wallet on %s and keeps the default', (_, chainId) => {
+      walletOn(chainId)
+      render(<Page />)
+      expect(shownChain()).toContain('Ethereum')
+    })
+
+    it('lets a share link outrank the wallet', () => {
+      walletOn(8453)
+      searchParamsRef.current = new URLSearchParams({
+        config: encodeConfigParam({ ...CONFIG, chainId: 137 }),
+      })
+      render(<Page />)
+      expect(shownChain()).toContain('Polygon')
+    })
+
+    it('stops following once the user picks a chain', async () => {
+      walletOn(137)
+      const { rerender } = render(<Page />)
+      await chooseChain(userEvent.setup(), /^base$/i)
+
+      walletOn(10)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Base')
+    })
+
+    // The hazard this guards: Polygon to Ethereum crosses an address class, so a header that kept
+    // following would leave a run mined for one class under a header naming the other — and
+    // without the confirmation and reset a crossing from the selector gets.
+    it('stops following once a run starts, and keeps that chain through "Start over"', async () => {
+      walletOn(137)
+      const { rerender } = render(<Page />)
+      await userEvent.click(screen.getByRole('button', { name: 'submit-config' }))
+
+      walletOn(1)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Polygon')
+      expect(screen.getByTestId('mining-view').getAttribute('data-chain')).toBe('137')
+
+      await userEvent.click(screen.getByRole('button', { name: 'start-over' }))
+      expect(shownChain()).toContain('Polygon')
+    })
+
+    // The idle reset has nothing at stake to protect, so it must not latch the chain the header
+    // happens to be following: the wallet keeps leading after it.
+    it('keeps following the wallet through a reset from the idle screen', async () => {
+      walletOn(137)
+      const user = userEvent.setup()
+      // A fresh element per render: handing `rerender` the same object lets React skip the update.
+      const page = () => (
+        <StartOverProvider>
+          <AppTitle />
+          <Page />
+        </StartOverProvider>
+      )
+      const { rerender } = render(page())
+      const title = await screen.findByRole('button', { name: /^safe vanity blockie$/i })
+      await user.click(title)
+
+      walletOn(8453)
+      rerender(page())
+      expect(shownChain()).toContain('Base')
+    })
+  })
+
   // A banner carried for the whole run is the fastest way to teach someone it is scenery, so the
   // page itself carries no standing caveat. It is stated where it is actually read instead: the
   // idle Configure card, the About dialog, and the deploy dialog, each asserted in its own suite.

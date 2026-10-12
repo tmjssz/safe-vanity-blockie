@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useAccount } from 'wagmi'
 import { useRegisterStartOver } from '../components/AppTitle'
 import { ChainSelector, HEADER_CHAIN_SLOT_ID } from '../components/ChainSelector'
 import { ConfigSection } from '../components/ConfigSection'
@@ -20,6 +21,7 @@ import {
   DEFAULT_CHAIN_ID,
   DEFAULT_FACE_FILTERS,
   type FaceFilters,
+  isSupportedChain,
   type MineConfig,
   type RunOptions,
   validateMineConfig,
@@ -333,8 +335,29 @@ function HomeContent() {
   //
   // `picked` is the user's answer, and it outranks the link from the moment there is one — including
   // a pick of the chain the link already named, which is indistinguishable and harmless.
+  //
+  // Below the link, the connected wallet's chain, so a user already on Polygon in MetaMask lands on
+  // Polygon without touching the header. Followed live, so switching networks in the wallet moves
+  // an untouched header with it — but only while nothing is at stake. Submitting a run latches the
+  // chain into `picked` (see `submitConfig`), because a header still following the wallet would
+  // move under a running search with none of the crossing check `changeChain` puts a switch
+  // through: a wallet hop from Polygon to Ethereum would leave a run mined for one address class
+  // under a header naming the other. A share link's result needs no latch of its own; the link
+  // already outranks the wallet. A chain this app does not offer (zkSync above all) is ignored
+  // rather than offered.
+  //
+  // REMEMBERED, not read live: the last supported chain the wallet named outlasts a disconnect, or
+  // a hop to a chain this app does not offer. Neither says anything about which chain the user
+  // wants, and dropping back to Ethereum on either moved the header for no reason the user could
+  // see. Updated during render rather than in an effect, so the header never paints a frame on
+  // the stale chain.
+  const { chainId: walletChainId } = useAccount()
+  const [walletChain, setWalletChain] = useState<number | undefined>()
+  if (isSupportedChain(walletChainId) && walletChainId !== walletChain) {
+    setWalletChain(walletChainId)
+  }
   const [picked, setPicked] = useState<number | undefined>()
-  const chainId = picked ?? linked?.chainId ?? DEFAULT_CHAIN_ID
+  const chainId = picked ?? linked?.chainId ?? walletChain ?? DEFAULT_CHAIN_ID
 
   // DERIVED from the link, not seeded from it — the pattern `chainId` above uses, for the reason
   // spelled out there: a `useState` initialiser only ever sees the FIRST client render, and this
@@ -743,7 +766,12 @@ function HomeContent() {
     // a confirmed mainnet crossing, so `chainId` in this closure is still the PRE-switch chain — a
     // plain `setPicked(chainId)` would undo the switch the user just confirmed. Queued updates see
     // each other, so `previous` is that `next` and the pick stands.
-    setPicked((previous) => previous ?? chainId)
+    //
+    // Only when a link is what the header was following. With no link, an unpicked header is
+    // following the wallet, and the reset leaves it doing so: latching here would quietly end that
+    // on an idle screen where nothing was at stake. After a run there is nothing to decide —
+    // `submitConfig` latched the chain already.
+    if (linked) setPicked((previous) => previous ?? chainId)
     // Nothing is running to be paused any more, and the next run must not inherit a stop the
     // user asked of the one before it.
     setPausedByUser(false)
@@ -785,7 +813,7 @@ function HomeContent() {
     if (typeof window !== 'undefined') {
       window.history.replaceState(null, '', clearedSearchPath())
     }
-  }, [chainId, closeSelection])
+  }, [chainId, linked, closeSelection])
 
   /**
    * Makes the app title a control on the idle screen too, standing for the same reset MiningView
@@ -901,6 +929,8 @@ function HomeContent() {
   }, [selection, linked?.saltNonce, urlDraft, faceSpec.name, filters])
 
   const submitConfig = useCallback((next: MineConfig, run: RunOptions) => {
+    // The run's chain stops following the wallet from here on — see `picked`.
+    setPicked((previous) => previous ?? next.chainId)
     setLastSubmitted(next)
     setStartNonce(run.start)
     setConfig(next)
