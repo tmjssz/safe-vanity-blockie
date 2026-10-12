@@ -344,9 +344,18 @@ function HomeContent() {
   // through: a wallet hop from Polygon to Ethereum would leave a run mined for one address class
   // under a header naming the other. A share link's result needs no latch of its own; the link
   // already outranks the wallet. A chain this app does not offer (zkSync above all) is ignored
-  // rather than offered, and falls through to the default.
+  // rather than offered.
+  //
+  // REMEMBERED, not read live: the last supported chain the wallet named outlasts a disconnect, or
+  // a hop to a chain this app does not offer. Neither says anything about which chain the user
+  // wants, and dropping back to Ethereum on either moved the header for no reason the user could
+  // see. Updated during render rather than in an effect, so the header never paints a frame on
+  // the stale chain.
   const { chainId: walletChainId } = useAccount()
-  const walletChain = isSupportedChain(walletChainId) ? walletChainId : undefined
+  const [walletChain, setWalletChain] = useState<number | undefined>()
+  if (isSupportedChain(walletChainId) && walletChainId !== walletChain) {
+    setWalletChain(walletChainId)
+  }
   const [picked, setPicked] = useState<number | undefined>()
   const chainId = picked ?? linked?.chainId ?? walletChain ?? DEFAULT_CHAIN_ID
 

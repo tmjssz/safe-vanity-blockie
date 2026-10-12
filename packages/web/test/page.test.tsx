@@ -2192,10 +2192,28 @@ describe('Page', () => {
       walletOn(8453)
       rerender(<Page />)
       expect(shownChain()).toContain('Base')
+    })
+
+    // Disconnecting says nothing about which chain the user wants, so the header keeps the last
+    // one the wallet named rather than dropping back to Ethereum. The same goes for a hop to a
+    // chain this app does not offer.
+    it('stays on the last wallet chain when the wallet disconnects or leaves the supported chains', () => {
+      walletOn(11155111)
+      const { rerender } = render(<Page />)
+      expect(shownChain()).toContain('Sepolia')
 
       walletOn(undefined)
       rerender(<Page />)
-      expect(shownChain()).toContain('Ethereum')
+      expect(shownChain()).toContain('Sepolia')
+
+      walletOn(324)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Sepolia')
+
+      // And a reconnect onto another chain is followed as before.
+      walletOn(137)
+      rerender(<Page />)
+      expect(shownChain()).toContain('Polygon')
     })
 
     // zkSync is the case that matters: it is a chain a wallet can be on and this app refuses.
