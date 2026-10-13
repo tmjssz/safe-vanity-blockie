@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/tmjssz/safe-vanity-blockie/compare/v0.5.0...v1.0.0) (2026-10-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* a mine or deploy run without --safe-version now targets Safe 1.5.0 instead of 1.4.1, which is a different address for the same owners, threshold and saltNonce. Pass --safe-version 1.4.1 to reproduce or deploy results mined before this change. Share links are unaffected: they always carry their version.
+
+### Features
+
+* support Safe 1.5.0 and make it the default ([#66](https://github.com/tmjssz/safe-vanity-blockie/issues/66)) ([7a9ba3b](https://github.com/tmjssz/safe-vanity-blockie/commit/7a9ba3b4ae0f096d34f1ecc001334b428b60655f))
+* **web:** default the header chain to the connected wallet's ([#69](https://github.com/tmjssz/safe-vanity-blockie/issues/69)) ([d49b894](https://github.com/tmjssz/safe-vanity-blockie/commit/d49b89437d53f9933f13e330f5430724df93528c))
+
+
+### Bug Fixes
+
+* **web:** measure chain switches against the run's Safe version ([#67](https://github.com/tmjssz/safe-vanity-blockie/issues/67)) ([0148588](https://github.com/tmjssz/safe-vanity-blockie/commit/0148588ee5e4c05afe620f6186579f231e92b41c))
+
 ## [0.5.0](https://github.com/tmjssz/safe-vanity-blockie/compare/v0.4.1...v0.5.0) (2026-08-28)
 
 
