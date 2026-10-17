@@ -47,6 +47,6 @@
     "@safe-global/safe-deployments": "^1.37.63",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
-    "viem": "^2.57.2"
+    "viem": "^2.57.4"
   }
 }
