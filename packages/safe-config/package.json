@@ -43,10 +43,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@safe-global/protocol-kit": "^8.0.7",
-    "@safe-global/safe-deployments": "^1.37.63",
+    "@safe-global/protocol-kit": "^8.0.8",
+    "@safe-global/safe-deployments": "^1.37.64",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
-    "viem": "^2.57.2"
+    "viem": "^2.57.7"
   }
 }
