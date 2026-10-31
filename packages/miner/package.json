@@ -40,11 +40,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@safe-global/protocol-kit": "^8.0.7",
+    "@safe-global/protocol-kit": "^8.0.10",
     "@safe-global/types-kit": "^4.0.1",
     "@safe-vanity-blockie/core": "workspace:*",
     "@safe-vanity-blockie/safe-config": "workspace:*",
-    "viem": "^2.57.2"
+    "viem": "^2.57.11"
   },
   "devDependencies": {
     "@types/node": "^26.6.4"
